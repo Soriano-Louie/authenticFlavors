@@ -6,7 +6,11 @@ const NAV_LINKS = [
   { label: "Home", path: "/" },
   { label: "About", path: "/about" },
   { label: "Event", path: "/packages" },
-  { label: "Book Now", path: "/package-selection", activePaths: ["/package-selection", "/booking"] },
+  {
+    label: "Book Now",
+    path: "/package-selection",
+    activePaths: ["/package-selection", "/booking"],
+  },
   { label: "Feedback", path: "/feedback" },
 ];
 
@@ -19,7 +23,9 @@ export function Navbar() {
     const paths = activePaths ?? [path];
 
     return paths.some((activePath) =>
-      activePath === "/" ? location.pathname === "/" : location.pathname.startsWith(activePath)
+      activePath === "/"
+        ? location.pathname === "/"
+        : location.pathname.startsWith(activePath),
     );
   };
 
@@ -35,8 +41,12 @@ export function Navbar() {
               className="h-10 w-auto object-contain"
             />
             <div className="leading-none">
-              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] tracking-wide">Authentic Flavors</p>
-              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">by Chef Ramos</p>
+              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] tracking-wide">
+                Authentic Flavors
+              </p>
+              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">
+                by Chef Ramos
+              </p>
             </div>
           </Link>
 
@@ -109,7 +119,9 @@ export function Navbar() {
               to={link.path}
               onClick={() => setMobileOpen(false)}
               className={`block text-sm font-['Lato'] py-2 transition-colors ${
-                isActive(link.path, link.activePaths) ? "text-[#C8922A]" : "text-[#F5F0E8]/80"
+                isActive(link.path, link.activePaths)
+                  ? "text-[#C8922A]"
+                  : "text-[#F5F0E8]/80"
               }`}
             >
               {link.label}
