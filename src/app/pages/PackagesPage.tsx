@@ -203,26 +203,13 @@ export function PackagesPage() {
                         {pkg.guestRange}
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 border-t border-[#C8922A]/10">
-                        <div>
-                          <p className="text-[#2C1810]/40 text-xs font-['Lato']">
-                            Starting from
-                          </p>
-                          <p className="font-['Playfair_Display'] text-[#2C1810] text-xl">
-                            ₱{pkg.pricePerPerson.toLocaleString()}
-                            <span className="text-xs text-[#2C1810]/50 font-['Lato']">
-                              /person
-                            </span>
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Link
-                            to={`/package-selection?event=${encodeURIComponent(pkg.eventType)}&package=package-a`}
-                            className="px-4 py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-colors font-['Lato']"
-                          >
-                            Details
-                          </Link>
-                        </div>
+                      <div className="flex items-center justify-end pt-3 border-t border-[#C8922A]/10">
+                        <Link
+                          to={`/package-selection?event=${encodeURIComponent(pkg.eventType)}&package=package-a`}
+                          className="px-4 py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-colors font-['Lato']"
+                        >
+                          Details
+                        </Link>
                       </div>
                     </div>
                   </div>

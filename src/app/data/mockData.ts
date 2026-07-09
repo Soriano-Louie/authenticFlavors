@@ -4,21 +4,60 @@ export const IMAGES = {
   birthday: "/Birthday_Celebrations.png",
   corporate: "/Corporate_Dinners.png",
   wedding: "/Wedding_Receptions.png",
-  gourmetPlating: "https://images.unsplash.com/photo-1761095596757-db038313df59?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  gourmetPlating:
+    "https://images.unsplash.com/photo-1761095596757-db038313df59?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
   buffet: "/Gourmet_Buffet.png",
-  dessert: "https://images.unsplash.com/photo-1612723554566-88f9075be12f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ambiance: "https://images.unsplash.com/photo-1769775555435-206cb7b9e8c1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  dessert:
+    "https://images.unsplash.com/photo-1612723554566-88f9075be12f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  ambiance:
+    "https://images.unsplash.com/photo-1769775555435-206cb7b9e8c1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
   familyStyle: "/Family_Fiesta.png",
   anniversary: "/Anniversary_Dinners.png",
 };
 
 export const UPCOMING_EVENTS = [
-  { date: "2026-07-08", title: "Summer Terrace Dinner", type: "Private Dining", time: "7:00 PM", guests: "24 guests" },
-  { date: "2026-07-14", title: "Wedding Tasting Menu", type: "Planning Session", time: "2:00 PM", guests: "8 guests" },
-  { date: "2026-07-18", title: "Live Acoustic Singing Night", type: "Live Performance", time: "8:30 PM", guests: "18 guests" },
-  { date: "2026-07-22", title: "Corporate Gala Preview", type: "Catering Preview", time: "5:30 PM", guests: "60 guests" },
-  { date: "2026-07-29", title: "Anniversary Chef's Table", type: "Chef's Table", time: "8:00 PM", guests: "12 guests" },
-  { date: "2026-08-03", title: "Family Fiesta Showcase", type: "Open House", time: "11:00 AM", guests: "40 guests" },
+  {
+    date: "2026-07-08",
+    title: "Summer Terrace Dinner",
+    type: "Private Dining",
+    time: "7:00 PM",
+    guests: "24 guests",
+  },
+  {
+    date: "2026-07-14",
+    title: "Wedding Tasting Menu",
+    type: "Planning Session",
+    time: "2:00 PM",
+    guests: "8 guests",
+  },
+  {
+    date: "2026-07-18",
+    title: "Live Acoustic Singing Night",
+    type: "Live Performance",
+    time: "8:30 PM",
+    guests: "18 guests",
+  },
+  {
+    date: "2026-07-22",
+    title: "Corporate Gala Preview",
+    type: "Catering Preview",
+    time: "5:30 PM",
+    guests: "60 guests",
+  },
+  {
+    date: "2026-07-29",
+    title: "Anniversary Chef's Table",
+    type: "Chef's Table",
+    time: "8:00 PM",
+    guests: "12 guests",
+  },
+  {
+    date: "2026-08-03",
+    title: "Family Fiesta Showcase",
+    type: "Open House",
+    time: "11:00 AM",
+    guests: "40 guests",
+  },
 ];
 
 export const PACKAGES = [
@@ -28,18 +67,46 @@ export const PACKAGES = [
     eventType: "Birthday",
     packageType: "Plated",
     image: IMAGES.birthday,
-    dishes: ["Cream of Mushroom Soup", "Herb-Crusted Salmon", "Crème Brûlée", "Sparkling Toast"],
-    guestRange: "10–40 guests",
+    dishes: [
+      "Cream of Mushroom Soup",
+      "Herb-Crusted Salmon",
+      "Crème Brûlée",
+      "Sparkling Toast",
+    ],
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 1800,
     rating: 4.9,
-    description: "An intimate plated dinner experience celebrating life's milestones with refined, carefully curated 3-course meals.",
+    description:
+      "An intimate plated dinner experience celebrating life's milestones with refined, carefully curated 3-course meals.",
     menu: {
-      appetizers: ["Cream of Mushroom Soup", "Bruschetta with Heirloom Tomatoes", "Chilled Shrimp Cocktail"],
-      mains: ["Herb-Crusted Salmon with Lemon Beurre Blanc", "Prime Rib with Au Jus", "Chicken Supreme with Wild Mushroom Sauce"],
-      desserts: ["Classic Crème Brûlée", "Dark Chocolate Lava Cake", "Fresh Fruit Tart"],
-      drinks: ["Mocktails & Juices", "Sparkling Toast", "Infused Water Station"],
+      appetizers: [
+        "Cream of Mushroom Soup",
+        "Bruschetta with Heirloom Tomatoes",
+        "Chilled Shrimp Cocktail",
+      ],
+      mains: [
+        "Herb-Crusted Salmon with Lemon Beurre Blanc",
+        "Prime Rib with Au Jus",
+        "Chicken Supreme with Wild Mushroom Sauce",
+      ],
+      desserts: [
+        "Classic Crème Brûlée",
+        "Dark Chocolate Lava Cake",
+        "Fresh Fruit Tart",
+      ],
+      drinks: [
+        "Mocktails & Juices",
+        "Sparkling Toast",
+        "Infused Water Station",
+      ],
     },
-    inclusions: ["Premium table setup", "Personalized menu cards", "Event host", "Sound system", "Custom birthday décor"],
+    inclusions: [
+      "Premium table setup",
+      "Personalized menu cards",
+      "Event host",
+      "Sound system",
+      "Custom birthday décor",
+    ],
     serviceStyle: "Plated",
   },
   {
@@ -48,18 +115,39 @@ export const PACKAGES = [
     eventType: "Corporate",
     packageType: "Buffet",
     image: IMAGES.corporate,
-    dishes: ["Mixed Greens Salad", "Slow-Roasted Beef", "Pasta Stations", "Assorted Petit Fours"],
-    guestRange: "20–100 guests",
+    dishes: [
+      "Mixed Greens Salad",
+      "Slow-Roasted Beef",
+      "Pasta Stations",
+      "Assorted Petit Fours",
+    ],
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 1500,
     rating: 4.7,
-    description: "Professional catering for corporate events — impressive, efficient, and designed to foster connections over great food.",
+    description:
+      "Professional catering for corporate events — impressive, efficient, and designed to foster connections over great food.",
     menu: {
-      appetizers: ["Mixed Greens Salad Bar", "Soup du Jour", "Bruschetta & Crostini"],
-      mains: ["Slow-Roasted Carved Beef", "Chicken Piccata", "Seafood Paella", "Live Pasta Station"],
+      appetizers: [
+        "Mixed Greens Salad Bar",
+        "Soup du Jour",
+        "Bruschetta & Crostini",
+      ],
+      mains: [
+        "Slow-Roasted Carved Beef",
+        "Chicken Piccata",
+        "Seafood Paella",
+        "Live Pasta Station",
+      ],
       desserts: ["Assorted Petit Fours", "Cheese & Fruit Station", "Tiramisu"],
       drinks: ["Coffee & Tea Service", "Juice Bar", "Sparkling Water"],
     },
-    inclusions: ["Corporate-grade setup", "Buffet chafing dishes", "Service staff", "PA system", "Cocktail tables"],
+    inclusions: [
+      "Corporate-grade setup",
+      "Buffet chafing dishes",
+      "Service staff",
+      "PA system",
+      "Cocktail tables",
+    ],
     serviceStyle: "Buffet",
   },
   {
@@ -68,18 +156,43 @@ export const PACKAGES = [
     eventType: "Wedding",
     packageType: "Plated",
     image: IMAGES.wedding,
-    dishes: ["Lobster Bisque", "Filet Mignon", "Pan-Seared Sea Bass", "Wedding Cake Slice"],
-    guestRange: "30–80 guests",
+    dishes: [
+      "Lobster Bisque",
+      "Filet Mignon",
+      "Pan-Seared Sea Bass",
+      "Wedding Cake Slice",
+    ],
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 3200,
     rating: 5.0,
-    description: "The pinnacle of private wedding dining — tailored, luxurious, and utterly unforgettable for your most special day.",
+    description:
+      "The pinnacle of private wedding dining — tailored, luxurious, and utterly unforgettable for your most special day.",
     menu: {
-      appetizers: ["Lobster Bisque", "Endive & Walnut Salad", "Smoked Salmon Blinis"],
-      mains: ["Filet Mignon with Truffle Butter", "Pan-Seared Sea Bass", "Vegetarian Wellington"],
+      appetizers: [
+        "Lobster Bisque",
+        "Endive & Walnut Salad",
+        "Smoked Salmon Blinis",
+      ],
+      mains: [
+        "Filet Mignon with Truffle Butter",
+        "Pan-Seared Sea Bass",
+        "Vegetarian Wellington",
+      ],
       desserts: ["Wedding Cake", "Macarons Tower", "Chocolate Fountain"],
-      drinks: ["Welcome Cocktails", "Wine Pairing", "Champagne Toast", "Mocktail Bar"],
+      drinks: [
+        "Welcome Cocktails",
+        "Wine Pairing",
+        "Champagne Toast",
+        "Mocktail Bar",
+      ],
     },
-    inclusions: ["Floral centerpieces", "White-glove service", "Custom wedding menu", "Bridal suite access", "AV & lighting"],
+    inclusions: [
+      "Floral centerpieces",
+      "White-glove service",
+      "Custom wedding menu",
+      "Bridal suite access",
+      "AV & lighting",
+    ],
     serviceStyle: "Plated",
   },
   {
@@ -89,17 +202,32 @@ export const PACKAGES = [
     packageType: "Family Style",
     image: IMAGES.familyStyle,
     dishes: ["Garlic Bread & Dips", "Lechon Belly", "Kare-Kare", "Halo-Halo"],
-    guestRange: "10–50 guests",
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 1200,
     rating: 4.8,
-    description: "Warm, communal dining for family celebrations — generous portions and beloved Filipino-inspired flavors.",
+    description:
+      "Warm, communal dining for family celebrations — generous portions and beloved Filipino-inspired flavors.",
     menu: {
-      appetizers: ["Garlic Bread & Artisan Dips", "Lumpia Platter", "Ensalada Salad"],
-      mains: ["Lechon Belly with Sarsa", "Kare-Kare with Bagoong", "Grilled Liempo", "Pancit Palabok"],
+      appetizers: [
+        "Garlic Bread & Artisan Dips",
+        "Lumpia Platter",
+        "Ensalada Salad",
+      ],
+      mains: [
+        "Lechon Belly with Sarsa",
+        "Kare-Kare with Bagoong",
+        "Grilled Liempo",
+        "Pancit Palabok",
+      ],
       desserts: ["Halo-Halo Bar", "Leche Flan", "Bibingka"],
       drinks: ["Buko Pandan", "Sago't Gulaman", "Fruit Shakes"],
     },
-    inclusions: ["Communal serving platters", "Festive décor", "Event host", "Photo backdrop"],
+    inclusions: [
+      "Communal serving platters",
+      "Festive décor",
+      "Event host",
+      "Photo backdrop",
+    ],
     serviceStyle: "Family Style",
   },
   {
@@ -108,18 +236,42 @@ export const PACKAGES = [
     eventType: "Anniversary",
     packageType: "Plated",
     image: IMAGES.anniversary,
-    dishes: ["Oysters Rockefeller", "Duck Confit", "Beef Tenderloin", "Molten Chocolate Cake"],
-    guestRange: "10–30 guests",
+    dishes: [
+      "Oysters Rockefeller",
+      "Duck Confit",
+      "Beef Tenderloin",
+      "Molten Chocolate Cake",
+    ],
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 2500,
     rating: 4.9,
-    description: "An exquisite intimate celebration for milestones of love — soft lighting, romantic ambiance, and sumptuous cuisine.",
+    description:
+      "An exquisite intimate celebration for milestones of love — soft lighting, romantic ambiance, and sumptuous cuisine.",
     menu: {
-      appetizers: ["Oysters Rockefeller", "Caprese with Burrata", "Seared Scallops"],
-      mains: ["Duck Confit with Cherry Reduction", "Beef Tenderloin Rossini", "Lobster Thermidor"],
-      desserts: ["Molten Chocolate Cake", "Strawberry Pavlova", "Crêpes Suzette"],
+      appetizers: [
+        "Oysters Rockefeller",
+        "Caprese with Burrata",
+        "Seared Scallops",
+      ],
+      mains: [
+        "Duck Confit with Cherry Reduction",
+        "Beef Tenderloin Rossini",
+        "Lobster Thermidor",
+      ],
+      desserts: [
+        "Molten Chocolate Cake",
+        "Strawberry Pavlova",
+        "Crêpes Suzette",
+      ],
       drinks: ["Champagne Welcome", "Wine Pairing", "Signature Cocktails"],
     },
-    inclusions: ["Rose petal arrangement", "Candlelit setup", "Personalized menu", "Live music arrangement", "Couple's keepsake"],
+    inclusions: [
+      "Rose petal arrangement",
+      "Candlelit setup",
+      "Personalized menu",
+      "Live music arrangement",
+      "Couple's keepsake",
+    ],
     serviceStyle: "Plated",
   },
   {
@@ -128,25 +280,46 @@ export const PACKAGES = [
     eventType: "Corporate",
     packageType: "Buffet",
     image: IMAGES.buffet,
-    dishes: ["International Salad Bar", "Roast Stations", "Live Cooking", "Dessert Spread"],
-    guestRange: "40–100 guests",
+    dishes: [
+      "International Salad Bar",
+      "Roast Stations",
+      "Live Cooking",
+      "Dessert Spread",
+    ],
+    guestRange: "Maximum of 100 guests",
     pricePerPerson: 1700,
     rating: 4.6,
-    description: "An expansive culinary journey perfect for large corporate gatherings with live cooking stations and diverse selections.",
+    description:
+      "An expansive culinary journey perfect for large corporate gatherings with live cooking stations and diverse selections.",
     menu: {
-      appetizers: ["International Salad Bar", "Antipasto Platter", "Soup Station"],
-      mains: ["Roast Carving Station", "Live Pasta & Risotto", "Asian Stir-Fry Station", "Seafood Grill"],
+      appetizers: [
+        "International Salad Bar",
+        "Antipasto Platter",
+        "Soup Station",
+      ],
+      mains: [
+        "Roast Carving Station",
+        "Live Pasta & Risotto",
+        "Asian Stir-Fry Station",
+        "Seafood Grill",
+      ],
       desserts: ["Dessert Spread", "Chocolate Fountain", "Ice Cream Bar"],
       drinks: ["Beverage Station", "Mocktail Bar", "Coffee & Tea"],
     },
-    inclusions: ["Live cooking chefs", "Premium chafing setup", "Event coordinator", "AV system", "Branded signage"],
+    inclusions: [
+      "Live cooking chefs",
+      "Premium chafing setup",
+      "Event coordinator",
+      "AV system",
+      "Branded signage",
+    ],
     serviceStyle: "Buffet",
   },
 ];
 
 export function getPackagePriceForPax(
   packageData: { priceTiers?: Array<{ pax: number; total: number }> },
-  pax: number
+  pax: number,
 ) {
   const matchingTier = packageData.priceTiers?.find((tier) => tier.pax === pax);
   return matchingTier?.total ?? packageData.priceTiers?.[0]?.total ?? 0;
@@ -167,17 +340,67 @@ export const PACKAGE_OPTIONS = [
       { pax: 70, total: 63700 },
     ],
     serving: "Base 30 pax",
-    summary: "A classic catering package with soups, appetizers, and crowd-favorite entrees.",
+    summary:
+      "A classic catering package with soups, appetizers, and crowd-favorite entrees.",
     description:
       "Package A is designed for intimate events and offers a balanced combination of soups, hot starters, vegetables, and select protein dishes.",
     menuSections: [
-      { label: "SOUP (Choose 1)", items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"] },
-      { label: "APPETIZER (Choose 1)", items: ["Canape (Tuna/Chicken)", "Ham and Cheese Pinwheel", "Caesar Salad"] },
-      { label: "VEGETABLE OR PASTA/NOODLES (Choose 1)", items: ["Chopsuey", "Pakbet", "Sizzling Tofu", "Garlic Butter Mushroom", "Chapchae", "Pancit Bihon-Canton", "Aglio e Olio", "Filipino-Style Spaghetti", "Spaghetti Bolognese"] },
-      { label: "CHICKEN OR PORK (Choose 1)", items: ["Chicken Teriyaki", "Chicken Adobo", "Fried Chicken", "Pork Sisig", "Pork Tonkatsu", "Grilled Liempo", "Lechon Kawali"] },
-      { label: "BEEF OR SEAFOOD (Choose 1)", items: ["Beef with Broccoli", "Beef and Mushroom Stir-Fry", "Garlic and Pepper Beef with Mushroom", "Sweet and Sour Fish Fillet", "Fish Fillet with Tartar Sauce"] },
-      { label: "DESSERT (Choose 1)", items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"] },
-      { label: "DRINKS (Choose 1)", items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"] },
+      {
+        label: "SOUP (Choose 1)",
+        items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"],
+      },
+      {
+        label: "APPETIZER (Choose 1)",
+        items: [
+          "Canape (Tuna/Chicken)",
+          "Ham and Cheese Pinwheel",
+          "Caesar Salad",
+        ],
+      },
+      {
+        label: "VEGETABLE OR PASTA/NOODLES (Choose 1)",
+        items: [
+          "Chopsuey",
+          "Pakbet",
+          "Sizzling Tofu",
+          "Garlic Butter Mushroom",
+          "Chapchae",
+          "Pancit Bihon-Canton",
+          "Aglio e Olio",
+          "Filipino-Style Spaghetti",
+          "Spaghetti Bolognese",
+        ],
+      },
+      {
+        label: "CHICKEN OR PORK (Choose 1)",
+        items: [
+          "Chicken Teriyaki",
+          "Chicken Adobo",
+          "Fried Chicken",
+          "Pork Sisig",
+          "Pork Tonkatsu",
+          "Grilled Liempo",
+          "Lechon Kawali",
+        ],
+      },
+      {
+        label: "BEEF OR SEAFOOD (Choose 1)",
+        items: [
+          "Beef with Broccoli",
+          "Beef and Mushroom Stir-Fry",
+          "Garlic and Pepper Beef with Mushroom",
+          "Sweet and Sour Fish Fillet",
+          "Fish Fillet with Tartar Sauce",
+        ],
+      },
+      {
+        label: "DESSERT (Choose 1)",
+        items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"],
+      },
+      {
+        label: "DRINKS (Choose 1)",
+        items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"],
+      },
     ],
     inclusions: [
       "Full package consultation",
@@ -201,18 +424,68 @@ export const PACKAGE_OPTIONS = [
       { pax: 70, total: 67200 },
     ],
     serving: "Base 30 pax",
-    summary: "A premium package with upgraded appetizers and a richer selection of protein dishes.",
+    summary:
+      "A premium package with upgraded appetizers and a richer selection of protein dishes.",
     description:
       "Package B adds premium starters and elevated entrees for guests who want an upgraded catering experience.",
     menuSections: [
-      { label: "SOUP (Choose 1)", items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"] },
-      { label: "APPETIZER (Choose 1)", items: ["Canape (Tuna/Chicken)", "Ham and Cheese Pinwheel", "Caesar Salad"] },
-      { label: "VEGETABLE OR PASTA/NOODLES (Choose 1)", items: ["Chopsuey", "Pakbet", "Sizzling Tofu", "Garlic Butter Mushroom", "Chapchae", "Pancit Bihon-Canton", "Aglio e Olio", "Filipino-Style Spaghetti", "Spaghetti Bolognese"] },
-      { label: "CHICKEN (Choose 1)", items: ["Chicken Teriyaki", "Chicken Adobo", "Fried Chicken"] },
-      { label: "PORK (Choose 1)", items: ["Pork Sisig", "Pork Tonkatsu", "Grilled Liempo", "Lechon Kawali"] },
-      { label: "BEEF OR SEAFOOD (Choose 1)", items: ["Beef with Broccoli", "Beef and Mushroom Stir-Fry", "Garlic and Pepper Beef Mushroom", "Sweet and Sour Fish Fillet", "Fish Fillet with Tartar Sauce"] },
-      { label: "DESSERT (Choose 1)", items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"] },
-      { label: "DRINKS (Choose 1)", items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"] },
+      {
+        label: "SOUP (Choose 1)",
+        items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"],
+      },
+      {
+        label: "APPETIZER (Choose 1)",
+        items: [
+          "Canape (Tuna/Chicken)",
+          "Ham and Cheese Pinwheel",
+          "Caesar Salad",
+        ],
+      },
+      {
+        label: "VEGETABLE OR PASTA/NOODLES (Choose 1)",
+        items: [
+          "Chopsuey",
+          "Pakbet",
+          "Sizzling Tofu",
+          "Garlic Butter Mushroom",
+          "Chapchae",
+          "Pancit Bihon-Canton",
+          "Aglio e Olio",
+          "Filipino-Style Spaghetti",
+          "Spaghetti Bolognese",
+        ],
+      },
+      {
+        label: "CHICKEN (Choose 1)",
+        items: ["Chicken Teriyaki", "Chicken Adobo", "Fried Chicken"],
+      },
+      {
+        label: "PORK (Choose 1)",
+        items: [
+          "Pork Sisig",
+          "Pork Tonkatsu",
+          "Grilled Liempo",
+          "Lechon Kawali",
+        ],
+      },
+      {
+        label: "BEEF OR SEAFOOD (Choose 1)",
+        items: [
+          "Beef with Broccoli",
+          "Beef and Mushroom Stir-Fry",
+          "Garlic and Pepper Beef Mushroom",
+          "Sweet and Sour Fish Fillet",
+          "Fish Fillet with Tartar Sauce",
+        ],
+      },
+      {
+        label: "DESSERT (Choose 1)",
+        items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"],
+      },
+      {
+        label: "DRINKS (Choose 1)",
+        items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"],
+      },
     ],
     inclusions: [
       "Premium menu presentation",
@@ -236,19 +509,87 @@ export const PACKAGE_OPTIONS = [
       { pax: 70, total: 72100 },
     ],
     serving: "Base 30 pax",
-    summary: "A signature package featuring an expanded menu and premium meat, seafood, and pasta options.",
+    summary:
+      "A signature package featuring an expanded menu and premium meat, seafood, and pasta options.",
     description:
       "Package C brings richer flavors and broader variety, including premium proteins and a large selection of vegetables and pastas.",
     menuSections: [
-      { label: "SOUP (Choose 1)", items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"] },
-      { label: "APPETIZER (Choose 1)", items: ["Canape (Tuna/Chicken)", "Ham and Cheese Pinwheel", "Caesar Salad"] },
-      { label: "VEGETABLE (Choose 1)", items: ["Chopsuey", "Pakbet", "Sizzling Tofu", "Garlic Butter Mushroom"] },
-      { label: "PASTA/NOODLES (Choose 1)", items: ["Chapchae", "Pancit Bihon-Canton", "Aglio e Olio", "Filipino-Style Spaghetti", "Spaghetti Bolognese", "Traditional Carbonara", "Tomato and Basil Rigatoni"] },
-      { label: "CHICKEN (Choose 1)", items: ["Chicken Teriyaki", "Chicken Adobo", "Fried Chicken", "Chicken Wings", "Chicken Caldereta", "Lemon Herb Chicken"] },
-      { label: "PORK (Choose 1)", items: ["Pork Sisig", "Pork Tonkatsu", "Grilled Liempo", "Lechon Kawali", "Menudo", "Kare-Kare with Crispy Lechon Kawali"] },
-      { label: "BEEF OR SEAFOOD (Choose 1)", items: ["Beef with Broccoli", "Beef and Mushroom Stir-Fry", "Garlic and Pepper Beef Mushroom", "Beef Caldereta", "Sweet and Sour Fish Fillet", "Fish Fillet with Tartar Sauce", "Buttered Garlic Shrimp", "Mixed Seafoods in Oyster Sauce"] },
-      { label: "DESSERT (Choose 1)", items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"] },
-      { label: "DRINKS (Choose 1)", items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"] },
+      {
+        label: "SOUP (Choose 1)",
+        items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"],
+      },
+      {
+        label: "APPETIZER (Choose 1)",
+        items: [
+          "Canape (Tuna/Chicken)",
+          "Ham and Cheese Pinwheel",
+          "Caesar Salad",
+        ],
+      },
+      {
+        label: "VEGETABLE (Choose 1)",
+        items: [
+          "Chopsuey",
+          "Pakbet",
+          "Sizzling Tofu",
+          "Garlic Butter Mushroom",
+        ],
+      },
+      {
+        label: "PASTA/NOODLES (Choose 1)",
+        items: [
+          "Chapchae",
+          "Pancit Bihon-Canton",
+          "Aglio e Olio",
+          "Filipino-Style Spaghetti",
+          "Spaghetti Bolognese",
+          "Traditional Carbonara",
+          "Tomato and Basil Rigatoni",
+        ],
+      },
+      {
+        label: "CHICKEN (Choose 1)",
+        items: [
+          "Chicken Teriyaki",
+          "Chicken Adobo",
+          "Fried Chicken",
+          "Chicken Wings",
+          "Chicken Caldereta",
+          "Lemon Herb Chicken",
+        ],
+      },
+      {
+        label: "PORK (Choose 1)",
+        items: [
+          "Pork Sisig",
+          "Pork Tonkatsu",
+          "Grilled Liempo",
+          "Lechon Kawali",
+          "Menudo",
+          "Kare-Kare with Crispy Lechon Kawali",
+        ],
+      },
+      {
+        label: "BEEF OR SEAFOOD (Choose 1)",
+        items: [
+          "Beef with Broccoli",
+          "Beef and Mushroom Stir-Fry",
+          "Garlic and Pepper Beef Mushroom",
+          "Beef Caldereta",
+          "Sweet and Sour Fish Fillet",
+          "Fish Fillet with Tartar Sauce",
+          "Buttered Garlic Shrimp",
+          "Mixed Seafoods in Oyster Sauce",
+        ],
+      },
+      {
+        label: "DESSERT (Choose 1)",
+        items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"],
+      },
+      {
+        label: "DRINKS (Choose 1)",
+        items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"],
+      },
     ],
     inclusions: [
       "Premium chef consultation",
@@ -272,20 +613,92 @@ export const PACKAGE_OPTIONS = [
       { pax: 70, total: 79100 },
     ],
     serving: "Base 30 pax",
-    summary: "A luxury catering package with elevated seafood selections and a comprehensive gourmet spread.",
+    summary:
+      "A luxury catering package with elevated seafood selections and a comprehensive gourmet spread.",
     description:
       "Package D is our top-tier catering package, offering the largest menu selection and premium seafood, meats, and pasta dishes.",
     menuSections: [
-      { label: "SOUP (Choose 1)", items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"] },
-      { label: "APPETIZER (Choose 1)", items: ["Canape (Tuna/Chicken)", "Ham and Cheese Pinwheel", "Caesar Salad"] },
-      { label: "VEGETABLE (Choose 1)", items: ["Chopsuey", "Pakbet", "Sizzling Tofu", "Garlic Butter Mushroom"] },
-      { label: "PASTA/NOODLES (Choose 1)", items: ["Chapchae", "Pancit Bihon-Canton", "Aglio e Olio", "Filipino-Style Spaghetti", "Spaghetti Bolognese", "Traditional Carbonara", "Tomato and Basil Rigatoni"] },
-      { label: "CHICKEN (Choose 1)", items: ["Chicken Teriyaki", "Chicken Adobo", "Fried Chicken", "Chicken Wings", "Chicken Caldereta", "Lemon Herb Chicken"] },
-      { label: "PORK (Choose 1)", items: ["Pork Sisig", "Pork Tonkatsu", "Grilled Liempo", "Lechon Kawali", "Menudo", "Kare-Kare with Crispy Lechon Kawali"] },
-      { label: "BEEF (Choose 1)", items: ["Beef with Broccoli", "Beef and Mushroom Stir-Fry", "Garlic and Pepper Beef Mushroom", "Beef Caldereta"] },
-      { label: "SEAFOOD (Choose 1)", items: ["Sweet and Sour Fish Fillet", "Fish Fillet with Tartar Sauce", "Buttered Garlic Shrimp", "Mixed Seafoods in Oyster Sauce"] },
-      { label: "DESSERT (Choose 1)", items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"] },
-      { label: "DRINKS (Choose 1)", items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"] },
+      {
+        label: "SOUP (Choose 1)",
+        items: ["Mushroom Soup", "Corn and Crab Soup", "Pumpkin Soup"],
+      },
+      {
+        label: "APPETIZER (Choose 1)",
+        items: [
+          "Canape (Tuna/Chicken)",
+          "Ham and Cheese Pinwheel",
+          "Caesar Salad",
+        ],
+      },
+      {
+        label: "VEGETABLE (Choose 1)",
+        items: [
+          "Chopsuey",
+          "Pakbet",
+          "Sizzling Tofu",
+          "Garlic Butter Mushroom",
+        ],
+      },
+      {
+        label: "PASTA/NOODLES (Choose 1)",
+        items: [
+          "Chapchae",
+          "Pancit Bihon-Canton",
+          "Aglio e Olio",
+          "Filipino-Style Spaghetti",
+          "Spaghetti Bolognese",
+          "Traditional Carbonara",
+          "Tomato and Basil Rigatoni",
+        ],
+      },
+      {
+        label: "CHICKEN (Choose 1)",
+        items: [
+          "Chicken Teriyaki",
+          "Chicken Adobo",
+          "Fried Chicken",
+          "Chicken Wings",
+          "Chicken Caldereta",
+          "Lemon Herb Chicken",
+        ],
+      },
+      {
+        label: "PORK (Choose 1)",
+        items: [
+          "Pork Sisig",
+          "Pork Tonkatsu",
+          "Grilled Liempo",
+          "Lechon Kawali",
+          "Menudo",
+          "Kare-Kare with Crispy Lechon Kawali",
+        ],
+      },
+      {
+        label: "BEEF (Choose 1)",
+        items: [
+          "Beef with Broccoli",
+          "Beef and Mushroom Stir-Fry",
+          "Garlic and Pepper Beef Mushroom",
+          "Beef Caldereta",
+        ],
+      },
+      {
+        label: "SEAFOOD (Choose 1)",
+        items: [
+          "Sweet and Sour Fish Fillet",
+          "Fish Fillet with Tartar Sauce",
+          "Buttered Garlic Shrimp",
+          "Mixed Seafoods in Oyster Sauce",
+        ],
+      },
+      {
+        label: "DESSERT (Choose 1)",
+        items: ["Mango Tapioca", "Coffee Jelly", "Buko Pandan"],
+      },
+      {
+        label: "DRINKS (Choose 1)",
+        items: ["Iced Tea", "Cucumber Lemonade", "Softdrinks"],
+      },
     ],
     inclusions: [
       "Luxury buffet setup",
@@ -341,20 +754,119 @@ export const TESTIMONIALS = [
 ];
 
 export const ADMIN_BOOKINGS = [
-  { id: "BK001", customer: "Maria Santos", event: "Birthday Bliss 3-Course", date: "2026-05-15", guests: 25, status: "Confirmed", dietary: "Nut-free", total: 45000 },
-  { id: "BK002", customer: "James Reyes", event: "Corporate Feast Buffet", date: "2026-05-22", guests: 60, status: "Pending", dietary: "Vegetarian options", total: 90000 },
-  { id: "BK003", customer: "Ana Cruz", event: "Wedding Elegance", date: "2026-06-01", guests: 50, status: "Confirmed", dietary: "Gluten-free, shellfish allergy", total: 160000 },
-  { id: "BK004", customer: "Linda Gomez", event: "Anniversary Romance", date: "2026-06-10", guests: 12, status: "Confirmed", dietary: "None", total: 30000 },
-  { id: "BK005", customer: "Roberto Tan", event: "Family Fiesta Feast", date: "2026-06-15", guests: 35, status: "Cancelled", dietary: "Pork restrictions", total: 42000 },
-  { id: "BK006", customer: "Christine Lim", event: "Birthday Bliss 3-Course", date: "2026-06-20", guests: 20, status: "Pending", dietary: "Dairy-free", total: 36000 },
+  {
+    id: "BK001",
+    customer: "Maria Santos",
+    event: "Birthday Bliss 3-Course",
+    date: "2026-05-15",
+    guests: 25,
+    status: "Confirmed",
+    dietary: "Nut-free",
+    total: 45000,
+  },
+  {
+    id: "BK002",
+    customer: "James Reyes",
+    event: "Corporate Feast Buffet",
+    date: "2026-05-22",
+    guests: 60,
+    status: "Pending",
+    dietary: "Vegetarian options",
+    total: 90000,
+  },
+  {
+    id: "BK003",
+    customer: "Ana Cruz",
+    event: "Wedding Elegance",
+    date: "2026-06-01",
+    guests: 50,
+    status: "Confirmed",
+    dietary: "Gluten-free, shellfish allergy",
+    total: 160000,
+  },
+  {
+    id: "BK004",
+    customer: "Linda Gomez",
+    event: "Anniversary Romance",
+    date: "2026-06-10",
+    guests: 12,
+    status: "Confirmed",
+    dietary: "None",
+    total: 30000,
+  },
+  {
+    id: "BK005",
+    customer: "Roberto Tan",
+    event: "Family Fiesta Feast",
+    date: "2026-06-15",
+    guests: 35,
+    status: "Cancelled",
+    dietary: "Pork restrictions",
+    total: 42000,
+  },
+  {
+    id: "BK006",
+    customer: "Christine Lim",
+    event: "Birthday Bliss 3-Course",
+    date: "2026-06-20",
+    guests: 20,
+    status: "Pending",
+    dietary: "Dairy-free",
+    total: 36000,
+  },
 ];
 
 export const FEEDBACK_DATA = [
-  { id: 1, customer: "Maria Santos", event: "Birthday Bliss", rating: 5, comment: "Exceptional service! The food was phenomenal and the team was so attentive.", sentiment: "positive", date: "2026-04-10" },
-  { id: 2, customer: "James Reyes", event: "Corporate Feast", rating: 4, comment: "Great food and service. Slight delay in setup but overall excellent experience.", sentiment: "positive", date: "2026-04-12" },
-  { id: 3, customer: "Ana Cruz", event: "Wedding Elegance", rating: 5, comment: "Absolutely perfect for our wedding day. Chef Ramos exceeded every expectation.", sentiment: "positive", date: "2026-04-15" },
-  { id: 4, customer: "Robert Kim", event: "Corporate Feast", rating: 3, comment: "Food was good but communication prior to the event could be improved.", sentiment: "neutral", date: "2026-04-18" },
-  { id: 5, customer: "Sofia Dela Cruz", event: "Family Fiesta", rating: 5, comment: "The Kare-Kare was authentic and absolutely delicious! Family loved every bite.", sentiment: "positive", date: "2026-04-20" },
+  {
+    id: 1,
+    customer: "Maria Santos",
+    event: "Birthday Bliss",
+    rating: 5,
+    comment:
+      "Exceptional service! The food was phenomenal and the team was so attentive.",
+    sentiment: "positive",
+    date: "2026-04-10",
+  },
+  {
+    id: 2,
+    customer: "James Reyes",
+    event: "Corporate Feast",
+    rating: 4,
+    comment:
+      "Great food and service. Slight delay in setup but overall excellent experience.",
+    sentiment: "positive",
+    date: "2026-04-12",
+  },
+  {
+    id: 3,
+    customer: "Ana Cruz",
+    event: "Wedding Elegance",
+    rating: 5,
+    comment:
+      "Absolutely perfect for our wedding day. Chef Ramos exceeded every expectation.",
+    sentiment: "positive",
+    date: "2026-04-15",
+  },
+  {
+    id: 4,
+    customer: "Robert Kim",
+    event: "Corporate Feast",
+    rating: 3,
+    comment:
+      "Food was good but communication prior to the event could be improved.",
+    sentiment: "neutral",
+    date: "2026-04-18",
+  },
+  {
+    id: 5,
+    customer: "Sofia Dela Cruz",
+    event: "Family Fiesta",
+    rating: 5,
+    comment:
+      "The Kare-Kare was authentic and absolutely delicious! Family loved every bite.",
+    sentiment: "positive",
+    date: "2026-04-20",
+  },
 ];
 
 export const ANALYTICS = {
@@ -413,8 +925,8 @@ export const AI_FEEDBACK_ANALYSIS = {
       samples: [
         "The filet mignon was absolutely divine! Cooked to perfection.",
         "Herb-crusted salmon exceeded expectations. Best I've had!",
-        "Desserts were outstanding, especially the crème brûlée."
-      ]
+        "Desserts were outstanding, especially the crème brûlée.",
+      ],
     },
     {
       id: "cat-2",
@@ -425,8 +937,8 @@ export const AI_FEEDBACK_ANALYSIS = {
       samples: [
         "Service was good but dishes came out slightly delayed during cocktail hour.",
         "Wait time for main course was longer than expected.",
-        "Staff were friendly but seemed understaffed during peak service."
-      ]
+        "Staff were friendly but seemed understaffed during peak service.",
+      ],
     },
     {
       id: "cat-3",
@@ -437,8 +949,8 @@ export const AI_FEEDBACK_ANALYSIS = {
       samples: [
         "Plating was restaurant-quality. Very elegant!",
         "Table setup and décor were beautiful. Instagram-worthy!",
-        "Loved the attention to detail on the menu cards."
-      ]
+        "Loved the attention to detail on the menu cards.",
+      ],
     },
     {
       id: "cat-4",
@@ -449,8 +961,8 @@ export const AI_FEEDBACK_ANALYSIS = {
       samples: [
         "Great value for the quality received.",
         "Slightly pricey but worth it for special occasions.",
-        "Would appreciate more budget-friendly options for smaller events."
-      ]
+        "Would appreciate more budget-friendly options for smaller events.",
+      ],
     },
     {
       id: "cat-5",
@@ -461,40 +973,46 @@ export const AI_FEEDBACK_ANALYSIS = {
       samples: [
         "Needed more vegetarian options in the buffet lineup.",
         "Vegan alternatives were limited.",
-        "Would love to see gluten-free desserts added to the menu."
-      ]
+        "Would love to see gluten-free desserts added to the menu.",
+      ],
     },
   ],
   aiSuggestions: [
     {
       id: "sug-1",
       title: "Expand Vegetarian & Vegan Options",
-      description: "15 feedback entries highlighted limited dietary accommodations. Consider adding 2-3 plant-based mains per package.",
+      description:
+        "15 feedback entries highlighted limited dietary accommodations. Consider adding 2-3 plant-based mains per package.",
       impact: "High",
-      actionable: "Add Vegetarian Wellington, Vegan Paella, and Gluten-Free Dessert options",
+      actionable:
+        "Add Vegetarian Wellington, Vegan Paella, and Gluten-Free Dessert options",
     },
     {
       id: "sug-2",
       title: "Optimize Service Timing During Peak Hours",
-      description: "32 feedback entries mentioned slight delays in service. Analyze staffing levels for events with 50+ guests.",
+      description:
+        "32 feedback entries mentioned slight delays in service. Analyze staffing levels for events with 50+ guests.",
       impact: "Medium",
       actionable: "Increase service staff ratio during high-volume events",
     },
     {
       id: "sug-3",
       title: "Introduce Mid-Tier Pricing Package",
-      description: "28 feedback entries suggested pricing concerns. A mid-tier option could capture budget-conscious clients.",
+      description:
+        "28 feedback entries suggested pricing concerns. A mid-tier option could capture budget-conscious clients.",
       impact: "Medium",
       actionable: "Create 'Essential Elegance' package at ₱1,000-₱1,200/person",
     },
     {
       id: "sug-4",
       title: "Leverage Presentation Excellence",
-      description: "58 feedback entries praised presentation quality. Use this as a marketing differentiator.",
+      description:
+        "58 feedback entries praised presentation quality. Use this as a marketing differentiator.",
       impact: "Low",
-      actionable: "Feature customer photos in marketing materials and social media",
+      actionable:
+        "Feature customer photos in marketing materials and social media",
     },
-  ]
+  ],
 };
 
 // Recent Admin Activity Feed

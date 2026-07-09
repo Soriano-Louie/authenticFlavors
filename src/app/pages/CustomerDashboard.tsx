@@ -12,7 +12,6 @@ import {
   Plus,
   User,
 } from "lucide-react";
-import { PACKAGES } from "../data/mockData";
 
 const UPCOMING_EVENTS = [
   {
@@ -253,41 +252,6 @@ export function CustomerDashboard() {
                     >
                       {ev.status}
                     </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recommended */}
-            <div className="bg-white rounded-[24px] p-6 shadow-sm border border-[#C8922A]/10">
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
-                Recommended for You
-              </h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                {PACKAGES.slice(0, 2).map((pkg) => (
-                  <div
-                    key={pkg.id}
-                    className="rounded-2xl overflow-hidden border border-[#C8922A]/10 hover:shadow-md transition-shadow bg-[#FCFAF6]"
-                  >
-                    <img
-                      src={pkg.image}
-                      alt={pkg.name}
-                      className="w-full h-32 object-cover"
-                    />
-                    <div className="p-4">
-                      <p className="font-['Playfair_Display'] text-[#2C1810] text-sm">
-                        {pkg.name}
-                      </p>
-                      <p className="text-[#C8922A] text-sm font-['Lato'] mt-1">
-                        ₱{pkg.pricePerPerson.toLocaleString()}/pax
-                      </p>
-                      <Link
-                        to={`/packages/${pkg.id}`}
-                        className="mt-2 text-xs text-[#C8922A] hover:underline font-['Lato']"
-                      >
-                        View Details →
-                      </Link>
-                    </div>
                   </div>
                 ))}
               </div>

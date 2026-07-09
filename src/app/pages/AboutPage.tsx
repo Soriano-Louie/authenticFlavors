@@ -165,7 +165,7 @@ export function AboutPage() {
               </h2>
               <div className="space-y-4 mb-8">
                 {[
-                  { label: "Venue Capacity", value: "10 to 100 guests" },
+                  { label: "Venue Capacity", value: "Maximum of 100 guests" },
                   {
                     label: "Location",
                     value: "35 ML Quezon St. New Lower Bicutan, Taguig City",

@@ -15,18 +15,33 @@ export function Footer() {
                 className="h-10 w-auto object-contain"
               />
               <div>
-                <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">Authentic Flavors</p>
-                <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">by Chef Ramos</p>
+                <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
+                  Authentic Flavors
+                </p>
+                <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">
+                  by Chef Ramos
+                </p>
               </div>
             </div>
             <p className="text-sm leading-relaxed font-['Lato']">
-              Exclusive private dining and event hosting for life's most cherished celebrations.
+              Exclusive private dining and event hosting for life's most
+              cherished celebrations.
             </p>
             <div className="flex gap-3 mt-4">
-              <a href="https://www.instagram.com/authenticflavorsbycheframos/" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full border border-[#C8922A]/40 flex items-center justify-center hover:border-[#C8922A] hover:text-[#C8922A] transition-colors">
+              <a
+                href="https://www.instagram.com/authenticflavorsbycheframos/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full border border-[#C8922A]/40 flex items-center justify-center hover:border-[#C8922A] hover:text-[#C8922A] transition-colors"
+              >
                 <Instagram size={15} />
               </a>
-              <a href="https://web.facebook.com/authenticflavorsbycheframos" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full border border-[#C8922A]/40 flex items-center justify-center hover:border-[#C8922A] hover:text-[#C8922A] transition-colors">
+              <a
+                href="https://web.facebook.com/authenticflavorsbycheframos"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full border border-[#C8922A]/40 flex items-center justify-center hover:border-[#C8922A] hover:text-[#C8922A] transition-colors"
+              >
                 <Facebook size={15} />
               </a>
             </div>
@@ -34,7 +49,9 @@ export function Footer() {
 
           {/* Quick Links */}
           <div>
-            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">Quick Links</h4>
+            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">
+              Quick Links
+            </h4>
             <ul className="space-y-2 font-['Lato'] text-sm">
               {[
                 { label: "Home", path: "/" },
@@ -43,7 +60,10 @@ export function Footer() {
                 { label: "Feedback & Reviews", path: "/feedback" },
               ].map((link) => (
                 <li key={link.path}>
-                  <Link to={link.path} className="hover:text-[#C8922A] transition-colors">
+                  <Link
+                    to={link.path}
+                    className="hover:text-[#C8922A] transition-colors"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -53,19 +73,19 @@ export function Footer() {
 
           {/* Event Types */}
           <div>
-            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">Events We Host</h4>
+            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">
+              Events We Host
+            </h4>
             <ul className="space-y-2 font-['Lato'] text-sm">
               {[
-                { label: "Birthday Celebrations", path: "/package-selection?event=Birthday&package=package-a" },
-                { label: "Wedding Receptions", path: "/package-selection?event=Wedding&package=package-c" },
-                { label: "Corporate Dinners", path: "/package-selection?event=Corporate&package=package-b" },
-                { label: "Anniversary Events", path: "/package-selection?event=Anniversary&package=package-d" },
-                { label: "Family Reunions", path: "/package-selection?event=Family%20Fiesta&package=package-a" },
-              ].map((item) => (
-                <li key={item.label}>
-                  <Link to={item.path} className="hover:text-[#C8922A] transition-colors">
-                    {item.label}
-                  </Link>
+                "Birthday Celebrations",
+                "Wedding Receptions",
+                "Corporate Dinners",
+                "Anniversary Events",
+                "Family Reunions",
+              ].map((label) => (
+                <li key={label} className="cursor-default select-none">
+                  <span>{label}</span>
                 </li>
               ))}
             </ul>
@@ -73,7 +93,9 @@ export function Footer() {
 
           {/* Contact */}
           <div>
-            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">Contact Us</h4>
+            <h4 className="text-[#C8922A] font-['Playfair_Display'] mb-4">
+              Contact Us
+            </h4>
             <ul className="space-y-3 font-['Lato'] text-sm">
               <li className="flex items-start gap-2">
                 <MapPin size={15} className="text-[#C8922A] mt-0.5 shrink-0" />
@@ -94,8 +116,12 @@ export function Footer() {
         <div className="border-t border-[#C8922A]/20 pt-6 flex flex-col md:flex-row items-center justify-between gap-2 text-xs font-['Lato']">
           <p>© 2026 Authentic Flavors by Chef Ramos. All rights reserved.</p>
           <div className="flex gap-4">
-            <a href="#" className="hover:text-[#C8922A] transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-[#C8922A] transition-colors">Terms of Service</a>
+            <a href="#" className="hover:text-[#C8922A] transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#" className="hover:text-[#C8922A] transition-colors">
+              Terms of Service
+            </a>
           </div>
         </div>
       </div>

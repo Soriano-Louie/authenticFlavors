@@ -12,12 +12,7 @@ import {
   Heart,
   Briefcase,
 } from "lucide-react";
-import {
-  IMAGES,
-  TESTIMONIALS,
-  PACKAGES,
-  UPCOMING_EVENTS,
-} from "../data/mockData";
+import { IMAGES, TESTIMONIALS, UPCOMING_EVENTS } from "../data/mockData";
 
 const CAROUSEL_EVENTS = [
   {
@@ -540,107 +535,6 @@ export function LandingPage() {
                 Learn More About Chef Ramos <ArrowRight size={16} />
               </Link>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Featured Packages ─── */}
-      <section className="py-20 bg-[#F5F0E8]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-[#C8922A] text-xs tracking-widest uppercase font-['Lato'] mb-2">
-              ✦ Packages
-            </p>
-            <h2
-              className="font-['Playfair_Display'] text-[#2C1810]"
-              style={{
-                fontSize: "clamp(1.8rem, 3vw, 2.5rem)",
-                fontWeight: 600,
-              }}
-            >
-              Curated Event Packages
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {PACKAGES.slice(0, 3).map((pkg) => (
-              <div
-                key={pkg.id}
-                className="rounded-2xl overflow-hidden bg-white shadow-md hover:shadow-xl transition-shadow group"
-              >
-                <div
-                  className="relative overflow-hidden"
-                  style={{ height: "200px" }}
-                >
-                  <img
-                    src={pkg.image}
-                    alt={pkg.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/60 to-transparent" />
-                  <div className="absolute top-3 left-3">
-                    <span className="px-2.5 py-1 rounded-full bg-[#C8922A]/90 text-[#F5F0E8] text-[11px] font-['Lato']">
-                      {pkg.packageType}
-                    </span>
-                  </div>
-                  <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
-                    <p className="text-[#F5F0E8] font-['Playfair_Display'] text-lg leading-tight">
-                      {pkg.name}
-                    </p>
-                    <div className="flex items-center gap-1 bg-[#1A0E08]/60 rounded-full px-2 py-0.5">
-                      <Star
-                        size={11}
-                        className="text-[#C8922A] fill-[#C8922A]"
-                      />
-                      <span className="text-[#F5F0E8] text-xs">
-                        {pkg.rating}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-5">
-                  <p className="text-[#2C1810]/60 text-sm font-['Lato'] mb-3 leading-relaxed line-clamp-2">
-                    {pkg.description}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {pkg.dishes.slice(0, 3).map((d) => (
-                      <span
-                        key={d}
-                        className="text-[10px] px-2 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C4541A] font-['Lato']"
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[#2C1810]/50 text-xs font-['Lato']">
-                        Starting from
-                      </p>
-                      <p className="text-[#2C1810] font-['Playfair_Display']">
-                        ₱{pkg.pricePerPerson.toLocaleString()}
-                        <span className="text-xs text-[#2C1810]/50 font-['Lato']">
-                          /person
-                        </span>
-                      </p>
-                    </div>
-                    <Link
-                      to={`/packages/${pkg.id}`}
-                      className="px-4 py-2 bg-[#2C1810] text-[#F5F0E8] rounded-full text-sm hover:bg-[#C8922A] transition-colors font-['Lato']"
-                    >
-                      View Details
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="text-center mt-10">
-            <Link
-              to="/packages"
-              className="inline-flex items-center gap-2 px-8 py-3.5 border-2 border-[#C8922A] text-[#C8922A] rounded-full hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-all font-['Lato']"
-            >
-              View All Packages <ArrowRight size={16} />
-            </Link>
           </div>
         </div>
       </section>
