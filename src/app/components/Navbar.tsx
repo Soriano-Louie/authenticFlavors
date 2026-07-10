@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router";
-import { Menu, X, ChefHat, User, LogOut } from "lucide-react";
+import { Menu, X, User, LogOut } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
 
 const NAV_LINKS = [
   { label: "Home", path: "/" },
@@ -16,8 +17,9 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [loggedIn] = useState(false);
+  const { user, logout } = useAuth();
   const location = useLocation();
+  const loggedIn = Boolean(user);
 
   const isActive = (path: string, activePaths?: string[]) => {
     const paths = activePaths ?? [path];
@@ -78,23 +80,21 @@ export function Navbar() {
                   <User size={16} />
                   Dashboard
                 </Link>
-                <button className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-sm">
+                <button
+                  className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-sm"
+                  onClick={logout}
+                >
                   <LogOut size={16} />
+                  Logout
                 </button>
               </>
             ) : (
               <>
                 <Link
                   to="/auth"
-                  className="text-[#F5F0E8]/80 hover:text-[#C8922A] text-sm transition-colors font-['Lato']"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/auth?tab=register"
                   className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm hover:opacity-90 transition-opacity shadow-md font-['Lato']"
                 >
-                  Get Started
+                  Sign in
                 </Link>
               </>
             )}
@@ -140,7 +140,7 @@ export function Navbar() {
               onClick={() => setMobileOpen(false)}
               className="flex-1 text-center py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm"
             >
-              Get Started
+              Create Account
             </Link>
           </div>
         </div>

@@ -10,6 +10,11 @@ import { AuthPage } from "./pages/AuthPage";
 import { CustomerDashboard } from "./pages/CustomerDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { FeedbackPage } from "./pages/FeedbackPage";
+import {
+  RedirectIfAuthenticated,
+  RequireAdmin,
+  RequireAuth,
+} from "./components/AuthGuards";
 
 function NotFound() {
   return (
@@ -38,9 +43,30 @@ export const router = createBrowserRouter([
       { path: "package-selection", Component: PackageSelectionPage },
       { path: "event", Component: BookingPage },
       { path: "booking", Component: BookingPage },
-      { path: "auth", Component: AuthPage },
-      { path: "dashboard", Component: CustomerDashboard },
-      { path: "admin", Component: AdminDashboard },
+      {
+        path: "auth",
+        Component: () => (
+          <RedirectIfAuthenticated>
+            <AuthPage />
+          </RedirectIfAuthenticated>
+        ),
+      },
+      {
+        path: "dashboard",
+        Component: () => (
+          <RequireAuth>
+            <CustomerDashboard />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "admin",
+        Component: () => (
+          <RequireAdmin>
+            <AdminDashboard />
+          </RequireAdmin>
+        ),
+      },
       { path: "feedback", Component: FeedbackPage },
       { path: "*", Component: NotFound },
     ],

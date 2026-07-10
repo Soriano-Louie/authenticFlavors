@@ -13,9 +13,9 @@ const GALLERY = [
 
 const MILESTONES = [
   {
-    year: "2024",
+    year: "2023",
     event:
-      "The restaurant was officially established in November 2024 after growing from a successful home-based online food business.",
+      "The restaurant was officially established in November 2023 after growing from a successful home-based online food business.",
   },
   {
     year: "2025",
@@ -113,7 +113,7 @@ export function AboutPage() {
                 from a small setup into a larger dining establishment.
               </p>
               <p className="text-[#2C1810]/70 font-['Lato'] leading-relaxed mb-8">
-                Established in November 2024, the restaurant stands as the only
+                Established in November 2023, the restaurant stands as the only
                 branch, reflecting Chef Ramos' dedication to maintaining the
                 quality and identity of the brand. From its humble beginnings to
                 its growth today, the restaurant continues to provide memorable
