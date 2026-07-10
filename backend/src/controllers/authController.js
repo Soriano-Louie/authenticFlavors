@@ -9,6 +9,7 @@ import {
 import {
   validateLoginInput,
   validateRegisterInput,
+  validateProfileUpdateInput,
 } from "../utils/validators.js";
 
 function cookieConfig() {
@@ -234,4 +235,62 @@ export async function refresh(req, res) {
 export function logout(_req, res) {
   res.clearCookie(env.refreshCookieName, cookieConfig());
   return res.status(200).json({ message: "Logged out successfully." });
+}
+
+export async function updateProfile(req, res) {
+  const userId = Number(req.auth.sub);
+  const parsed = validateProfileUpdateInput(req.body);
+
+  if (!parsed.isValid) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Please fix the highlighted fields.",
+        fieldErrors: parsed.fieldErrors,
+      },
+    });
+  }
+
+  const { first_name, middle_name, last_name, email, phone_number } = parsed.data;
+
+  // Check if email is already taken by another user
+  const [existing] = await pool.query(
+    "SELECT user_id FROM users WHERE email = ? AND user_id != ? LIMIT 1",
+    [email, userId],
+  );
+
+  if (existing.length > 0) {
+    return res.status(409).json({
+      error: {
+        code: "EMAIL_IN_USE",
+        message: "Email is already registered.",
+        fieldErrors: { email: "Email is already registered." },
+      },
+    });
+  }
+
+  // Update user profile
+  await pool.query(
+    `
+      UPDATE users 
+      SET first_name = ?, middle_name = ?, last_name = ?, email = ?, phone_number = ?
+      WHERE user_id = ?
+    `,
+    [first_name, middle_name, last_name, email, phone_number, userId],
+  );
+
+  // Fetch updated user data
+  const [rows] = await pool.query(
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at FROM users WHERE user_id = ? LIMIT 1",
+    [userId],
+  );
+
+  if (rows.length === 0) {
+    return res.status(404).json({
+      error: { code: "NOT_FOUND", message: "User not found." },
+    });
+  }
+
+  const user = normalizeUserRow(rows[0]);
+  return res.status(200).json({ user });
 }

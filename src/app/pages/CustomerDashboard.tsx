@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
+import { useAuth } from "../auth/AuthContext";
 import {
   Calendar,
   Star,
@@ -11,6 +12,7 @@ import {
   AlertCircle,
   Plus,
   User,
+  Loader2,
 } from "lucide-react";
 
 const UPCOMING_EVENTS = [
@@ -62,11 +64,79 @@ const TABS = [
 ];
 
 export function CustomerDashboard() {
+  const { user, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState("Overview");
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [savedAllergies, setSavedAllergies] = useState<string[]>(["Nuts"]);
+
+  // Settings form state
+  const [settingsForm, setSettingsForm] = useState({
+    first_name: "",
+    middle_name: "",
+    last_name: "",
+    email: "",
+    phone_number: "",
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
+
+  // Initialize settings form when user data loads
+  useEffect(() => {
+    if (user) {
+      setSettingsForm({
+        first_name: user.first_name || "",
+        middle_name: user.middle_name || "",
+        last_name: user.last_name || "",
+        email: user.email || "",
+        phone_number: user.phone_number || "",
+      });
+    }
+  }, [user]);
+
+  // Generate user initials
+  const getUserInitials = () => {
+    if (!user) return "GU";
+    const firstName = user.first_name?.charAt(0) || "";
+    const lastName = user.last_name?.charAt(0) || "";
+    return (firstName + lastName).toUpperCase();
+  };
+
+  // Get full name
+  const getFullName = () => {
+    if (!user) return "Guest User";
+    const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
+    return parts.join(" ");
+  };
+
+  // Get member since year
+  const getMemberSince = () => {
+    if (!user?.created_at) return "2024";
+    return new Date(user.created_at).getFullYear().toString();
+  };
+
+  // Handle settings form submission
+  const handleSettingsSave = async () => {
+    setSettingsSaving(true);
+    setSettingsErrors({});
+    setSettingsSaved(false);
+
+    try {
+      await updateProfile(settingsForm);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'fieldErrors' in error) {
+        setSettingsErrors(error.fieldErrors as Record<string, string>);
+      } else {
+        setSettingsErrors({ general: "Failed to update profile. Please try again." });
+      }
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const ALLERGY_OPTIONS = [
     "Nuts",
@@ -92,15 +162,15 @@ export function CustomerDashboard() {
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
               <span className="text-[#F5F0E8] font-['Playfair_Display'] text-lg">
-                MS
+                {getUserInitials()}
               </span>
             </div>
             <div>
               <p className="text-[#F5F0E8] font-['Playfair_Display']">
-                Maria Santos
+                {getFullName()}
               </p>
               <p className="text-[#C8922A] text-xs font-['Lato']">
-                Customer Account
+                {user?.role || 'Customer'} Account
               </p>
             </div>
           </div>
@@ -191,7 +261,7 @@ export function CustomerDashboard() {
                 {
                   icon: Clock,
                   label: "Member Since",
-                  value: "2024",
+                  value: getMemberSince(),
                   color: "#C4541A",
                 },
               ].map(({ icon: Icon, label, value, color }) => (
@@ -451,18 +521,37 @@ export function CustomerDashboard() {
             <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-6">
               Profile Settings
             </h3>
+            
+            {settingsSaved && (
+              <div className="mb-6 p-4 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl flex items-center gap-3">
+                <CheckCircle size={20} className="text-[#7A8C5C]" />
+                <p className="text-[#7A8C5C] text-sm font-['Lato']">
+                  Profile updated successfully!
+                </p>
+              </div>
+            )}
+
+            {settingsErrors.general && (
+              <div className="mb-6 p-4 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl flex items-center gap-3">
+                <AlertCircle size={20} className="text-[#C4541A]" />
+                <p className="text-[#C4541A] text-sm font-['Lato']">
+                  {settingsErrors.general}
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-5 mb-7">
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
                 <span className="text-[#F5F0E8] text-xl font-['Playfair_Display']">
-                  MS
+                  {getUserInitials()}
                 </span>
               </div>
               <div>
                 <p className="font-['Playfair_Display'] text-[#2C1810]">
-                  Maria Santos
+                  {getFullName()}
                 </p>
                 <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                  maria@email.com
+                  {user?.email || "No email"}
                 </p>
                 <button className="text-[#C8922A] text-xs font-['Lato'] mt-1 hover:underline">
                   Change Photo
@@ -470,24 +559,93 @@ export function CustomerDashboard() {
               </div>
             </div>
             <div className="space-y-4">
-              {[
-                { label: "Full Name", value: "Maria Santos", type: "text" },
-                { label: "Email", value: "maria@email.com", type: "email" },
-                { label: "Phone", value: "+63 917 555 1234", type: "tel" },
-              ].map(({ label, value, type }) => (
-                <div key={label}>
-                  <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
-                    {label}
-                  </label>
-                  <input
-                    type={type}
-                    defaultValue={value}
-                    className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
-                  />
-                </div>
-              ))}
-              <button className="mt-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90">
-                Save Changes
+              <div>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                  First Name
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.first_name}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, first_name: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.first_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                  }`}
+                />
+                {settingsErrors.first_name && (
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.first_name}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                  Middle Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.middle_name}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, middle_name: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.last_name}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, last_name: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.last_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                  }`}
+                />
+                {settingsErrors.last_name && (
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.last_name}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={settingsForm.email}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, email: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.email ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                  }`}
+                />
+                {settingsErrors.email && (
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.email}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={settingsForm.phone_number}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, phone_number: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.phone_number ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                  }`}
+                />
+                {settingsErrors.phone_number && (
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.phone_number}</p>
+                )}
+              </div>
+              <button 
+                onClick={handleSettingsSave}
+                disabled={settingsSaving}
+                className="mt-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {settingsSaving ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </button>
             </div>
           </div>

@@ -34,6 +34,14 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface UpdateProfilePayload {
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+}
+
 export interface ApiErrorShape {
   error?: {
     code?: string;
@@ -114,5 +122,18 @@ export function getCurrentUser(accessToken: string): Promise<AuthMeResponse> {
 export function logout(): Promise<{ message: string }> {
   return request<{ message: string }>("/api/auth/logout", {
     method: "POST",
+  });
+}
+
+export function updateProfile(
+  accessToken: string,
+  payload: UpdateProfilePayload,
+): Promise<AuthMeResponse> {
+  return request<AuthMeResponse>("/api/auth/profile", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
   });
 }

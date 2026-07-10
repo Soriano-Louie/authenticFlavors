@@ -14,9 +14,11 @@ import {
   logout as apiLogout,
   refreshSession,
   register as apiRegister,
+  updateProfile as apiUpdateProfile,
   type AuthUser,
   type LoginPayload,
   type RegisterPayload,
+  type UpdateProfilePayload,
 } from "../api/authApi";
 
 interface AuthContextValue {
@@ -27,6 +29,7 @@ interface AuthContextValue {
   register: (payload: RegisterPayload) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
+  updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -78,9 +81,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  const updateProfile = useCallback(async (payload: UpdateProfilePayload) => {
+    if (!accessToken) {
+      throw new Error("No access token available");
+    }
+    const result = await apiUpdateProfile(accessToken, payload);
+    setUser(result.user);
+    return result.user;
+  }, [accessToken]);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, accessToken, isBootstrapping, login, register, logout, refreshUser }),
-    [user, accessToken, isBootstrapping, login, register, logout, refreshUser],
+    () => ({ user, accessToken, isBootstrapping, login, register, logout, refreshUser, updateProfile }),
+    [user, accessToken, isBootstrapping, login, register, logout, refreshUser, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
