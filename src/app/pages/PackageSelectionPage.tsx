@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useSearchParams, useNavigate } from "react-router";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { getPackages, getMenuCategories, getMenuItems, getPackagePricing } from "../api/packageApi";
 import type { Package, MenuCategory, MenuItem, PackagePricing } from "../api/packageApi";
+import { useAuth } from "../auth/AuthContext";
 
 // Function to get package label from package name
 function getPackageLabel(packageName: string): string {
@@ -36,7 +37,7 @@ function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuI
     summary: pkg.description || "Catering package for your special event",
     description: pkg.description || "Catering package for your special event",
     serving: `Up to ${pkg.max_pax} guests`,
-    priceLabel: `₱${startingPrice.toLocaleString()}`,
+    priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
     image: pkg.image || "/packagesFood.png",
     pricing: pkg.pricing || [],
     minPax: pkg.min_pax,
@@ -59,6 +60,8 @@ function getPackagePriceForPax(pricing: PackagePricing[], pax: number) {
 }
 
 export function PackageSelectionPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const eventType = searchParams.get("event") || "Birthday";
   const selectedPackageQuery = searchParams.get("package") || "1";
@@ -123,6 +126,15 @@ export function PackageSelectionPage() {
       setSelectedPax(paxOptions[0]);
     }
   }, [paxOptions, selectedPax]);
+
+  const handleProceedToBooking = () => {
+    const targetUrl = `/booking?event=${encodeURIComponent(eventType)}&package=${selectedPackage.id}&pax=${selectedPax}`;
+    if (!user) {
+      navigate("/auth", { state: { from: targetUrl } });
+    } else {
+      navigate(targetUrl);
+    }
+  };
 
   if (loading) {
     return (
@@ -238,7 +250,7 @@ export function PackageSelectionPage() {
               <div className="text-left sm:text-right">
                 <p className="text-sm text-[#2C1810]/60">Starting Price</p>
                 <p className="text-3xl font-semibold text-[#C8922A]">
-                  ₱{getPackagePriceForPax(selectedPackage.pricing, selectedPax).toLocaleString()}
+                  ₱{Number(getPackagePriceForPax(selectedPackage.pricing, selectedPax)).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -331,19 +343,20 @@ export function PackageSelectionPage() {
                 Estimated total:{" "}
                 <span className="font-semibold text-[#C8922A]">
                   ₱
-                  {getPackagePriceForPax(
+                  {Number(getPackagePriceForPax(
                     selectedPackage.pricing,
                     selectedPax,
-                  ).toLocaleString()}
+                  )).toLocaleString()}
                 </span>
               </p>
             </div>
-            <Link
-              to={`/booking?event=${encodeURIComponent(eventType)}&package=${selectedPackage.id}&pax=${selectedPax}`}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#C8922A] px-6 py-3 text-sm font-semibold text-[#F5F0E8] transition-colors hover:bg-[#C4541A]"
+            <button
+              type="button"
+              onClick={handleProceedToBooking}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#C8922A] px-6 py-3 text-sm font-semibold text-[#F5F0E8] transition-colors hover:bg-[#C4541A] cursor-pointer"
             >
               Proceed to Booking <ArrowRight size={16} />
-            </Link>
+            </button>
           </aside>
         </div>
       </div>

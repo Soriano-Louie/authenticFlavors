@@ -7,9 +7,8 @@ import type { Package } from "../api/packageApi";
 // Transform database package to match expected structure
 function transformPackage(pkg: Package) {
   // Get starting price (lowest pax)
-  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
-    ? pkg.pricing[0].price 
-    : 0;
+  const startingPrice =
+    pkg.pricing && pkg.pricing.length > 0 ? pkg.pricing[0].price : 0;
 
   return {
     id: String(pkg.package_id),
@@ -19,8 +18,7 @@ function transformPackage(pkg: Package) {
     image: pkg.image || "/packagesFood.png",
     dishes: ["Multiple menu options available"], // Generic since menu items are separate
     guestRange: `Up to ${pkg.max_pax} guests`,
-    pricePerPerson: startingPrice,
-    rating: 4.5, // Default rating since database doesn't have ratings
+    pricePerPerson: startingPrice.toLocaleString(),
     description: pkg.description || "Catering package for your special event",
     menu: {
       appetizers: ["Selection available"],
@@ -33,15 +31,15 @@ function transformPackage(pkg: Package) {
       "Service staff",
       "Event coordination",
       "Sound system",
-      "Basic table décor"
+      "Basic table décor",
     ],
-    serviceStyle: "Plated"
+    serviceStyle: "Plated",
   };
 }
 
 export function PackagesPage() {
   const [search, setSearch] = useState("");
-  
+
   // Data fetching state
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,12 +53,14 @@ export function PackagesPage() {
         const data = await getPackages();
         setPackages(data.packages);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load packages");
+        setError(
+          err instanceof Error ? err.message : "Failed to load packages",
+        );
       } finally {
         setLoading(false);
       }
     }
-    
+
     fetchData();
   }, []);
 
@@ -77,7 +77,10 @@ export function PackagesPage() {
     return (
       <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 size={48} className="animate-spin text-[#C8922A] mx-auto mb-4" />
+          <Loader2
+            size={48}
+            className="animate-spin text-[#C8922A] mx-auto mb-4"
+          />
           <p className="text-[#2C1810] font-['Lato']">Loading packages...</p>
         </div>
       </div>
@@ -89,7 +92,7 @@ export function PackagesPage() {
       <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-[#C4541A] font-['Lato'] mb-4">{error}</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full font-['Lato'] hover:opacity-90"
           >
@@ -191,10 +194,10 @@ export function PackagesPage() {
                       </div>
 
                       <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-[#1A0E08]/70 rounded-full px-2.5 py-1">
-                        <Star
+                        {/* <Star
                           size={12}
                           className="text-[#C8922A] fill-[#C8922A]"
-                        />
+                        /> */}
                         <span className="text-[#F5F0E8] text-xs font-['Lato']">
                           {pkg.rating}
                         </span>

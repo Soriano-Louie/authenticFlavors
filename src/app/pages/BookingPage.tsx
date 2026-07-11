@@ -116,7 +116,7 @@ export function BookingPage() {
   const selectedPackage =
     PACKAGE_OPTIONS.find((p) => p.id === selectedPackageId) ??
     PACKAGE_OPTIONS[0];
-  const totalEstimate = getPackagePriceForPax(selectedPackage, guestCount);
+  const totalEstimate = Number(getPackagePriceForPax(selectedPackage, guestCount));
   const hasAllMenuChoices = selectedPackage.menuSections.every(
     (section) => menuChoices[section.label],
   );
@@ -413,10 +413,10 @@ export function BookingPage() {
                     </p>
                     <p className="text-3xl font-semibold text-[#C8922A]">
                       ₱
-                      {getPackagePriceForPax(
+                      {Number(getPackagePriceForPax(
                         selectedPackage,
                         guestCount,
-                      ).toLocaleString()}
+                      )).toLocaleString()}
                     </p>
                     <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1">
                       for {guestCount} pax
@@ -661,10 +661,10 @@ export function BookingPage() {
                         </p>
                         <p className="text-[#C8922A] font-['Lato'] text-sm mt-1">
                           ₱
-                          {getPackagePriceForPax(
+                          {Number(getPackagePriceForPax(
                             selectedPackage,
                             guestCount,
-                          ).toLocaleString()}{" "}
+                          )).toLocaleString()}{" "}
                           for {guestCount} pax
                         </p>
                       </div>
