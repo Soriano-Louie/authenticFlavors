@@ -165,7 +165,7 @@ export function AboutPage() {
               </h2>
               <div className="space-y-4 mb-8">
                 {[
-                  { label: "Venue Capacity", value: "Maximum of 100 guests" },
+                  { label: "Venue Capacity", value: "Maximum of 70 guests" },
                   {
                     label: "Location",
                     value: "35 ML Quezon St. New Lower Bicutan, Taguig City",
@@ -196,7 +196,7 @@ export function AboutPage() {
                 to="/package-selection"
                 className="inline-flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full hover:opacity-90 transition-all font-['Lato']"
               >
-                Book a Tour / Event <ArrowRight size={16} />
+                Book an Event <ArrowRight size={16} />
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-3">

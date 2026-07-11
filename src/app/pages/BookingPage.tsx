@@ -66,7 +66,7 @@ export function BookingPage() {
   const [searchParams] = useSearchParams();
   const preselectedPackage = searchParams.get("package") ?? "";
   const preselectedEventType = searchParams.get("event") ?? "Birthday";
-  const paxOptions = [30, 40, 50, 60, 70, 80, 90, 100];
+  const paxOptions = [30, 40, 50, 60, 70];
   const initialMenuChoices = useMemo(
     () => parseMenuSelections(searchParams.get("menu")),
     [searchParams],
@@ -376,8 +376,7 @@ export function BookingPage() {
                     ))}
                   </select>
                   <p className="text-xs text-[#2C1810]/45 font-['Lato'] mt-2">
-                    Package pricing adjusts automatically for 30, 40, 50, 60,
-                    70, 80, 90, and 100 guests.
+                    Package pricing adjusts automatically for 30, 40, 50, 60, and 70 guests.
                   </p>
                 </div>
               </div>

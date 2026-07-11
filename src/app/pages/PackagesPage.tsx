@@ -1,26 +1,104 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Star, Users, Filter, Search } from "lucide-react";
-import { PACKAGES } from "../data/mockData";
+import { Star, Users, Search, Loader2 } from "lucide-react";
+import { getPackages } from "../api/packageApi";
+import type { Package } from "../api/packageApi";
 
-const EVENT_TYPES = ["All", "Birthday", "Wedding", "Corporate", "Anniversary"];
-const PACKAGE_TYPES = ["All", "Plated", "Buffet", "Family Style"];
+// Transform database package to match expected structure
+function transformPackage(pkg: Package) {
+  // Get starting price (lowest pax)
+  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
+    ? pkg.pricing[0].price 
+    : 0;
+
+  return {
+    id: String(pkg.package_id),
+    name: pkg.package_name,
+    eventType: "Birthday", // Default since database doesn't have event types in packages
+    packageType: "Plated", // Default since database doesn't have service styles in packages
+    image: pkg.image || "/packagesFood.png",
+    dishes: ["Multiple menu options available"], // Generic since menu items are separate
+    guestRange: `Up to ${pkg.max_pax} guests`,
+    pricePerPerson: startingPrice,
+    rating: 4.5, // Default rating since database doesn't have ratings
+    description: pkg.description || "Catering package for your special event",
+    menu: {
+      appetizers: ["Selection available"],
+      mains: ["Selection available"],
+      desserts: ["Selection available"],
+      drinks: ["Selection available"],
+    },
+    inclusions: [
+      "Premium table setup",
+      "Service staff",
+      "Event coordination",
+      "Sound system",
+      "Basic table décor"
+    ],
+    serviceStyle: "Plated"
+  };
+}
 
 export function PackagesPage() {
-  const [eventFilter, setEventFilter] = useState("All");
-  const [typeFilter, setTypeFilter] = useState("All");
   const [search, setSearch] = useState("");
+  
+  // Data fetching state
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const eventPackages = PACKAGES.filter((p) => p.id !== "gourmet-buffet");
+  // Fetch data on mount
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const data = await getPackages();
+        setPackages(data.packages);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load packages");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, []);
 
-  const filtered = eventPackages.filter((p) => {
-    const matchEvent = eventFilter === "All" || p.eventType === eventFilter;
-    const matchType = typeFilter === "All" || p.packageType === typeFilter;
+  const transformedPackages = packages.map(transformPackage);
+
+  const filtered = transformedPackages.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.description.toLowerCase().includes(search.toLowerCase());
-    return matchEvent && matchType && matchSearch;
+    return matchSearch;
   });
+
+  if (loading) {
+    return (
+      <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={48} className="animate-spin text-[#C8922A] mx-auto mb-4" />
+          <p className="text-[#2C1810] font-['Lato']">Loading packages...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-[#C4541A] font-['Lato'] mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full font-['Lato'] hover:opacity-90"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -34,7 +112,7 @@ export function PackagesPage() {
             className="font-['Playfair_Display'] text-[#F5F0E8] mb-4"
             style={{ fontSize: "clamp(1.8rem, 4vw, 3rem)", fontWeight: 600 }}
           >
-            Event & Menu Packages
+            Menu Packages
           </h1>
           <p className="text-[#F5F0E8]/65 font-['Lato'] leading-relaxed max-w-xl mx-auto">
             Discover our thoughtfully crafted event packages — each designed to
@@ -44,12 +122,11 @@ export function PackagesPage() {
         </div>
       </section>
 
-      {/* Filters */}
+      {/* Search */}
       <section className="sticky top-16 z-40 bg-[#F5F0E8] border-b border-[#C8922A]/15 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            {/* Search */}
-            <div className="relative flex-1 max-w-sm">
+          <div className="flex justify-center">
+            <div className="relative w-full max-w-md">
               <Search
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40"
@@ -62,53 +139,6 @@ export function PackagesPage() {
                 className="w-full pl-9 pr-4 py-2 rounded-full border border-[#C8922A]/30 bg-white text-[#2C1810] text-sm outline-none focus:border-[#C8922A] font-['Lato'] placeholder-[#2C1810]/40"
               />
             </div>
-
-            <div className="flex flex-wrap gap-3 items-center">
-              {/* Event Type Filter */}
-              <div className="flex items-center gap-1.5">
-                <Filter size={14} className="text-[#C8922A]" />
-                <span className="text-[#2C1810]/60 text-xs font-['Lato']">
-                  Event:
-                </span>
-                <div className="flex gap-1.5">
-                  {EVENT_TYPES.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setEventFilter(t)}
-                      className={`px-3 py-1 rounded-full text-xs font-['Lato'] transition-colors ${
-                        eventFilter === t
-                          ? "bg-[#C8922A] text-[#F5F0E8]"
-                          : "bg-white border border-[#C8922A]/30 text-[#2C1810] hover:border-[#C8922A]"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Package Type Filter */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-[#2C1810]/60 text-xs font-['Lato']">
-                  Style:
-                </span>
-                <div className="flex gap-1.5">
-                  {PACKAGE_TYPES.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTypeFilter(t)}
-                      className={`px-3 py-1 rounded-full text-xs font-['Lato'] transition-colors ${
-                        typeFilter === t
-                          ? "bg-[#C4541A] text-[#F5F0E8]"
-                          : "bg-white border border-[#C4541A]/30 text-[#2C1810] hover:border-[#C4541A]"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -119,17 +149,13 @@ export function PackagesPage() {
           {filtered.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-[#2C1810]/40 font-['Lato'] text-lg">
-                No packages found for your filters.
+                No packages found matching your search.
               </p>
               <button
-                onClick={() => {
-                  setEventFilter("All");
-                  setTypeFilter("All");
-                  setSearch("");
-                }}
+                onClick={() => setSearch("")}
                 className="mt-4 px-6 py-2 text-[#C8922A] border border-[#C8922A] rounded-full text-sm font-['Lato'] hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-colors"
               >
-                Clear Filters
+                Clear Search
               </button>
             </div>
           ) : (
@@ -205,7 +231,7 @@ export function PackagesPage() {
 
                       <div className="flex items-center justify-end pt-3 border-t border-[#C8922A]/10">
                         <Link
-                          to={`/package-selection?event=${encodeURIComponent(pkg.eventType)}&package=package-a`}
+                          to={`/package-selection?event=${encodeURIComponent(pkg.eventType)}&package=${pkg.id}`}
                           className="px-4 py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-colors font-['Lato']"
                         >
                           Details

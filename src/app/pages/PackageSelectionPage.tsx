@@ -1,34 +1,155 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router";
-import { ArrowRight, Check } from "lucide-react";
-import { PACKAGE_OPTIONS, getPackagePriceForPax } from "../data/mockData";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { getPackages, getMenuCategories, getMenuItems, getPackagePricing } from "../api/packageApi";
+import type { Package, MenuCategory, MenuItem, PackagePricing } from "../api/packageApi";
 
-const PACKAGE_LABELS = {
-  "package-a": "Package A",
-  "package-b": "Package B",
-  "package-c": "Package C",
-  "package-d": "Package D",
-};
+// Function to get package label from package name
+function getPackageLabel(packageName: string): string {
+  return packageName;
+}
+
+// Transform database package to match expected structure
+function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuItem[]) {
+  const packageId = String(pkg.package_id);
+  
+  // Group menu items by category
+  const menuSections = categories.map(category => {
+    const categoryItems = items
+      .filter(item => item.category_id === category.category_id)
+      .map(item => item.item_name);
+    
+    return {
+      label: category.category_name,
+      items: categoryItems
+    };
+  }).filter(section => section.items.length > 0);
+
+  // Get starting price (lowest pax)
+  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
+    ? pkg.pricing[0].price 
+    : 0;
+
+  return {
+    id: packageId,
+    title: pkg.package_name,
+    summary: pkg.description || "Catering package for your special event",
+    description: pkg.description || "Catering package for your special event",
+    serving: `Up to ${pkg.max_pax} guests`,
+    priceLabel: `₱${startingPrice.toLocaleString()}`,
+    image: pkg.image || "/packagesFood.png",
+    pricing: pkg.pricing || [],
+    minPax: pkg.min_pax,
+    maxPax: pkg.max_pax,
+    menuSections,
+    inclusions: [
+      "Premium table setup",
+      "Service staff",
+      "Event coordination",
+      "Sound system",
+      "Basic table décor"
+    ]
+  };
+}
+
+// Calculate price based on pax from pricing table
+function getPackagePriceForPax(pricing: PackagePricing[], pax: number) {
+  const pricingEntry = pricing.find(p => p.pax_count === pax);
+  return pricingEntry ? pricingEntry.price : 0;
+}
 
 export function PackageSelectionPage() {
   const [searchParams] = useSearchParams();
   const eventType = searchParams.get("event") || "Birthday";
-  const selectedPackageQuery = searchParams.get("package") || "package-a";
-  const paxOptions = [30, 40, 50, 60, 70, 80, 90, 100];
+  const selectedPackageQuery = searchParams.get("package") || "1";
   const initialPax = Number(searchParams.get("pax") || 30);
-  const normalizedInitialPax = paxOptions.includes(initialPax)
-    ? initialPax
-    : 30;
   const [selectedPackageId, setSelectedPackageId] =
     useState<string>(selectedPackageQuery);
-  const [selectedPax, setSelectedPax] = useState<number>(normalizedInitialPax);
+  const [selectedPax, setSelectedPax] = useState<number>(initialPax);
+  
+  // Data fetching state
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [items, setItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch data on mount
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [packagesData, categoriesData, itemsData] = await Promise.all([
+          getPackages(),
+          getMenuCategories(),
+          getMenuItems()
+        ]);
+        
+        setPackages(packagesData.packages);
+        setCategories(categoriesData.categories);
+        setItems(itemsData.items);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, []);
+
+  const transformedPackages = useMemo(() => {
+    return packages.map(pkg => transformPackage(pkg, categories, items));
+  }, [packages, categories, items]);
 
   const selectedPackage = useMemo(
     () =>
-      PACKAGE_OPTIONS.find((pkg) => pkg.id === selectedPackageId) ??
-      PACKAGE_OPTIONS[0],
-    [selectedPackageId],
+      transformedPackages.find((pkg) => pkg.id === selectedPackageId) ??
+      transformedPackages[0],
+    [selectedPackageId, transformedPackages],
   );
+
+  // Generate pax options from pricing data
+  const paxOptions = useMemo(() => {
+    if (selectedPackage && selectedPackage.pricing && selectedPackage.pricing.length > 0) {
+      return selectedPackage.pricing.map(p => p.pax_count);
+    }
+    return [30, 40, 50, 60, 70, 80, 90, 100]; // Fallback
+  }, [selectedPackage]);
+
+  // Update selected pax if it's not in the available options
+  useEffect(() => {
+    if (!paxOptions.includes(selectedPax) && paxOptions.length > 0) {
+      setSelectedPax(paxOptions[0]);
+    }
+  }, [paxOptions, selectedPax]);
+
+  if (loading) {
+    return (
+      <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={48} className="animate-spin text-[#C8922A] mx-auto mb-4" />
+          <p className="text-[#2C1810] font-['Lato']">Loading packages...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-[#C4541A] font-['Lato'] mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full font-['Lato'] hover:opacity-90"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#F5F0E8] min-h-screen">
@@ -66,7 +187,7 @@ export function PackageSelectionPage() {
         </div>
 
         <div className="mt-10 grid gap-5 lg:grid-cols-4">
-          {PACKAGE_OPTIONS.map((pkg) => (
+          {transformedPackages.map((pkg) => (
             <button
               key={pkg.id}
               type="button"
@@ -80,7 +201,7 @@ export function PackageSelectionPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A] font-['Lato']">
-                    {PACKAGE_LABELS[pkg.id]}
+                    {getPackageLabel(pkg.title)}
                   </p>
                   <h2 className="mt-2 text-lg font-['Playfair_Display'] text-[#2C1810]">
                     {pkg.title}
@@ -108,7 +229,7 @@ export function PackageSelectionPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
               <div>
                 <p className="text-[#C8922A] text-xs uppercase tracking-[0.3em] font-['Lato']">
-                  {PACKAGE_LABELS[selectedPackage.id]}
+                  {getPackageLabel(selectedPackage.title)}
                 </p>
                 <h2 className="mt-2 text-3xl font-['Playfair_Display'] text-[#2C1810]">
                   {selectedPackage.title}
@@ -117,7 +238,7 @@ export function PackageSelectionPage() {
               <div className="text-left sm:text-right">
                 <p className="text-sm text-[#2C1810]/60">Starting Price</p>
                 <p className="text-3xl font-semibold text-[#C8922A]">
-                  {selectedPackage.priceLabel}
+                  ₱{getPackagePriceForPax(selectedPackage.pricing, selectedPax).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -211,7 +332,7 @@ export function PackageSelectionPage() {
                 <span className="font-semibold text-[#C8922A]">
                   ₱
                   {getPackagePriceForPax(
-                    selectedPackage,
+                    selectedPackage.pricing,
                     selectedPax,
                   ).toLocaleString()}
                 </span>
