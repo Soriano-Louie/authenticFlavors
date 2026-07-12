@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
+import { useAuth } from "../auth/AuthContext";
+import { getAdminBookings, verifyBookingPayment, rejectBookingPayment, type Booking } from "../api/bookingApi";
+import { toast } from "sonner";
 import {
   BarChart2, Users, Calendar, Star, TrendingUp, TrendingDown, AlertCircle,
   CheckCircle, XCircle, Clock, Menu, X, ChefHat, MessageSquare, Package,
   FileText, DollarSign, Activity, Sparkles, Download, ArrowUp, ArrowDown,
-  Info
+  Info, Loader2, Eye
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -539,66 +542,203 @@ function ActivitySection() {
   );
 }
 
-// Bookings Section (Simplified)
+// Bookings Section (Real Integrations with verify/reject actions and receipts)
 function BookingsSection() {
+  const { accessToken } = useAuth();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actioningId, setActioningId] = useState<number | null>(null);
+
+  const fetchBookings = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminBookings(accessToken);
+      setBookings(res.bookings);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to fetch admin bookings.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookings();
+  }, [accessToken]);
+
+  const handleVerify = async (bookingId: number) => {
+    if (!accessToken) return;
+    setActioningId(bookingId);
+    try {
+      await verifyBookingPayment(accessToken, bookingId);
+      toast.success("Payment verified successfully!");
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to verify payment");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReject = async (bookingId: number) => {
+    if (!accessToken) return;
+    const reason = prompt("Enter rejection reason:");
+    if (reason === null) return; // cancelled prompt
+    if (!reason.trim()) {
+      toast.error("Rejection reason is required.");
+      return;
+    }
+
+    setActioningId(bookingId);
+    try {
+      await rejectBookingPayment(accessToken, bookingId, reason.trim());
+      toast.success("Payment rejected.");
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reject payment");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const getReceiptUrl = (summaryStr: string | null) => {
+    if (!summaryStr) return null;
+    try {
+      const summary = JSON.parse(summaryStr);
+      if (summary.receipt_path) {
+        return `http://localhost:4000${summary.receipt_path}`;
+      }
+    } catch {}
+    return null;
+  };
+
+  const getRejectionReason = (summaryStr: string | null) => {
+    if (!summaryStr) return null;
+    try {
+      const summary = JSON.parse(summaryStr);
+      return summary.rejection_reason || null;
+    } catch {}
+    return null;
+  };
+
   return (
     <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-      <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-4">
-        Recent Bookings
-      </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-[#C8922A]/10">
-              <th className="text-left py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                Customer
-              </th>
-              <th className="text-left py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                Package
-              </th>
-              <th className="text-left py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                Date
-              </th>
-              <th className="text-left py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                Guests
-              </th>
-              <th className="text-left py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {ADMIN_BOOKINGS.slice(0, 8).map((booking) => (
-              <tr
-                key={booking.id}
-                className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50"
-              >
-                <td className="py-3 px-4 text-sm font-['Lato'] text-[#2C1810]">
-                  {booking.customer}
-                </td>
-                <td className="py-3 px-4 text-sm font-['Lato'] text-[#2C1810]">
-                  {booking.event}
-                </td>
-                <td className="py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                  {booking.date}
-                </td>
-                <td className="py-3 px-4 text-sm font-['Lato'] text-[#2C1810]/60">
-                  {booking.guests}
-                </td>
-                <td className="py-3 px-4">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(
-                      booking.status
-                    )}`}
-                  >
-                    {booking.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
+          Manage Bookings
+        </h2>
+        <button
+          onClick={fetchBookings}
+          className="text-xs font-['Lato'] text-[#C8922A] hover:underline"
+        >
+          Refresh List
+        </button>
       </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+        </div>
+      ) : bookings.length === 0 ? (
+        <p className="text-sm font-['Lato'] text-[#2C1810]/50 py-10 text-center">
+          No bookings found in database.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-[#C8922A]/10">
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Booking ID</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Customer Info</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Event & Package</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Pax & Price</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Receipt</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Status</th>
+                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bookings.map((booking) => {
+                const receiptUrl = getReceiptUrl(booking.booking_summary);
+                const rejectionReason = getRejectionReason(booking.booking_summary);
+                const isPendingAction = actioningId === booking.booking_id;
+
+                return (
+                  <tr
+                    key={booking.booking_id}
+                    className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
+                  >
+                    <td className="py-4 px-4 text-sm font-semibold font-['Lato'] text-[#2C1810]">
+                      #{String(booking.booking_id).padStart(4, "0")}
+                    </td>
+                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
+                      <p className="font-medium">{booking.contact_name}</p>
+                      <p className="text-xs text-[#2C1810]/65">{booking.contact_email}</p>
+                      {booking.contact_phone && <p className="text-[11px] text-[#2C1810]/50">{booking.contact_phone}</p>}
+                    </td>
+                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
+                      <p className="font-medium">{booking.package_name || `Package ID ${booking.package_id}`}</p>
+                      <p className="text-xs text-[#C8922A]">{booking.type_name || `Type ID ${booking.event_type_id}`}</p>
+                      <p className="text-[11px] text-[#2C1810]/50">{new Date(booking.event_date).toLocaleDateString()} at {booking.start_time}</p>
+                    </td>
+                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
+                      <p className="font-medium">{booking.number_of_pax} pax</p>
+                      <p className="text-xs text-[#C4541A]">₱{Number(booking.total_price).toLocaleString()}</p>
+                    </td>
+                    <td className="py-4 px-4 text-sm">
+                      {receiptUrl ? (
+                        <a
+                          href={receiptUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-[#C8922A] hover:underline"
+                        >
+                          <Eye size={12} /> View Receipt
+                        </a>
+                      ) : (
+                        <span className="text-xs text-[#2C1810]/40 font-['Lato']">No Receipt</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}>
+                        {booking.booking_status}
+                      </span>
+                      {rejectionReason && (
+                        <p className="text-[10px] text-[#C4541A] font-['Lato'] mt-1 max-w-[150px] truncate" title={rejectionReason}>
+                          Reason: {rejectionReason}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      {booking.booking_status === "Pending" && (
+                        <div className="inline-flex gap-2">
+                          <button
+                            onClick={() => handleVerify(booking.booking_id)}
+                            disabled={isPendingAction}
+                            className="p-1.5 bg-[#7A8C5C]/10 text-[#7A8C5C] hover:bg-[#7A8C5C]/20 rounded-lg transition-colors"
+                            title="Verify Payment"
+                          >
+                            <CheckCircle size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleReject(booking.booking_id)}
+                            disabled={isPendingAction}
+                            className="p-1.5 bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 rounded-lg transition-colors"
+                            title="Reject Payment"
+                          >
+                            <XCircle size={15} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

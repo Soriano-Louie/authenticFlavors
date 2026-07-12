@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
+import { getCustomerBookings, type Booking } from "../api/bookingApi";
 import {
   Calendar,
   Star,
@@ -13,47 +14,9 @@ import {
   Plus,
   User,
   Loader2,
+  Upload,
+  XCircle,
 } from "lucide-react";
-
-const UPCOMING_EVENTS = [
-  {
-    id: "BK001",
-    package: "Birthday Bliss 3-Course",
-    date: "May 15, 2026",
-    time: "7:00 PM",
-    guests: 25,
-    status: "Confirmed",
-    dietary: "Nut-free",
-  },
-  {
-    id: "BK004",
-    package: "Anniversary Romance Dinner",
-    date: "Jun 10, 2026",
-    time: "7:30 PM",
-    guests: 12,
-    status: "Pending",
-    dietary: "None",
-  },
-];
-
-const PAST_EVENTS = [
-  {
-    id: "BK000",
-    package: "Family Fiesta Feast",
-    date: "Mar 20, 2026",
-    guests: 35,
-    status: "Completed",
-    rating: 5,
-  },
-  {
-    id: "BK-1",
-    package: "Corporate Feast Buffet",
-    date: "Jan 8, 2026",
-    guests: 50,
-    status: "Completed",
-    rating: 4,
-  },
-];
 
 const TABS = [
   "Overview",
@@ -63,13 +26,39 @@ const TABS = [
   "Settings",
 ];
 
+function getStatusStyle(status: string) {
+  switch (status) {
+    case "Confirmed": return "bg-[#7A8C5C]/15 text-[#7A8C5C]";
+    case "Completed": return "bg-[#EDE8DF] text-[#2C1810]/60";
+    case "Cancelled": return "bg-[#C4541A]/10 text-[#C4541A]";
+    case "Rejected": return "bg-[#C4541A]/10 text-[#C4541A]";
+    default: return "bg-[#C8922A]/15 text-[#C8922A]";
+  }
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return "—";
+  try {
+    return new Date(dateStr).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  } catch { return dateStr; }
+}
+
+function parseBookingSummary(booking: Booking): { rejection_reason?: string; receipt_path?: string } {
+  if (!booking.booking_summary) return {};
+  try { return JSON.parse(booking.booking_summary); } catch { return {}; }
+}
+
 export function CustomerDashboard() {
-  const { user, updateProfile } = useAuth();
+  const { user, accessToken, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState("Overview");
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [savedAllergies, setSavedAllergies] = useState<string[]>(["Nuts"]);
+
+  // Real bookings
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState({
@@ -82,6 +71,27 @@ export function CustomerDashboard() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
+
+  // Fetch bookings
+  useEffect(() => {
+    if (!accessToken) { setBookingsLoading(false); return; }
+    getCustomerBookings(accessToken)
+      .then(res => setBookings(res.bookings))
+      .catch(err => console.error("Failed to load bookings:", err))
+      .finally(() => setBookingsLoading(false));
+  }, [accessToken]);
+
+  // Derive upcoming vs past
+  const upcomingBookings = bookings.filter(b =>
+    b.booking_status === "Pending" || b.booking_status === "Confirmed"
+  );
+  const pastBookings = bookings.filter(b =>
+    b.booking_status === "Completed" || b.booking_status === "Cancelled"
+  );
+  const rejectedBookings = bookings.filter(b => {
+    const summary = parseBookingSummary(b);
+    return b.booking_status === "Pending" && summary.rejection_reason;
+  });
 
   // Initialize settings form when user data loads
   useEffect(() => {
@@ -243,19 +253,19 @@ export function CustomerDashboard() {
                 {
                   icon: Calendar,
                   label: "Upcoming Events",
-                  value: "2",
+                  value: bookingsLoading ? "…" : String(upcomingBookings.length),
                   color: "#C8922A",
                 },
                 {
                   icon: CheckCircle,
                   label: "Completed Events",
-                  value: "2",
+                  value: bookingsLoading ? "…" : String(pastBookings.filter(b => b.booking_status === "Completed").length),
                   color: "#7A8C5C",
                 },
                 {
                   icon: Star,
-                  label: "Avg. Rating Given",
-                  value: "4.5",
+                  label: "Total Bookings",
+                  value: bookingsLoading ? "…" : String(bookings.length),
                   color: "#C8922A",
                 },
                 {
@@ -298,33 +308,53 @@ export function CustomerDashboard() {
                   + Book New
                 </Link>
               </div>
-              <div className="space-y-3">
-                {UPCOMING_EVENTS.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/10 bg-[#F5F0E8] p-4 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div>
-                      <p className="font-['Playfair_Display'] text-[#2C1810]">
-                        {ev.package}
-                      </p>
-                      <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                        {ev.date} · {ev.time} · {ev.guests} guests
-                      </p>
-                      {ev.dietary !== "None" && (
-                        <span className="inline-block mt-2 px-2.5 py-1 rounded-full text-[10px] bg-[#C4541A]/10 text-[#C4541A] font-['Lato']">
-                          Dietary: {ev.dietary}
+              {bookingsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                </div>
+              ) : upcomingBookings.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm">No upcoming events yet.</p>
+                  <Link to="/package-selection" className="text-[#C8922A] text-sm font-['Lato'] hover:underline mt-1 inline-block">Book your first event →</Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingBookings.map((ev) => {
+                    const summary = parseBookingSummary(ev);
+                    return (
+                      <div
+                        key={ev.booking_id}
+                        className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/10 bg-[#F5F0E8] p-4 md:flex-row md:items-center md:justify-between"
+                      >
+                        <div>
+                          <p className="font-['Playfair_Display'] text-[#2C1810]">
+                            {ev.package_name || `Booking #${ev.booking_id}`}
+                          </p>
+                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                            {formatDate(ev.event_date)} · {ev.start_time} · {ev.number_of_pax} guests
+                          </p>
+                          {summary.rejection_reason && (
+                            <span className="inline-block mt-2 px-2.5 py-1 rounded-full text-[10px] bg-[#C4541A]/10 text-[#C4541A] font-['Lato']">
+                              Rejected: {summary.rejection_reason}
+                            </span>
+                          )}
+                          {ev.booking_status === "Pending" && !summary.receipt_path && !summary.rejection_reason && (
+                            <Link
+                              to={`/payment-upload?booking_id=${ev.booking_id}`}
+                              className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-[10px] bg-[#C8922A]/10 text-[#C8922A] font-['Lato'] hover:bg-[#C8922A]/20"
+                            >
+                              <Upload size={10} /> Upload Receipt
+                            </Link>
+                          )}
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}>
+                          {ev.booking_status}
                         </span>
-                      )}
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${ev.status === "Confirmed" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C8922A]/15 text-[#C8922A]"}`}
-                    >
-                      {ev.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -334,75 +364,100 @@ export function CustomerDashboard() {
           <div className="space-y-6">
             <div className="bg-white rounded-2xl p-6 shadow-sm">
               <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
-                Upcoming Events
+                Active Bookings
               </h3>
-              {UPCOMING_EVENTS.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
-                >
-                  <div className="flex flex-wrap justify-between gap-3">
-                    <div>
-                      <p className="font-['Playfair_Display'] text-[#2C1810] text-lg">
-                        {ev.package}
-                      </p>
-                      <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                        {ev.date} at {ev.time}
-                      </p>
-                      <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                        {ev.guests} guests · Dietary: {ev.dietary}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${ev.status === "Confirmed" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C8922A]/15 text-[#C8922A]"}`}
-                      >
-                        {ev.status}
-                      </span>
-                      <span className="text-xs text-[#2C1810]/40 font-['Lato']">
-                        #{ev.id}
-                      </span>
-                    </div>
-                  </div>
+              {bookingsLoading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
                 </div>
-              ))}
+              ) : upcomingBookings.length === 0 ? (
+                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">No active bookings.</p>
+              ) : (
+                upcomingBookings.map((ev) => {
+                  const summary = parseBookingSummary(ev);
+                  return (
+                    <div
+                      key={ev.booking_id}
+                      className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
+                    >
+                      <div className="flex flex-wrap justify-between gap-3">
+                        <div>
+                          <p className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+                            {ev.package_name || `Booking #${ev.booking_id}`}
+                          </p>
+                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                            {formatDate(ev.event_date)} at {ev.start_time}
+                          </p>
+                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                            {ev.number_of_pax} guests · {ev.type_name || ev.event_type_id}
+                          </p>
+                          {summary.rejection_reason && (
+                            <div className="mt-2 p-2 bg-[#C4541A]/10 rounded-lg">
+                              <p className="text-[#C4541A] text-xs font-['Lato'] flex items-center gap-1">
+                                <XCircle size={12} /> Rejected: {summary.rejection_reason}
+                              </p>
+                              <Link
+                                to={`/payment-upload?booking_id=${ev.booking_id}`}
+                                className="text-[#C8922A] text-xs font-['Lato'] hover:underline mt-1 inline-block"
+                              >
+                                Re-upload receipt →
+                              </Link>
+                            </div>
+                          )}
+                          {ev.booking_status === "Pending" && !summary.receipt_path && !summary.rejection_reason && (
+                            <Link
+                              to={`/payment-upload?booking_id=${ev.booking_id}`}
+                              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-xs bg-[#C8922A]/10 text-[#C8922A] font-['Lato'] hover:bg-[#C8922A]/20"
+                            >
+                              <Upload size={12} /> Upload Payment Receipt
+                            </Link>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
+                            {ev.booking_status}
+                          </span>
+                          <span className="text-xs text-[#2C1810]/40 font-['Lato']">
+                            #BK{String(ev.booking_id).padStart(4, "0")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <div className="bg-white rounded-2xl p-6 shadow-sm">
               <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
                 Event History
               </h3>
-              {PAST_EVENTS.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3"
-                >
-                  <div>
-                    <p className="font-['Playfair_Display'] text-[#2C1810]">
-                      {ev.package}
-                    </p>
-                    <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                      {ev.date} · {ev.guests} guests
-                    </p>
-                    <div className="flex gap-1 mt-1">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          size={12}
-                          className={
-                            i < ev.rating
-                              ? "text-[#C8922A] fill-[#C8922A]"
-                              : "text-[#C8922A]/20"
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-['Lato'] bg-[#EDE8DF] text-[#2C1810]/60 self-start">
-                    {ev.status}
-                  </span>
+              {bookingsLoading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
                 </div>
-              ))}
+              ) : pastBookings.length === 0 ? (
+                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">No past bookings yet.</p>
+              ) : (
+                pastBookings.map((ev) => (
+                  <div
+                    key={ev.booking_id}
+                    className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3"
+                  >
+                    <div>
+                      <p className="font-['Playfair_Display'] text-[#2C1810]">
+                        {ev.package_name || `Booking #${ev.booking_id}`}
+                      </p>
+                      <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                        {formatDate(ev.event_date)} · {ev.number_of_pax} guests
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}>
+                      {ev.booking_status}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

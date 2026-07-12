@@ -10,6 +10,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { CustomerDashboard } from "./pages/CustomerDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { FeedbackPage } from "./pages/FeedbackPage";
+import { PaymentUploadPage } from "./pages/PaymentUploadPage";
 import {
   RedirectIfAuthenticated,
   RequireAdmin,
@@ -56,6 +57,14 @@ export const router = createBrowserRouter([
         Component: () => (
           <RequireAuth>
             <CustomerDashboard />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "payment-upload",
+        Component: () => (
+          <RequireAuth>
+            <PaymentUploadPage />
           </RequireAuth>
         ),
       },

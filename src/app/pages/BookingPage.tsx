@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, Link } from "react-router";
+import { useSearchParams, Link, useNavigate } from "react-router";
 import {
   Check,
   ChevronRight,
@@ -10,10 +10,15 @@ import {
   FileText,
   CheckCircle,
   X,
+  Loader2,
 } from "lucide-react";
-import { PACKAGE_OPTIONS, getPackagePriceForPax } from "../data/mockData";
+import { toast } from "sonner";
+import { useAuth } from "../auth/AuthContext";
+import { createBooking } from "../api/bookingApi";
+import { getPackages, getMenuCategories, getMenuItems, getEventTypes, getVenueSetups } from "../api/packageApi";
+import type { Package, MenuCategory, MenuItem } from "../api/packageApi";
 
-const EVENT_TYPES = [
+const DEFAULT_EVENT_TYPES = [
   "Birthday",
   "Anniversary",
   "Corporate",
@@ -22,6 +27,16 @@ const EVENT_TYPES = [
   "Graduation",
   "Other",
 ];
+
+const DEFAULT_VENUE_OPTIONS = [
+  { key: "Floral Arrangements", label: "Floral Arrangements" },
+  { key: "Candle Lighting", label: "Candle Lighting" },
+  { key: "Projector & Screen", label: "Projector & Screen" },
+  { key: "Sound System / PA", label: "Sound System / PA" },
+  { key: "Photo Backdrop", label: "Photo Backdrop" },
+  { key: "Balloon Décor", label: "Balloon Décor" },
+];
+
 const ALLERGY_OPTIONS = [
   { key: "nuts", label: "Tree Nuts", color: "#C4541A" },
   { key: "peanuts", label: "Peanuts", color: "#C4541A" },
@@ -33,15 +48,6 @@ const ALLERGY_OPTIONS = [
   { key: "alcohol", label: "Alcohol", color: "#7A8C5C" },
   { key: "eggs", label: "Eggs", color: "#C8922A" },
   { key: "soy", label: "Soy", color: "#C8922A" },
-];
-
-const VENUE_OPTIONS = [
-  { key: "floral", label: "Floral Arrangements" },
-  { key: "candles", label: "Candle Lighting" },
-  { key: "projector", label: "Projector & Screen" },
-  { key: "sound", label: "Sound System / PA" },
-  { key: "photo", label: "Photo Backdrop" },
-  { key: "balloon", label: "Balloon Décor" },
 ];
 
 const STEPS = [
@@ -62,8 +68,62 @@ function parseMenuSelections(value: string | null) {
   }
 }
 
+// Calculate price based on pax from pricing table
+function getPackagePriceForPax(selectedPkg: any, pax: number) {
+  if (!selectedPkg) return 0;
+  if (selectedPkg.pricing && selectedPkg.pricing.length > 0) {
+    const tier = selectedPkg.pricing.find((t: any) => t.pax_count === pax);
+    if (tier) return Number(tier.price);
+  }
+  return 0;
+}
+
+// Transform database package to match expected structure
+function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuItem[]) {
+  const packageId = String(pkg.package_id);
+  
+  const menuSections = categories.map(category => {
+    const categoryItems = items
+      .filter(item => item.category_id === category.category_id)
+      .map(item => item.item_name);
+    
+    return {
+      label: category.category_name,
+      items: categoryItems
+    };
+  }).filter(section => section.items.length > 0);
+
+  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
+    ? pkg.pricing[0].price 
+    : 0;
+
+  return {
+    id: packageId,
+    title: pkg.package_name,
+    summary: pkg.description || "Catering package for your special event",
+    description: pkg.description || "Catering package for your special event",
+    serving: `Up to ${pkg.max_pax} guests`,
+    priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
+    image: pkg.image || "/packagesFood.png",
+    pricing: pkg.pricing || [],
+    minPax: pkg.min_pax,
+    maxPax: pkg.max_pax,
+    menuSections,
+    inclusions: [
+      "Premium table setup",
+      "Service staff",
+      "Event coordination",
+      "Sound system",
+      "Basic table décor"
+    ]
+  };
+}
+
 export function BookingPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user, accessToken } = useAuth();
+  
   const preselectedPackage = searchParams.get("package") ?? "";
   const preselectedEventType = searchParams.get("event") ?? "Birthday";
   const paxOptions = [30, 40, 50, 60, 70];
@@ -77,7 +137,14 @@ export function BookingPage() {
     : 30;
 
   const [step, setStep] = useState(1);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Dynamic Data States
+  const [packages, setPackages] = useState<any[]>([]);
+  const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
+  const [venueSetups, setVenueSetups] = useState<Array<{ key: string; label: string }>>(DEFAULT_VENUE_OPTIONS);
+  const [loading, setLoading] = useState(true);
 
   // Step 1
   const [eventDate, setEventDate] = useState("");
@@ -90,7 +157,7 @@ export function BookingPage() {
 
   // Step 2
   const [selectedPackageId, setSelectedPackageId] = useState(
-    preselectedPackage || "package-a",
+    preselectedPackage || "1",
   );
   const [menuChoices, setMenuChoices] =
     useState<Record<string, string>>(initialMenuChoices);
@@ -103,6 +170,51 @@ export function BookingPage() {
   const [venueOptions, setVenueOptions] = useState<string[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
 
+  // Fetch Packages, Event Types, Venue Setups from Database
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [packagesData, categoriesData, itemsData, eventTypesData, venueSetupsData] = await Promise.all([
+          getPackages(),
+          getMenuCategories(),
+          getMenuItems(),
+          getEventTypes(),
+          getVenueSetups(),
+        ]);
+
+        const transformed = packagesData.packages.map(pkg => 
+          transformPackage(pkg, categoriesData.categories, itemsData.items)
+        );
+        setPackages(transformed);
+
+        if (eventTypesData.eventTypes && eventTypesData.eventTypes.length > 0) {
+          setEventTypes(eventTypesData.eventTypes.map(t => t.type_name));
+        }
+        if (venueSetupsData.venueSetups && venueSetupsData.venueSetups.length > 0) {
+          setVenueSetups(venueSetupsData.venueSetups.map(v => ({
+            key: v.setup_name,
+            label: v.setup_name,
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to load DB details, using fallbacks:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  // Autofill user details from Auth Context (Requirement 1)
+  useEffect(() => {
+    if (user) {
+      setContactName(prev => prev || `${user.first_name}${user.middle_name ? " " + user.middle_name : ""} ${user.last_name}`);
+      setContactEmail(prev => prev || user.email);
+      setContactPhone(prev => prev || user.phone_number || "");
+    }
+  }, [user]);
+
   const toggleAllergy = (key: string) =>
     setAllergies((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
@@ -113,19 +225,40 @@ export function BookingPage() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
 
-  const selectedPackage =
-    PACKAGE_OPTIONS.find((p) => p.id === selectedPackageId) ??
-    PACKAGE_OPTIONS[0];
-  const totalEstimate = Number(getPackagePriceForPax(selectedPackage, guestCount));
-  const hasAllMenuChoices = selectedPackage.menuSections.every(
-    (section) => menuChoices[section.label],
-  );
+  // Selected package memo matching legacy keys to numeric database IDs
+  const selectedPackage = useMemo(() => {
+    if (packages.length === 0) return null;
+    let found = packages.find((p) => String(p.id) === String(selectedPackageId));
+    if (!found) {
+      const legacyMap: Record<string, string> = {
+        "package-a": "1",
+        "package-b": "2",
+        "package-c": "3",
+        "package-d": "4"
+      };
+      const mappedId = legacyMap[selectedPackageId];
+      found = packages.find((p) => String(p.id) === String(mappedId));
+    }
+    return found || packages[0];
+  }, [selectedPackageId, packages]);
+
+  const totalEstimate = useMemo(() => {
+    return getPackagePriceForPax(selectedPackage, guestCount);
+  }, [selectedPackage, guestCount]);
+
+  const hasAllMenuChoices = useMemo(() => {
+    if (!selectedPackage) return false;
+    return selectedPackage.menuSections.every(
+      (section: any) => menuChoices[section.label],
+    );
+  }, [selectedPackage, menuChoices]);
 
   useEffect(() => {
+    if (!selectedPackage) return;
     setMenuChoices((prev) => {
       const next: Record<string, string> = {};
 
-      selectedPackage.menuSections.forEach((section) => {
+      selectedPackage.menuSections.forEach((section: any) => {
         const existingChoice =
           prev[section.label] || initialMenuChoices[section.label];
         next[section.label] = section.items.includes(existingChoice)
@@ -144,6 +277,66 @@ export function BookingPage() {
     }));
   };
 
+  const handleConfirmBooking = async () => {
+    if (!accessToken) {
+      toast.error("You must be logged in to book.");
+      return;
+    }
+    if (!selectedPackage) {
+      toast.error("Please select a package.");
+      return;
+    }
+    if (!eventDate || !contactName || !contactEmail || !startTime) {
+      toast.error("Please fill in all required event details.");
+      return;
+    }
+    if (!hasAllMenuChoices) {
+      toast.error("Please complete all menu selections.");
+      return;
+    }
+    if (totalEstimate <= 0) {
+      toast.error("Could not calculate price. Please check your selections.");
+      return;
+    }
+
+    const menuSelectionNames = Object.values(menuChoices).filter(Boolean);
+    const allergyText = allergies.map(k => ALLERGY_OPTIONS.find(a => a.key === k)?.label || k).join(", ");
+    const fullAllergyNotes = [allergyText, dietaryNotes].filter(Boolean).join("\n");
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const result = await createBooking(accessToken, {
+        package_id: Number(selectedPackage.id),
+        event_type_name: eventType,
+        venue_setup_name: venueOptions[0] || "Standard Setup",
+        venue_setup_names: venueOptions.length > 0 ? venueOptions : ["Standard Setup"],
+        number_of_pax: guestCount,
+        contact_name: contactName,
+        contact_email: contactEmail,
+        contact_phone: contactPhone || undefined,
+        event_date: eventDate,
+        start_time: eventTime,
+        allergy_notes: fullAllergyNotes || undefined,
+        dietary_notes: specialRequests || undefined,
+        menu_selections: menuSelectionNames,
+        total_price: totalEstimate,
+      });
+
+      toast.success("Booking submitted successfully!");
+      navigate(`/payment-upload?booking_id=${result.booking_id}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit booking. Please try again.";
+      setSubmitError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startTime = eventTime;
+
   const canProceed = () => {
     if (step === 1) return eventDate && contactName && contactEmail;
     if (step === 2) return !!selectedPackageId && hasAllMenuChoices;
@@ -155,69 +348,12 @@ export function BookingPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  if (showSuccess) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-3xl p-10 shadow-xl text-center">
-          <div className="w-16 h-16 rounded-full bg-[#7A8C5C]/20 flex items-center justify-center mx-auto mb-5">
-            <CheckCircle size={30} className="text-[#7A8C5C]" />
-          </div>
-          <h2 className="font-['Playfair_Display'] text-[#2C1810] text-2xl mb-3">
-            Booking Submitted!
-          </h2>
-          <p className="text-[#2C1810]/65 font-['Lato'] text-sm leading-relaxed mb-6">
-            Thank you, <strong>{contactName}</strong>! Your reservation request
-            for <em>{selectedPackage.title}</em> on <strong>{eventDate}</strong>{" "}
-            has been received. Our team will confirm via{" "}
-            <strong>{contactEmail}</strong> within 24–48 hours.
-          </p>
-          <div className="bg-[#EDE8DF] rounded-xl p-4 text-sm font-['Lato'] text-left space-y-2 mb-6">
-            <div className="flex justify-between">
-              <span className="text-[#2C1810]/50">Event</span>
-              <span className="text-[#2C1810]">{eventType}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#2C1810]/50">Package</span>
-              <span className="text-[#2C1810]">{selectedPackage.title}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#2C1810]/50">Guests</span>
-              <span className="text-[#2C1810]">{guestCount}</span>
-            </div>
-            <div className="flex justify-between font-medium">
-              <span className="text-[#2C1810]/50">Est. Total</span>
-              <span className="text-[#C8922A]">
-                ₱{totalEstimate.toLocaleString()}
-              </span>
-            </div>
-          </div>
-          <div className="bg-[#F5F0E8] rounded-xl p-4 text-sm font-['Lato'] text-left space-y-2 mb-6">
-            <p className="text-[#C8922A] text-xs uppercase tracking-widest">
-              Confirmed Menu Choices
-            </p>
-            {selectedPackage.menuSections.map((section) => (
-              <div key={section.label} className="flex justify-between gap-3">
-                <span className="text-[#2C1810]/50">{section.label}</span>
-                <span className="text-[#2C1810] text-right">
-                  {menuChoices[section.label] || "—"}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3">
-            <Link
-              to="/"
-              className="flex-1 py-3 border border-[#C8922A] text-[#C8922A] rounded-full text-sm font-['Lato'] hover:bg-[#C8922A] hover:text-[#F5F0E8] transition-colors text-center"
-            >
-              Go Home
-            </Link>
-            <Link
-              to="/dashboard"
-              className="flex-1 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity text-center"
-            >
-              View Dashboard
-            </Link>
-          </div>
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={40} className="animate-spin text-[#C8922A] mx-auto mb-3" />
+          <p className="text-[#2C1810] font-['Lato'] text-sm">Loading booking details...</p>
         </div>
       </div>
     );
@@ -329,7 +465,7 @@ export function BookingPage() {
                     onChange={(e) => setEventType(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   >
-                    {EVENT_TYPES.map((t) => (
+                    {eventTypes.map((t) => (
                       <option key={t}>{t}</option>
                     ))}
                   </select>
@@ -576,7 +712,7 @@ export function BookingPage() {
               </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                {VENUE_OPTIONS.map((opt) => (
+                {venueSetups.map((opt) => (
                   <button
                     key={opt.key}
                     onClick={() => toggleVenue(opt.key)}
@@ -736,7 +872,7 @@ export function BookingPage() {
                           key={v}
                           className="px-3 py-1 rounded-full bg-[#C8922A]/15 text-[#C8922A] text-xs font-['Lato']"
                         >
-                          {VENUE_OPTIONS.find((o) => o.key === v)?.label}
+                          {venueSetups.find((o) => o.key === v)?.label || v}
                         </span>
                       ))}
                     </div>
@@ -770,30 +906,40 @@ export function BookingPage() {
           )}
 
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-5 border-t border-[#C8922A]/10">
-            <button
-              onClick={() => goToStep(Math.max(1, step - 1))}
-              disabled={step === 1}
-              className="px-6 py-2.5 border border-[#C8922A]/30 text-[#2C1810]/60 rounded-full text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Back
-            </button>
-            {step < 5 ? (
-              <button
-                onClick={() => goToStep(step + 1)}
-                disabled={!canProceed()}
-                className="px-7 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
-              >
-                Continue <ChevronRight size={16} />
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowSuccess(true)}
-                className="px-7 py-2.5 bg-gradient-to-r from-[#7A8C5C] to-[#5A6C3C] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center gap-2 shadow-md"
-              >
-                <CheckCircle size={16} /> Confirm Booking
-              </button>
+          <div className="flex flex-col gap-3 mt-8 pt-5 border-t border-[#C8922A]/10">
+            {submitError && (
+              <p className="text-xs text-[#C4541A] font-['Lato'] text-center font-medium">{submitError}</p>
             )}
+            <div className="flex justify-between">
+              <button
+                onClick={() => goToStep(Math.max(1, step - 1))}
+                disabled={step === 1 || submitting}
+                className="px-6 py-2.5 border border-[#C8922A]/30 text-[#2C1810]/60 rounded-full text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Back
+              </button>
+              {step < 5 ? (
+                <button
+                  onClick={() => goToStep(step + 1)}
+                  disabled={!canProceed()}
+                  className="px-7 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
+                >
+                  Continue <ChevronRight size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleConfirmBooking}
+                  disabled={submitting}
+                  className="px-7 py-2.5 bg-gradient-to-r from-[#7A8C5C] to-[#5A6C3C] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? (
+                    <><Loader2 size={16} className="animate-spin" /> Submitting...</>
+                  ) : (
+                    <><CheckCircle size={16} /> Confirm Booking</>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
