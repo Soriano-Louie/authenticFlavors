@@ -427,3 +427,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Uploaded receipt files (local disk storage, not for version control)
+backend/uploads/
+uploads/
