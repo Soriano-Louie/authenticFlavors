@@ -13,7 +13,7 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || env.corsOrigins.includes(origin)) {
+        if (!origin || env.nodeEnv === "development" || env.corsOrigins.includes(origin)) {
           callback(null, true);
           return;
         }

@@ -49,7 +49,7 @@ export interface Booking {
   menu_selections?: BookingMenuSelection[];
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string; code?: string } };

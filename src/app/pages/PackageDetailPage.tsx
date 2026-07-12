@@ -59,8 +59,6 @@ function transformPackage(
   return {
     id: String(pkg.package_id),
     name: pkg.package_name,
-    eventType: "Birthday", // Default since database doesn't have event types in packages
-    packageType: "Plated", // Default since database doesn't have service styles in packages
     image: pkg.image || "/packagesFood.png",
     dishes: items.slice(0, 4).map((i) => i.item_name), // Show first 4 items as preview
     guestRange: `Up to ${pkg.max_pax} guests`,
@@ -74,7 +72,6 @@ function transformPackage(
       "Sound system",
       "Basic table décor",
     ],
-    serviceStyle: "Plated",
   };
 }
 

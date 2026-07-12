@@ -74,7 +74,7 @@ export function Navbar() {
             {loggedIn ? (
               <>
                 <Link
-                  to="/dashboard"
+                  to={user?.role === "Admin" ? "/admin" : "/dashboard"}
                   className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-sm font-['Lato']"
                 >
                   <User size={16} />
@@ -128,20 +128,43 @@ export function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-[#C8922A]/20 flex gap-3">
-            <Link
-              to="/auth"
-              onClick={() => setMobileOpen(false)}
-              className="flex-1 text-center py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm"
-            >
-              Sign In
-            </Link>
-            <Link
-              to="/auth?tab=register"
-              onClick={() => setMobileOpen(false)}
-              className="flex-1 text-center py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm"
-            >
-              Create Account
-            </Link>
+            {loggedIn ? (
+              <>
+                <Link
+                  to={user?.role === "Admin" ? "/admin" : "/dashboard"}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex-1 text-center py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm font-['Lato']"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    logout();
+                  }}
+                  className="flex-1 text-center py-2 bg-red-950/20 border border-red-500/30 text-red-400 rounded-full text-sm font-['Lato']"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/auth"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex-1 text-center py-2 border border-[#C8922A] text-[#C8922A] rounded-full text-sm"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to="/auth?tab=register"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex-1 text-center py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm"
+                >
+                  Create Account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

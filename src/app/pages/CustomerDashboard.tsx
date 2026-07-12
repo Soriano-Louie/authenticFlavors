@@ -195,7 +195,7 @@ export function CustomerDashboard() {
               to="/"
               className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] text-sm font-['Lato']"
             >
-              ← Home
+              Home
             </Link>
           </div>
         </div>
@@ -208,11 +208,10 @@ export function CustomerDashboard() {
             <button
               key={t}
               onClick={() => setActiveTab(t)}
-              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === t
+              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${activeTab === t
                   ? "border-[#C8922A] text-[#C8922A]"
                   : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
-              }`}
+                }`}
             >
               {t}
             </button>
@@ -477,11 +476,10 @@ export function CustomerDashboard() {
                 <button
                   key={a}
                   onClick={() => toggleAllergy(a)}
-                  className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${
-                    savedAllergies.includes(a)
+                  className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${savedAllergies.includes(a)
                       ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
                       : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
-                  }`}
+                    }`}
                 >
                   {a}
                 </button>
@@ -576,7 +574,7 @@ export function CustomerDashboard() {
             <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-6">
               Profile Settings
             </h3>
-            
+
             {settingsSaved && (
               <div className="mb-6 p-4 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl flex items-center gap-3">
                 <CheckCircle size={20} className="text-[#7A8C5C]" />
@@ -622,9 +620,8 @@ export function CustomerDashboard() {
                   type="text"
                   value={settingsForm.first_name}
                   onChange={(e) => setSettingsForm({ ...settingsForm, first_name: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
-                    settingsErrors.first_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                  }`}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.first_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                    }`}
                 />
                 {settingsErrors.first_name && (
                   <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.first_name}</p>
@@ -649,9 +646,8 @@ export function CustomerDashboard() {
                   type="text"
                   value={settingsForm.last_name}
                   onChange={(e) => setSettingsForm({ ...settingsForm, last_name: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
-                    settingsErrors.last_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                  }`}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.last_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                    }`}
                 />
                 {settingsErrors.last_name && (
                   <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.last_name}</p>
@@ -665,9 +661,8 @@ export function CustomerDashboard() {
                   type="email"
                   value={settingsForm.email}
                   onChange={(e) => setSettingsForm({ ...settingsForm, email: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
-                    settingsErrors.email ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                  }`}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.email ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                    }`}
                 />
                 {settingsErrors.email && (
                   <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.email}</p>
@@ -681,15 +676,14 @@ export function CustomerDashboard() {
                   type="tel"
                   value={settingsForm.phone_number}
                   onChange={(e) => setSettingsForm({ ...settingsForm, phone_number: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
-                    settingsErrors.phone_number ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                  }`}
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.phone_number ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
+                    }`}
                 />
                 {settingsErrors.phone_number && (
                   <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.phone_number}</p>
                 )}
               </div>
-              <button 
+              <button
                 onClick={handleSettingsSave}
                 disabled={settingsSaving}
                 className="mt-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"

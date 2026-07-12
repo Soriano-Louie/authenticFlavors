@@ -548,6 +548,7 @@ function BookingsSection() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<number | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fetchBookings = async () => {
     if (!accessToken) return;
@@ -607,7 +608,7 @@ function BookingsSection() {
     try {
       const summary = JSON.parse(summaryStr);
       if (summary.receipt_path) {
-        return `http://localhost:4000${summary.receipt_path}`;
+        return `${window.location.protocol}//${window.location.hostname}:4000/${summary.receipt_path}`;
       }
     } catch {}
     return null;
@@ -623,7 +624,8 @@ function BookingsSection() {
   };
 
   return (
-    <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+    <>
+      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
           Manage Bookings
@@ -688,14 +690,12 @@ function BookingsSection() {
                     </td>
                     <td className="py-4 px-4 text-sm">
                       {receiptUrl ? (
-                        <a
-                          href={receiptUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[#C8922A] hover:underline"
+                        <button
+                          onClick={() => setPreviewUrl(receiptUrl)}
+                          className="inline-flex items-center gap-1 text-xs text-[#C8922A] hover:underline font-['Lato']"
                         >
                           <Eye size={12} /> View Receipt
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-[#2C1810]/40 font-['Lato']">No Receipt</span>
                       )}
@@ -740,6 +740,44 @@ function BookingsSection() {
         </div>
       )}
     </div>
+
+      {/* Receipt Image Modal */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold font-['Playfair_Display'] text-[#2C1810]">Payment Receipt</p>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewUrl}
+                  download
+                  className="text-xs text-[#C8922A] font-['Lato'] hover:underline"
+                >
+                  Download
+                </a>
+                <button
+                  onClick={() => setPreviewUrl(null)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full bg-[#F5F0E8] text-[#2C1810] hover:bg-[#EDE8DF] transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <img
+              src={previewUrl}
+              alt="Payment Receipt"
+              className="w-full rounded-xl object-contain max-h-[70vh] border border-[#C8922A]/10"
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
