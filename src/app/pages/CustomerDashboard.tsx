@@ -82,11 +82,15 @@ export function CustomerDashboard() {
   }, [accessToken]);
 
   // Derive upcoming vs past
+  const todayStr = new Date().toLocaleDateString("en-CA");
   const upcomingBookings = bookings.filter(b =>
-    b.booking_status === "Pending" || b.booking_status === "Confirmed"
+    (b.booking_status === "Pending" || b.booking_status === "Confirmed") &&
+    b.event_date.split('T')[0] >= todayStr
   );
   const pastBookings = bookings.filter(b =>
-    b.booking_status === "Completed" || b.booking_status === "Cancelled"
+    b.booking_status === "Completed" || 
+    b.booking_status === "Cancelled" ||
+    ((b.booking_status === "Pending" || b.booking_status === "Confirmed") && b.event_date.split('T')[0] < todayStr)
   );
   const rejectedBookings = bookings.filter(b => {
     const summary = parseBookingSummary(b);
@@ -209,8 +213,8 @@ export function CustomerDashboard() {
               key={t}
               onClick={() => setActiveTab(t)}
               className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${activeTab === t
-                  ? "border-[#C8922A] text-[#C8922A]"
-                  : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
+                ? "border-[#C8922A] text-[#C8922A]"
+                : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
                 }`}
             >
               {t}
@@ -477,8 +481,8 @@ export function CustomerDashboard() {
                   key={a}
                   onClick={() => toggleAllergy(a)}
                   className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${savedAllergies.includes(a)
-                      ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
-                      : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
+                    ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
+                    : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
                     }`}
                 >
                   {a}
@@ -540,9 +544,13 @@ export function CustomerDashboard() {
                     Event Package
                   </label>
                   <select className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']">
-                    {PAST_EVENTS.map((ev) => (
-                      <option key={ev.id}>{ev.package}</option>
-                    ))}
+                    {pastBookings.length === 0 ? (
+                      <option>No past events</option>
+                    ) : (
+                      pastBookings.map((ev) => (
+                        <option key={ev.booking_id}>{ev.package_name || `Booking #${ev.booking_id}`}</option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div className="mb-6">

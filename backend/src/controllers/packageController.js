@@ -1,4 +1,10 @@
 import { pool } from "../db/pool.js";
+import {
+  getEventsHostedCount,
+  getHappyGuestsCount,
+  getAverageRating,
+} from "../services/statisticsService.js";
+
 
 export async function getPackages(_req, res) {
   try {
@@ -149,6 +155,59 @@ export async function getVenueSetups(_req, res) {
     console.error("Error fetching venue setups:", error);
     res.status(500).json({
       error: { code: "DATABASE_ERROR", message: "Failed to fetch venue setups" },
+    });
+  }
+}
+
+// Homepage Statistics
+export async function getHomepageStatistics(_req, res) {
+  try {
+    const eventsHosted = await getEventsHostedCount();
+    const happyGuests = await getHappyGuestsCount();
+    const averageRating = await getAverageRating();
+    const yearsOfExcellence = 3;
+
+    res.status(200).json({
+      statistics: {
+        eventsHosted,
+        happyGuests,
+        averageRating,
+        yearsOfExcellence
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching homepage statistics:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to fetch homepage statistics" },
+    });
+  }
+}
+
+// Upcoming Events
+export async function getUpcomingEvents(_req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        b.booking_id,
+        b.event_date,
+        b.start_time,
+        b.number_of_pax,
+        b.booking_status,
+        p.package_name,
+        et.type_name as event_type
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN event_types et ON b.event_type_id = et.event_type_id
+       WHERE b.booking_status = 'Confirmed' 
+       AND b.event_date >= CURDATE()
+       ORDER BY b.event_date ASC, b.start_time ASC`
+    );
+
+    res.status(200).json({ events: rows });
+  } catch (error) {
+    console.error("Error fetching upcoming events:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to fetch upcoming events" },
     });
   }
 }

@@ -120,3 +120,30 @@ export async function getEventTypes(): Promise<{ eventTypes: EventType[] }> {
 export async function getVenueSetups(): Promise<{ venueSetups: VenueSetup[] }> {
   return request<{ venueSetups: VenueSetup[] }>("/api/venue-setups");
 }
+
+// Homepage Statistics
+export interface HomepageStatistics {
+  eventsHosted: number;
+  happyGuests: number;
+  averageRating: number | null;
+  yearsOfExcellence: number;
+}
+
+export async function getHomepageStatistics(): Promise<{ statistics: HomepageStatistics }> {
+  return request<{ statistics: HomepageStatistics }>("/api/homepage/statistics");
+}
+
+// Upcoming Events
+export interface UpcomingEvent {
+  booking_id: number;
+  event_date: string;
+  start_time: string;
+  number_of_pax: number;
+  booking_status: string;
+  package_name: string;
+  event_type: string;
+}
+
+export async function getUpcomingEvents(): Promise<{ events: UpcomingEvent[] }> {
+  return request<{ events: UpcomingEvent[] }>("/api/homepage/upcoming-events");
+}

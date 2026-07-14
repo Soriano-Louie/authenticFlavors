@@ -8,6 +8,8 @@ import {
   getEventTypes,
   getVenueSetups,
   getPackagePricing,
+  getHomepageStatistics,
+  getUpcomingEvents,
 } from "../controllers/packageController.js";
 
 export const packageRouter = Router();
@@ -25,3 +27,7 @@ packageRouter.get("/menu/categories/:categoryId/items", getMenuItemsByCategory);
 // Event types and venue setups
 packageRouter.get("/event-types", getEventTypes);
 packageRouter.get("/venue-setups", getVenueSetups);
+
+// Homepage routes
+packageRouter.get("/homepage/statistics", getHomepageStatistics);
+packageRouter.get("/homepage/upcoming-events", getUpcomingEvents);

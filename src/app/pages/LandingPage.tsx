@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
   Star,
@@ -11,8 +11,11 @@ import {
   Utensils,
   Heart,
   Briefcase,
+  Loader2,
 } from "lucide-react";
-import { IMAGES, TESTIMONIALS, UPCOMING_EVENTS } from "../data/mockData";
+import { IMAGES, TESTIMONIALS } from "../data/mockData";
+import { getHomepageStatistics, getUpcomingEvents } from "../api/packageApi";
+import type { HomepageStatistics, UpcomingEvent } from "../api/packageApi";
 
 const CAROUSEL_EVENTS = [
   {
@@ -41,50 +44,142 @@ const CAROUSEL_EVENTS = [
   },
 ];
 
-const STATS = [
-  { icon: Calendar, label: "Events Hosted", value: "500+" },
-  { icon: Users, label: "Happy Guests", value: "15,000+" },
-  { icon: Award, label: "Years of Excellence", value: "12" },
-  { icon: Star, label: "Average Rating", value: "4.9★" },
-];
+
 
 export function LandingPage() {
   const [carouselIndex, setCarouselIndex] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(UPCOMING_EVENTS[0].date);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  
+  // Statistics state
+  const [statistics, setStatistics] = useState<HomepageStatistics | null>(null);
+  const [statisticsLoading, setStatisticsLoading] = useState(true);
+  const [statisticsError, setStatisticsError] = useState<string | null>(null);
+  
+  // Upcoming events state
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [upcomingEventsLoading, setUpcomingEventsLoading] = useState(true);
+  const [upcomingEventsError, setUpcomingEventsError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>("");
+
+  // Fetch statistics on mount
+  useEffect(() => {
+    async function fetchStatistics() {
+      try {
+        setStatisticsLoading(true);
+        const data = await getHomepageStatistics();
+        setStatistics(data.statistics);
+      } catch (error) {
+        setStatisticsError(error instanceof Error ? error.message : "Failed to load statistics");
+      } finally {
+        setStatisticsLoading(false);
+      }
+    }
+    
+    fetchStatistics();
+  }, []);
+
+  // Fetch upcoming events on mount
+  useEffect(() => {
+    async function fetchUpcomingEvents() {
+      try {
+        setUpcomingEventsLoading(true);
+        const data = await getUpcomingEvents();
+        setUpcomingEvents(data.events);
+        // Set selected date to first event if available
+        if (data.events.length > 0) {
+          setSelectedDate(data.events[0].event_date);
+        }
+      } catch (error) {
+        setUpcomingEventsError(error instanceof Error ? error.message : "Failed to load upcoming events");
+      } finally {
+        setUpcomingEventsLoading(false);
+      }
+    }
+    
+    fetchUpcomingEvents();
+  }, []);
 
   const prevSlide = () =>
     setCarouselIndex((i) => (i === 0 ? CAROUSEL_EVENTS.length - 1 : i - 1));
   const nextSlide = () =>
     setCarouselIndex((i) => (i === CAROUSEL_EVENTS.length - 1 ? 0 : i + 1));
 
-  const monthStart = new Date(2026, 6, 1);
-  const daysInMonth = new Date(2026, 7, 0).getDate();
+  // Generate stats display
+  const getStatsDisplay = () => {
+    if (statisticsLoading) {
+      return [
+        { icon: Calendar, label: "Events Hosted", value: "Loading..." },
+        { icon: Users, label: "Happy Guests", value: "Loading..." },
+        { icon: Award, label: "Years of Excellence", value: "Loading..." },
+        { icon: Star, label: "Average Rating", value: "Loading..." },
+      ];
+    }
+
+    if (statisticsError || !statistics) {
+      return [
+        { icon: Calendar, label: "Events Hosted", value: "N/A" },
+        { icon: Users, label: "Happy Guests", value: "N/A" },
+        { icon: Award, label: "Years of Excellence", value: "N/A" },
+        { icon: Star, label: "Average Rating", value: "N/A" },
+      ];
+    }
+
+    return [
+      { 
+        icon: Calendar, 
+        label: "Events Hosted", 
+        value: statistics.eventsHosted.toLocaleString() 
+      },
+      { 
+        icon: Users, 
+        label: "Happy Guests", 
+        value: statistics.happyGuests.toLocaleString() 
+      },
+      { 
+        icon: Award, 
+        label: "Years of Excellence", 
+        value: statistics.yearsOfExcellence.toString() 
+      },
+      { 
+        icon: Star, 
+        label: "Average Rating", 
+        value: statistics.averageRating ? `${statistics.averageRating.toFixed(1)}★` : "N/A" 
+      },
+    ];
+  };
+
+  const currentStats = getStatsDisplay();
+
+  // Calendar logic for upcoming events
+  const currentMonth = new Date();
+  const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
   const firstDay = monthStart.getDay();
   const monthLabel = monthStart.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
+
+  // Get unique event dates from upcoming events
+  const eventDates = upcomingEvents.map(event => event.event_date.split('T')[0]);
+
   const calendarDays = [
     ...Array.from({ length: firstDay }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => {
       const day = index + 1;
-      const dateKey = `2026-07-${String(day).padStart(2, "0")}`;
-      const event = UPCOMING_EVENTS.find((item) => item.date === dateKey);
+      const dateKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const hasEvent = eventDates.includes(dateKey);
       return {
         day,
         dateKey,
-        hasEvent: Boolean(event),
+        hasEvent,
         isSelected: selectedDate === dateKey,
       };
     }),
   ];
-  const selectedEvent =
-    UPCOMING_EVENTS.find((item) => item.date === selectedDate) ??
-    UPCOMING_EVENTS[0];
-  const visibleEvents = showAllEvents
-    ? UPCOMING_EVENTS
-    : UPCOMING_EVENTS.slice(0, 3);
+
+  const selectedEvent = upcomingEvents.find(event => event.event_date.split('T')[0] === selectedDate);
+  const visibleEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 3);
 
   return (
     <div>
@@ -213,7 +308,7 @@ export function LandingPage() {
       <section className="bg-[#2C1810] py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {STATS.map((stat) => (
+            {currentStats.map((stat) => (
               <div key={stat.label} className="text-center">
                 <stat.icon size={20} className="text-[#C8922A] mx-auto mb-2" />
                 <p className="text-[#F5F0E8] text-2xl font-['Playfair_Display']">
@@ -345,7 +440,7 @@ export function LandingPage() {
                 </div>
                 <div className="rounded-full border border-[#C8922A]/30 px-3 py-1.5">
                   <span className="text-sm font-['Lato'] text-[#F5F0E8]">
-                    {UPCOMING_EVENTS.length} upcoming
+                    {upcomingEvents.length} upcoming
                   </span>
                 </div>
               </div>
@@ -391,58 +486,75 @@ export function LandingPage() {
             </div>
 
             <div className="rounded-3xl border border-[#C8922A]/20 bg-[#F5F0E8] p-6 sm:p-8 shadow-sm">
-              <p className="text-[11px] uppercase tracking-[0.3em] text-[#C8922A]">
-                Selected day
-              </p>
-              <h3 className="mt-2 font-['Playfair_Display'] text-2xl text-[#2C1810]">
-                {selectedEvent.title}
-              </h3>
-              <p className="mt-2 text-sm font-['Lato'] text-[#2C1810]/70">
-                {new Date(selectedEvent.date).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
+              {upcomingEventsLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 size={32} className="animate-spin text-[#C8922A] mx-auto mb-3" />
+                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">Loading events...</p>
+                </div>
+              ) : upcomingEventsError ? (
+                <div className="text-center py-8">
+                  <p className="text-[#C4541A] text-sm font-['Lato'] mb-3">{upcomingEventsError}</p>
+                </div>
+              ) : upcomingEvents.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">No upcoming events scheduled.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-[#C8922A]">
+                    {selectedDate ? "Selected day" : "Upcoming events"}
+                  </p>
+                  <h3 className="mt-2 font-['Playfair_Display'] text-2xl text-[#2C1810]">
+                    {selectedDate ? new Date(selectedDate).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    }) : "All Events"}
+                  </h3>
+                  
+                  <div className="mt-6 space-y-3">
+                    {(selectedDate 
+                      ? upcomingEvents.filter(event => event.event_date.split('T')[0] === selectedDate)
+                      : visibleEvents
+                    ).map((event) => (
+                      <button
+                        key={event.booking_id}
+                        type="button"
+                        onClick={() => setSelectedDate(event.event_date.split('T')[0])}
+                        className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date.split('T')[0] ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                              {event.package_name}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[#C8922A]">
+                              {event.event_type}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
+                              {new Date(event.event_date).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </p>
+                            <p className="text-xs font-['Lato'] text-[#2C1810]/60">
+                              {event.start_time}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm font-['Lato'] text-[#2C1810]/70">
+                          {event.number_of_pax} guests
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
-              <div className="mt-6 space-y-3">
-                {visibleEvents.map((event) => (
-                  <button
-                    key={event.date}
-                    type="button"
-                    onClick={() => setSelectedDate(event.date)}
-                    className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.date ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                          {event.title}
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[#C8922A]">
-                          {event.type}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
-                          {new Date(event.date).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </p>
-                        <p className="text-xs font-['Lato'] text-[#2C1810]/60">
-                          {event.time}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm font-['Lato'] text-[#2C1810]/70">
-                      {event.guests}
-                    </p>
-                  </button>
-                ))}
-              </div>
 
-              {UPCOMING_EVENTS.length > 3 && (
+              {upcomingEvents.length > 3 && (
                 <button
                   type="button"
                   onClick={() => setShowAllEvents((value) => !value)}
@@ -450,7 +562,7 @@ export function LandingPage() {
                 >
                   {showAllEvents
                     ? "Show less"
-                    : `Show all (${UPCOMING_EVENTS.length})`}
+                    : `Show all (${upcomingEvents.length})`}
                 </button>
               )}
 
