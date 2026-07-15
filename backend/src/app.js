@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { authRouter } from "./routes/authRoutes.js";
 import { packageRouter } from "./routes/packageRoutes.js";
 import { bookingRouter } from "./routes/bookingRoutes.js";
+import { paymentRouter } from "./routes/paymentRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -35,6 +36,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api", packageRouter);
   app.use("/api", bookingRouter);
+  app.use("/api/payments", paymentRouter);
 
   app.use((err, _req, res, _next) => {
     console.error(err);

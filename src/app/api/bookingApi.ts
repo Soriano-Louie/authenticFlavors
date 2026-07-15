@@ -34,9 +34,11 @@ export interface Booking {
   start_time: string;
   allergy_notes: string | null;
   dietary_notes: string | null;
-  booking_status: "Pending" | "Confirmed" | "Completed" | "Cancelled";
+  booking_status: "Pending" | "Reserved" | "Confirmed" | "Completed" | "Cancelled";
   booking_summary: string | null; // JSON text containing receipt_path, rejection_reason, etc.
   total_price: number;
+  amount_paid: number;
+  remaining_balance: number;
   ai_booking_reference: number | null;
   created_at: string;
   updated_at: string;
@@ -123,21 +125,11 @@ export function getAdminBookings(accessToken: string): Promise<{ bookings: Booki
   });
 }
 
-export function verifyBookingPayment(accessToken: string, bookingId: number): Promise<{ message: string }> {
-  return request<{ message: string }>(`/api/admin/bookings/${bookingId}/verify`, {
+export function completeBooking(accessToken: string, bookingId: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/admin/bookings/${bookingId}/complete`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-  });
-}
-
-export function rejectBookingPayment(accessToken: string, bookingId: number, reason: string): Promise<{ message: string }> {
-  return request<{ message: string }>(`/api/admin/bookings/${bookingId}/reject`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ reason }),
   });
 }

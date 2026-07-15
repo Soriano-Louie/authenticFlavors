@@ -325,7 +325,7 @@ export function BookingPage() {
       });
 
       toast.success("Booking submitted successfully!");
-      navigate(`/payment-upload?booking_id=${result.booking_id}`);
+      navigate("/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to submit booking. Please try again.";
       setSubmitError(message);

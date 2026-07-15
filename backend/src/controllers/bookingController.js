@@ -1,70 +1,4 @@
 import { pool } from "../db/pool.js";
-import path from "path";
-import fs from "fs";
-import multer from "multer";
-
-// Create uploads directory if it does not exist
-const uploadDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Multer setup for receipt uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `receipt-${uniqueSuffix}${ext}`);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
-  const allowedExts = [".jpg", ".jpeg", ".png", ".webp"];
-  const ext = path.extname(file.originalname).toLowerCase();
-
-  if (allowedMimes.includes(file.mimetype) && allowedExts.includes(ext)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Only image/jpeg, image/png, and image/webp are allowed."));
-  }
-};
-
-export const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
-  fileFilter: fileFilter,
-});
-
-// Middleware to handle multer file upload errors and validation
-export function uploadSingleReceipt(req, res, next) {
-  const uploadSingle = upload.single("receipt");
-
-  uploadSingle(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({
-          error: {
-            code: "FILE_TOO_LARGE",
-            message: "Image exceeds the maximum allowed size of 5 MB.",
-          },
-        });
-      }
-      return res.status(400).json({
-        error: {
-          code: "INVALID_FILE_UPLOAD",
-          message: err.message || "Failed to upload file.",
-        },
-      });
-    }
-    next();
-  });
-}
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
@@ -196,8 +130,8 @@ export async function createBooking(req, res) {
         user_id, package_id, event_type_id, venue_setup_id, number_of_pax,
         contact_name, contact_email, contact_phone, event_date, start_time,
         allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
-        ai_booking_reference
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?)`,
+        ai_booking_reference, amount_paid, remaining_balance
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, 0.00, ?)`,
       [
         userId,
         package_id,
@@ -214,6 +148,7 @@ export async function createBooking(req, res) {
         summaryData,
         calculatedTotal,
         ai_booking_reference,
+        calculatedTotal,
       ]
     );
 
@@ -227,6 +162,41 @@ export async function createBooking(req, res) {
         [booking_id, item.category_id, item.menu_item_id]
       );
     }
+
+    // 10. Automatically create THREE payment records
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    const localToday = (new Date(Date.now() - tzOffset)).toISOString().split("T")[0];
+
+    const eventDateObj = new Date(event_date);
+    const downPaymentDateObj = new Date(eventDateObj);
+    downPaymentDateObj.setDate(eventDateObj.getDate() - 14);
+    const downPaymentDueDate = downPaymentDateObj.toISOString().split("T")[0];
+
+    const reservationFee = 5000.00;
+    const remainingVal = calculatedTotal - reservationFee;
+    const downPaymentVal = remainingVal * 0.50;
+    const finalPaymentVal = remainingVal - downPaymentVal;
+
+    // Insert Reservation
+    await connection.query(
+      `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+       VALUES (?, 'Reservation', ?, ?, 'Pending')`,
+      [booking_id, reservationFee, localToday]
+    );
+
+    // Insert Down Payment
+    await connection.query(
+      `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+       VALUES (?, 'DownPayment', ?, ?, 'Pending')`,
+      [booking_id, downPaymentVal, downPaymentDueDate]
+    );
+
+    // Insert Final Payment
+    await connection.query(
+      `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+       VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
+      [booking_id, finalPaymentVal, event_date]
+    );
 
     await connection.commit();
 
@@ -333,92 +303,16 @@ export async function getAdminBookings(req, res) {
   }
 }
 
-// Upload payment receipt image for a booking
-export async function uploadReceipt(req, res) {
-  try {
-    const bookingId = Number(req.params.id);
-    const userId = Number(req.auth.sub);
 
-    if (!req.file) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "No receipt image was uploaded." },
-      });
-    }
 
-    // Verify booking belongs to authenticated user
-    const [bookings] = await pool.query(
-      "SELECT user_id, booking_summary, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
-      [bookingId]
-    );
-
-    if (bookings.length === 0) {
-      // Remove uploaded file if booking doesn't exist
-      fs.unlinkSync(req.file.path);
-      return res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Booking not found." },
-      });
-    }
-
-    const booking = bookings[0];
-    if (booking.user_id !== userId && req.auth.role !== "Admin") {
-      fs.unlinkSync(req.file.path);
-      return res.status(403).json({
-        error: { code: "FORBIDDEN", message: "Unauthorized to update this booking." },
-      });
-    }
-
-    let summaryObj = {};
-    try {
-      summaryObj = JSON.parse(booking.booking_summary || "{}");
-    } catch {
-      summaryObj = {};
-    }
-
-    // Clean previous receipt if it exists
-    if (summaryObj.receipt_path) {
-      const oldPath = path.join(process.cwd(), summaryObj.receipt_path);
-      if (fs.existsSync(oldPath)) {
-        try {
-          fs.unlinkSync(oldPath);
-        } catch (e) {
-          console.error("Failed to delete old receipt:", e);
-        }
-      }
-    }
-
-    // Save filename/path relative to backend root
-    summaryObj.receipt_path = `uploads/${req.file.filename}`;
-    summaryObj.receipt_uploaded_at = new Date().toISOString();
-    delete summaryObj.rejection_reason; // Remove rejection reason on re-upload
-
-    await pool.query(
-      "UPDATE bookings SET booking_summary = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-      [JSON.stringify(summaryObj), bookingId]
-    );
-
-    res.status(200).json({
-      message: "Receipt uploaded successfully.",
-      receipt_path: summaryObj.receipt_path,
-    });
-  } catch (error) {
-    console.error("Receipt upload failed:", error);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to save payment receipt." },
-    });
-  }
-}
-
-// Verify payment receipt (Admin only)
-export async function verifyPayment(req, res) {
+// Manually complete booking (Admin only)
+export async function completeBooking(req, res) {
   try {
     const bookingId = Number(req.params.id);
 
     // Get booking
     const [bookings] = await pool.query(
-      "SELECT booking_summary, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
+      "SELECT event_date, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
       [bookingId]
     );
 
@@ -429,88 +323,37 @@ export async function verifyPayment(req, res) {
     }
 
     const booking = bookings[0];
-    let summaryObj = {};
-    try {
-      summaryObj = JSON.parse(booking.booking_summary || "{}");
-    } catch {
-      summaryObj = {};
-    }
-
-    if (!summaryObj.receipt_path) {
+    
+    // Check if event date has finished
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    const todayStr = (new Date(Date.now() - tzOffset)).toISOString().split("T")[0];
+    const eventDateStr = new Date(booking.event_date).toISOString().split("T")[0];
+    
+    if (eventDateStr > todayStr) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "No payment receipt uploaded yet to verify." },
+        error: { code: "VALIDATION_ERROR", message: "Cannot complete an event that has not finished yet." },
       });
     }
 
-    summaryObj.payment_verified_at = new Date().toISOString();
-    delete summaryObj.rejection_reason;
+    if (booking.booking_status !== "Confirmed" && booking.booking_status !== "Reserved") {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Only reserved or confirmed bookings can be marked as completed." },
+      });
+    }
 
     await pool.query(
-      "UPDATE bookings SET booking_status = 'Confirmed', booking_summary = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-      [JSON.stringify(summaryObj), bookingId]
-    );
-
-    res.status(200).json({
-      message: "Booking confirmed successfully.",
-      booking_status: "Confirmed",
-    });
-  } catch (error) {
-    console.error("Verify payment failed:", error);
-    res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to verify payment." },
-    });
-  }
-}
-
-// Reject payment receipt (Admin only)
-export async function rejectPayment(req, res) {
-  try {
-    const bookingId = Number(req.params.id);
-    const { reason } = req.body;
-
-    if (!reason || String(reason).trim() === "") {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Rejection reason is required." },
-      });
-    }
-
-    // Get booking
-    const [bookings] = await pool.query(
-      "SELECT booking_summary, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
+      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
       [bookingId]
     );
 
-    if (bookings.length === 0) {
-      return res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Booking not found." },
-      });
-    }
-
-    const booking = bookings[0];
-    let summaryObj = {};
-    try {
-      summaryObj = JSON.parse(booking.booking_summary || "{}");
-    } catch {
-      summaryObj = {};
-    }
-
-    summaryObj.rejection_reason = String(reason).trim();
-    summaryObj.receipt_rejected_at = new Date().toISOString();
-
-    await pool.query(
-      "UPDATE bookings SET booking_status = 'Pending', booking_summary = ?, updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-      [JSON.stringify(summaryObj), bookingId]
-    );
-
     res.status(200).json({
-      message: "Booking payment rejected successfully.",
-      booking_status: "Pending",
-      rejection_reason: summaryObj.rejection_reason,
+      message: "Booking marked as completed successfully.",
+      booking_status: "Completed",
     });
   } catch (error) {
-    console.error("Reject payment failed:", error);
+    console.error("Complete booking failed:", error);
     res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to reject payment." },
+      error: { code: "DATABASE_ERROR", message: "Failed to mark booking as completed." },
     });
   }
 }

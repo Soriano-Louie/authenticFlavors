@@ -11,6 +11,8 @@ const required = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "CORS_ORIGIN",
+  "PAYMONGO_PUBLIC_KEY",
+  "PAYMONGO_SECRET_KEY",
 ];
 
 for (const key of required) {
@@ -33,6 +35,8 @@ export const env = {
   accessTokenTtl: process.env.ACCESS_TOKEN_TTL ?? "15m",
   refreshTokenTtl: process.env.REFRESH_TOKEN_TTL ?? "7d",
   refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? "af_refresh",
+  paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY,
+  paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,
 };
 
 export const isProduction = env.nodeEnv === "production";

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
-import { getAdminBookings, verifyBookingPayment, rejectBookingPayment, type Booking } from "../api/bookingApi";
+import { getAdminBookings, completeBooking, type Booking } from "../api/bookingApi";
+import { getBookingPayments, type Payment } from "../api/paymentApi";
 import { toast } from "sonner";
 import {
   BarChart2, Users, Calendar, Star, TrendingUp, TrendingDown, AlertCircle,
@@ -540,15 +541,14 @@ function ActivitySection() {
       </div>
     </div>
   );
-}
-
-// Bookings Section (Real Integrations with verify/reject actions and receipts)
+}// Bookings Section — PayMongo payment timeline with admin complete action
 function BookingsSection() {
   const { accessToken } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [paymentsByBooking, setPaymentsByBooking] = useState<Record<number, Payment[]>>({});
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<number | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null);
 
   const fetchBookings = async () => {
     if (!accessToken) return;
@@ -556,6 +556,19 @@ function BookingsSection() {
       setLoading(true);
       const res = await getAdminBookings(accessToken);
       setBookings(res.bookings);
+      // Pre-fetch payments for all bookings
+      const map: Record<number, Payment[]> = {};
+      await Promise.all(
+        res.bookings.map(async (b) => {
+          try {
+            const pr = await getBookingPayments(accessToken, b.booking_id);
+            map[b.booking_id] = pr.payments;
+          } catch {
+            map[b.booking_id] = [];
+          }
+        })
+      );
+      setPaymentsByBooking(map);
     } catch (err) {
       console.error(err);
       toast.error("Failed to fetch admin bookings.");
@@ -568,218 +581,220 @@ function BookingsSection() {
     fetchBookings();
   }, [accessToken]);
 
-  const handleVerify = async (bookingId: number) => {
+  const handleComplete = async (bookingId: number) => {
     if (!accessToken) return;
+    if (!window.confirm("Mark this booking as Completed? This action cannot be undone.")) return;
     setActioningId(bookingId);
     try {
-      await verifyBookingPayment(accessToken, bookingId);
-      toast.success("Payment verified successfully!");
+      await completeBooking(accessToken, bookingId);
+      toast.success("Booking marked as Completed.");
       fetchBookings();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to verify payment");
+      toast.error(err instanceof Error ? err.message : "Failed to complete booking.");
     } finally {
       setActioningId(null);
     }
   };
 
-  const handleReject = async (bookingId: number) => {
-    if (!accessToken) return;
-    const reason = prompt("Enter rejection reason:");
-    if (reason === null) return; // cancelled prompt
-    if (!reason.trim()) {
-      toast.error("Rejection reason is required.");
-      return;
-    }
-
-    setActioningId(bookingId);
-    try {
-      await rejectBookingPayment(accessToken, bookingId, reason.trim());
-      toast.success("Payment rejected.");
-      fetchBookings();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reject payment");
-    } finally {
-      setActioningId(null);
-    }
+  const formatDate = (d: string) => {
+    if (!d) return "—";
+    try { return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); } catch { return d; }
   };
 
-  const getReceiptUrl = (summaryStr: string | null) => {
-    if (!summaryStr) return null;
-    try {
-      const summary = JSON.parse(summaryStr);
-      if (summary.receipt_path) {
-        return `${window.location.protocol}//${window.location.hostname}:4000/${summary.receipt_path}`;
-      }
-    } catch {}
-    return null;
+  const formatAmount = (n: number) =>
+    `₱${Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
+  const paymentTypeLabel: Record<string, string> = {
+    Reservation: "Reservation Fee",
+    DownPayment: "Down Payment",
+    FinalPayment: "Final Payment",
   };
 
-  const getRejectionReason = (summaryStr: string | null) => {
-    if (!summaryStr) return null;
-    try {
-      const summary = JSON.parse(summaryStr);
-      return summary.rejection_reason || null;
-    } catch {}
-    return null;
+  const paymentStatusStyle = (s: string) =>
+    s === "Paid"
+      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+      : s === "Failed"
+      ? "bg-[#C4541A]/15 text-[#C4541A]"
+      : "bg-[#C8922A]/15 text-[#C8922A]";
+
+  // Is event date in the past?
+  const isEventPast = (eventDate: string) => {
+    const today = new Date().toISOString().split("T")[0];
+    const eDate = new Date(eventDate).toISOString().split("T")[0];
+    return eDate <= today;
   };
 
   return (
-    <>
+    <div className="space-y-4">
+      {/* Header */}
       <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
-          Manage Bookings
-        </h2>
-        <button
-          onClick={fetchBookings}
-          className="text-xs font-['Lato'] text-[#C8922A] hover:underline"
-        >
-          Refresh List
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
+            Manage Bookings
+          </h2>
+          <button
+            onClick={fetchBookings}
+            className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1"
+          >
+            Refresh
+          </button>
         </div>
-      ) : bookings.length === 0 ? (
-        <p className="text-sm font-['Lato'] text-[#2C1810]/50 py-10 text-center">
-          No bookings found in database.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[#C8922A]/10">
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Booking ID</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Customer Info</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Event & Package</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Pax & Price</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Receipt</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60">Status</th>
-                <th className="py-3 px-4 text-xs uppercase tracking-wider font-['Lato'] text-[#2C1810]/60 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((booking) => {
-                const receiptUrl = getReceiptUrl(booking.booking_summary);
-                const rejectionReason = getRejectionReason(booking.booking_summary);
-                const isPendingAction = actioningId === booking.booking_id;
 
-                return (
-                  <tr
-                    key={booking.booking_id}
-                    className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+          </div>
+        ) : bookings.length === 0 ? (
+          <p className="text-sm font-['Lato'] text-[#2C1810]/50 py-10 text-center">
+            No bookings found.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {bookings.map((booking) => {
+              const payments = paymentsByBooking[booking.booking_id] || [];
+              const isExpanded = expandedBookingId === booking.booking_id;
+              const isPendingAction = actioningId === booking.booking_id;
+              const canComplete =
+                (booking.booking_status === "Confirmed" || booking.booking_status === "Reserved") &&
+                isEventPast(booking.event_date);
+
+              const reservation = payments.find((p) => p.payment_type === "Reservation");
+              const downPayment = payments.find((p) => p.payment_type === "DownPayment");
+              const finalPayment = payments.find((p) => p.payment_type === "FinalPayment");
+
+              return (
+                <div
+                  key={booking.booking_id}
+                  className="border border-[#C8922A]/10 rounded-xl overflow-hidden"
+                >
+                  {/* Booking header row */}
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-[#F5F0E8]/50 cursor-pointer hover:bg-[#F5F0E8] transition-colors"
+                    onClick={() => setExpandedBookingId(isExpanded ? null : booking.booking_id)}
                   >
-                    <td className="py-4 px-4 text-sm font-semibold font-['Lato'] text-[#2C1810]">
-                      #{String(booking.booking_id).padStart(4, "0")}
-                    </td>
-                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
-                      <p className="font-medium">{booking.contact_name}</p>
-                      <p className="text-xs text-[#2C1810]/65">{booking.contact_email}</p>
-                      {booking.contact_phone && <p className="text-[11px] text-[#2C1810]/50">{booking.contact_phone}</p>}
-                    </td>
-                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
-                      <p className="font-medium">{booking.package_name || `Package ID ${booking.package_id}`}</p>
-                      <p className="text-xs text-[#C8922A]">{booking.type_name || `Type ID ${booking.event_type_id}`}</p>
-                      <p className="text-[11px] text-[#2C1810]/50">{new Date(booking.event_date).toLocaleDateString()} at {booking.start_time}</p>
-                    </td>
-                    <td className="py-4 px-4 text-sm font-['Lato'] text-[#2C1810]">
-                      <p className="font-medium">{booking.number_of_pax} pax</p>
-                      <p className="text-xs text-[#C4541A]">₱{Number(booking.total_price).toLocaleString()}</p>
-                    </td>
-                    <td className="py-4 px-4 text-sm">
-                      {receiptUrl ? (
-                        <button
-                          onClick={() => setPreviewUrl(receiptUrl)}
-                          className="inline-flex items-center gap-1 text-xs text-[#C8922A] hover:underline font-['Lato']"
-                        >
-                          <Eye size={12} /> View Receipt
-                        </button>
-                      ) : (
-                        <span className="text-xs text-[#2C1810]/40 font-['Lato']">No Receipt</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
+                        #{String(booking.booking_id).padStart(4, "0")}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium font-['Lato'] text-[#2C1810]">
+                          {booking.first_name} {booking.last_name}
+                        </p>
+                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                          {booking.package_name} · {formatDate(booking.event_date)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">Total</p>
+                        <p className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
+                          {formatAmount(booking.total_price)}
+                        </p>
+                      </div>
                       <span className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}>
                         {booking.booking_status}
                       </span>
-                      {rejectionReason && (
-                        <p className="text-[10px] text-[#C4541A] font-['Lato'] mt-1 max-w-[150px] truncate" title={rejectionReason}>
-                          Reason: {rejectionReason}
-                        </p>
+                      {canComplete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleComplete(booking.booking_id); }}
+                          disabled={isPendingAction}
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                        >
+                          {isPendingAction ? "Saving..." : "Mark Completed"}
+                        </button>
                       )}
-                    </td>
-                    <td className="py-4 px-4 text-right">
-                      {booking.booking_status === "Pending" && (
-                        <div className="inline-flex gap-2">
-                          <button
-                            onClick={() => handleVerify(booking.booking_id)}
-                            disabled={isPendingAction}
-                            className="p-1.5 bg-[#7A8C5C]/10 text-[#7A8C5C] hover:bg-[#7A8C5C]/20 rounded-lg transition-colors"
-                            title="Verify Payment"
-                          >
-                            <CheckCircle size={15} />
-                          </button>
-                          <button
-                            onClick={() => handleReject(booking.booking_id)}
-                            disabled={isPendingAction}
-                            className="p-1.5 bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 rounded-lg transition-colors"
-                            title="Reject Payment"
-                          >
-                            <XCircle size={15} />
-                          </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded payment timeline */}
+                  {isExpanded && (
+                    <div className="p-5 bg-white">
+                      {/* Financial Summary */}
+                      <div className="grid grid-cols-3 gap-3 bg-[#F5F0E8] rounded-xl p-4 mb-5 border border-[#C8922A]/10">
+                        <div>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Total Price</p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#2C1810]">{formatAmount(booking.total_price)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Amount Paid</p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#7A8C5C]">{formatAmount(booking.amount_paid || 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Remaining</p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#C4541A]">{formatAmount(booking.remaining_balance ?? booking.total_price)}</p>
+                        </div>
+                      </div>
+
+                      {/* Payment Timeline */}
+                      <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm mb-3 font-semibold">
+                        Payment Timeline
+                      </h4>
+                      {payments.length === 0 ? (
+                        <p className="text-xs text-[#2C1810]/40 font-['Lato']">No payment records found.</p>
+                      ) : (
+                        <div className="relative pl-4">
+                          {/* Vertical line */}
+                          <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-[#C8922A]/20 rounded" />
+                          <div className="space-y-4">
+                            {[reservation, downPayment, finalPayment].filter(Boolean).map((payment) => {
+                              if (!payment) return null;
+                              const isPaid = payment.payment_status === "Paid";
+                              return (
+                                <div key={payment.payment_id} className="flex gap-4 items-start relative">
+                                  {/* Timeline dot */}
+                                  <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 relative z-10 ${
+                                    isPaid ? "bg-[#7A8C5C] border-[#7A8C5C]" : "bg-white border-[#C8922A]/40"
+                                  }`} />
+                                  <div className="flex-1 border border-[#C8922A]/10 rounded-xl p-3 bg-[#F5F0E8]/30">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                      <span className="text-xs font-semibold text-[#2C1810] font-['Lato']">
+                                        {paymentTypeLabel[payment.payment_type] || payment.payment_type}
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-['Lato'] ${paymentStatusStyle(payment.payment_status)}`}>
+                                        {payment.payment_status}
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-['Lato'] text-[#2C1810]/60">
+                                      <span>Amount: <span className="text-[#C8922A] font-semibold">{formatAmount(payment.amount)}</span></span>
+                                      <span>Due: {formatDate(payment.due_date)}</span>
+                                      {payment.paid_at && (
+                                        <span>Paid: {formatDate(payment.paid_at)}</span>
+                                      )}
+                                      {payment.payment_method && (
+                                        <span>Method: <span className="capitalize">{payment.payment_method}</span></span>
+                                      )}
+                                      {payment.payment_reference && (
+                                        <span className="col-span-2">Ref: {payment.payment_reference}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
 
-      {/* Receipt Image Modal */}
-      {previewUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          onClick={() => setPreviewUrl(null)}
-        >
-          <div
-            className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold font-['Playfair_Display'] text-[#2C1810]">Payment Receipt</p>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewUrl}
-                  download
-                  className="text-xs text-[#C8922A] font-['Lato'] hover:underline"
-                >
-                  Download
-                </a>
-                <button
-                  onClick={() => setPreviewUrl(null)}
-                  className="w-7 h-7 flex items-center justify-center rounded-full bg-[#F5F0E8] text-[#2C1810] hover:bg-[#EDE8DF] transition-colors"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-            <img
-              src={previewUrl}
-              alt="Payment Receipt"
-              className="w-full rounded-xl object-contain max-h-[70vh] border border-[#C8922A]/10"
-            />
+                      {/* Customer & Event Info */}
+                      <div className="mt-5 pt-4 border-t border-[#C8922A]/10 grid grid-cols-2 gap-3 text-xs font-['Lato'] text-[#2C1810]/60">
+                        <div><span className="font-semibold text-[#2C1810]">Contact: </span>{booking.contact_name}</div>
+                        <div><span className="font-semibold text-[#2C1810]">Email: </span>{booking.contact_email}</div>
+                        <div><span className="font-semibold text-[#2C1810]">Guests: </span>{booking.number_of_pax} pax</div>
+                        <div><span className="font-semibold text-[#2C1810]">Setup: </span>{booking.setup_name || "—"}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+    </div>
   );
 }
+
 
 // Packages Section (Simplified)
 function PackagesSection() {
@@ -812,7 +827,9 @@ function getIconComponent(iconName: string) {
 function getStatusStyle(status: string): string {
   const styles: Record<string, string> = {
     Confirmed: "bg-[#7A8C5C]/15 text-[#7A8C5C]",
-    Pending: "bg-[#C8922A]/15 text-[#C8922A]",
+    Reserved:  "bg-[#4A8C9C]/15 text-[#4A8C9C]",
+    Pending:   "bg-[#C8922A]/15 text-[#C8922A]",
+    Completed: "bg-[#EDE8DF] text-[#2C1810]/60",
     Cancelled: "bg-[#C4541A]/15 text-[#C4541A]",
   };
   return styles[status] || "bg-gray-100 text-gray-600";

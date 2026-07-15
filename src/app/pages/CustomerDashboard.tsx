@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
+import { getBookingPayments, createCheckoutSession, type Payment } from "../api/paymentApi";
+import { toast } from "sonner";
 import {
   Calendar,
   Star,
@@ -14,8 +16,6 @@ import {
   Plus,
   User,
   Loader2,
-  Upload,
-  XCircle,
 } from "lucide-react";
 
 const TABS = [
@@ -60,6 +60,8 @@ export function CustomerDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
 
+  const [paymentsByBooking, setPaymentsByBooking] = useState<Record<number, Payment[]>>({});
+
   // Settings form state
   const [settingsForm, setSettingsForm] = useState({
     first_name: "",
@@ -76,7 +78,21 @@ export function CustomerDashboard() {
   useEffect(() => {
     if (!accessToken) { setBookingsLoading(false); return; }
     getCustomerBookings(accessToken)
-      .then(res => setBookings(res.bookings))
+      .then(async (res) => {
+        setBookings(res.bookings);
+        const paymentsMap: Record<number, Payment[]> = {};
+        await Promise.all(
+          res.bookings.map(async (b) => {
+            try {
+              const paymentsRes = await getBookingPayments(accessToken, b.booking_id);
+              paymentsMap[b.booking_id] = paymentsRes.payments;
+            } catch (err) {
+              console.error("Failed to load payments for booking:", b.booking_id, err);
+            }
+          })
+        );
+        setPaymentsByBooking(paymentsMap);
+      })
       .catch(err => console.error("Failed to load bookings:", err))
       .finally(() => setBookingsLoading(false));
   }, [accessToken]);
@@ -84,13 +100,13 @@ export function CustomerDashboard() {
   // Derive upcoming vs past
   const todayStr = new Date().toLocaleDateString("en-CA");
   const upcomingBookings = bookings.filter(b =>
-    (b.booking_status === "Pending" || b.booking_status === "Confirmed") &&
+    (b.booking_status === "Pending" || b.booking_status === "Reserved" || b.booking_status === "Confirmed") &&
     b.event_date.split('T')[0] >= todayStr
   );
   const pastBookings = bookings.filter(b =>
     b.booking_status === "Completed" || 
     b.booking_status === "Cancelled" ||
-    ((b.booking_status === "Pending" || b.booking_status === "Confirmed") && b.event_date.split('T')[0] < todayStr)
+    ((b.booking_status === "Pending" || b.booking_status === "Reserved" || b.booking_status === "Confirmed") && b.event_date.split('T')[0] < todayStr)
   );
   const rejectedBookings = bookings.filter(b => {
     const summary = parseBookingSummary(b);
@@ -152,6 +168,22 @@ export function CustomerDashboard() {
     }
   };
 
+  const handlePayNow = async (paymentId: number) => {
+    try {
+      const res = await createCheckoutSession(accessToken!, paymentId);
+      if (res.checkout_url) {
+        // Store checkout info for the success page
+        sessionStorage.setItem('pending_payment', JSON.stringify({
+          paymentId,
+          checkoutId: res.checkout_id
+        }));
+        window.location.href = res.checkout_url;
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to initiate payment.");
+    }
+  };
+
   const ALLERGY_OPTIONS = [
     "Nuts",
     "Dairy",
@@ -167,6 +199,136 @@ export function CustomerDashboard() {
     setSavedAllergies((prev) =>
       prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
     );
+
+  const renderPaymentSchedule = (booking: Booking) => {
+    const payments = paymentsByBooking[booking.booking_id] || [];
+    if (payments.length === 0) {
+      return (
+        <p className="text-xs text-[#2C1810]/40 font-['Lato'] mt-2">
+          Generating payment schedule...
+        </p>
+      );
+    }
+
+    const reservation = payments.find(p => p.payment_type === "Reservation");
+    const downPayment = payments.find(p => p.payment_type === "DownPayment");
+    const finalPayment = payments.find(p => p.payment_type === "FinalPayment");
+
+    const reservationPaid = reservation?.payment_status === "Paid";
+    const downPaymentPaid = downPayment?.payment_status === "Paid";
+
+    return (
+      <div className="mt-4 border-t border-[#C8922A]/10 pt-4 w-full">
+        <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm mb-3 font-semibold">
+          Payment Schedule
+        </h4>
+        
+        {/* Financial Info */}
+        <div className="grid grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 mb-4 text-xs font-['Lato']">
+          <div>
+            <span className="text-[#2C1810]/50 block">Total Price</span>
+            <span className="text-[#2C1810] font-semibold">₱{Number(booking.total_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div>
+            <span className="text-[#2C1810]/50 block">Amount Paid</span>
+            <span className="text-[#7A8C5C] font-semibold">₱{Number(booking.amount_paid || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div>
+            <span className="text-[#2C1810]/50 block">Remaining</span>
+            <span className="text-[#C4541A] font-semibold">₱{Number(booking.remaining_balance ?? booking.total_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Reservation Fee */}
+          {reservation && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+              <div className="text-xs">
+                <span className="font-semibold text-[#2C1810] block">Reservation Fee</span>
+                <span className="text-[#2C1810]/50 block">Due: {formatDate(reservation.due_date)}</span>
+                <span className="text-[#C8922A] font-medium block">₱{Number(reservation.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                  reservation.payment_status === "Paid"
+                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                    : "bg-[#C8922A]/15 text-[#C8922A]"
+                }`}>
+                  {reservation.payment_status}
+                </span>
+                {reservation.payment_status !== "Paid" && (
+                  <button
+                    onClick={() => handlePayNow(reservation.payment_id)}
+                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    Pay Now
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Down Payment */}
+          {downPayment && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+              <div className="text-xs">
+                <span className="font-semibold text-[#2C1810] block">Down Payment</span>
+                <span className="text-[#2C1810]/50 block">Due: {formatDate(downPayment.due_date)}</span>
+                <span className="text-[#C8922A] font-medium block">₱{Number(downPayment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                  downPayment.payment_status === "Paid"
+                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                    : "bg-[#C8922A]/15 text-[#C8922A]"
+                }`}>
+                  {downPayment.payment_status}
+                </span>
+                {downPayment.payment_status !== "Paid" && (
+                  <button
+                    disabled={!reservationPaid}
+                    onClick={() => handlePayNow(downPayment.payment_id)}
+                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                  >
+                    Pay Now
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Final Payment */}
+          {finalPayment && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+              <div className="text-xs">
+                <span className="font-semibold text-[#2C1810] block">Final Payment</span>
+                <span className="text-[#2C1810]/50 block">Due: {formatDate(finalPayment.due_date)}</span>
+                <span className="text-[#C8922A] font-medium block">₱{Number(finalPayment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                  finalPayment.payment_status === "Paid"
+                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                    : "bg-[#C8922A]/15 text-[#C8922A]"
+                }`}>
+                  {finalPayment.payment_status}
+                </span>
+                {finalPayment.payment_status !== "Paid" && (
+                  <button
+                    disabled={!downPaymentPaid}
+                    onClick={() => handlePayNow(finalPayment.payment_id)}
+                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                  >
+                    Pay Now
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F0E8]">
@@ -323,36 +485,25 @@ export function CustomerDashboard() {
               ) : (
                 <div className="space-y-3">
                   {upcomingBookings.map((ev) => {
-                    const summary = parseBookingSummary(ev);
                     return (
                       <div
                         key={ev.booking_id}
-                        className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/10 bg-[#F5F0E8] p-4 md:flex-row md:items-center md:justify-between"
+                        className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/10 bg-[#F5F0E8] p-4"
                       >
-                        <div>
-                          <p className="font-['Playfair_Display'] text-[#2C1810]">
-                            {ev.package_name || `Booking #${ev.booking_id}`}
-                          </p>
-                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                            {formatDate(ev.event_date)} · {ev.start_time} · {ev.number_of_pax} guests
-                          </p>
-                          {summary.rejection_reason && (
-                            <span className="inline-block mt-2 px-2.5 py-1 rounded-full text-[10px] bg-[#C4541A]/10 text-[#C4541A] font-['Lato']">
-                              Rejected: {summary.rejection_reason}
-                            </span>
-                          )}
-                          {ev.booking_status === "Pending" && !summary.receipt_path && !summary.rejection_reason && (
-                            <Link
-                              to={`/payment-upload?booking_id=${ev.booking_id}`}
-                              className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-[10px] bg-[#C8922A]/10 text-[#C8922A] font-['Lato'] hover:bg-[#C8922A]/20"
-                            >
-                              <Upload size={10} /> Upload Receipt
-                            </Link>
-                          )}
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                              {ev.package_name || `Booking #${ev.booking_id}`}
+                            </p>
+                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                              {formatDate(ev.event_date)} · {ev.start_time} · {ev.number_of_pax} guests
+                            </p>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
+                            {ev.booking_status}
+                          </span>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}>
-                          {ev.booking_status}
-                        </span>
+                        {renderPaymentSchedule(ev)}
                       </div>
                     );
                   })}
@@ -377,53 +528,34 @@ export function CustomerDashboard() {
                 <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">No active bookings.</p>
               ) : (
                 upcomingBookings.map((ev) => {
-                  const summary = parseBookingSummary(ev);
                   return (
                     <div
                       key={ev.booking_id}
                       className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
                     >
-                      <div className="flex flex-wrap justify-between gap-3">
-                        <div>
-                          <p className="font-['Playfair_Display'] text-[#2C1810] text-lg">
-                            {ev.package_name || `Booking #${ev.booking_id}`}
-                          </p>
-                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                            {formatDate(ev.event_date)} at {ev.start_time}
-                          </p>
-                          <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                            {ev.number_of_pax} guests · {ev.type_name || ev.event_type_id}
-                          </p>
-                          {summary.rejection_reason && (
-                            <div className="mt-2 p-2 bg-[#C4541A]/10 rounded-lg">
-                              <p className="text-[#C4541A] text-xs font-['Lato'] flex items-center gap-1">
-                                <XCircle size={12} /> Rejected: {summary.rejection_reason}
-                              </p>
-                              <Link
-                                to={`/payment-upload?booking_id=${ev.booking_id}`}
-                                className="text-[#C8922A] text-xs font-['Lato'] hover:underline mt-1 inline-block"
-                              >
-                                Re-upload receipt →
-                              </Link>
-                            </div>
-                          )}
-                          {ev.booking_status === "Pending" && !summary.receipt_path && !summary.rejection_reason && (
-                            <Link
-                              to={`/payment-upload?booking_id=${ev.booking_id}`}
-                              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-xs bg-[#C8922A]/10 text-[#C8922A] font-['Lato'] hover:bg-[#C8922A]/20"
-                            >
-                              <Upload size={12} /> Upload Payment Receipt
-                            </Link>
-                          )}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                              {ev.package_name || `Booking #${ev.booking_id}`}
+                            </p>
+                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                              {formatDate(ev.event_date)} at {ev.start_time}
+                            </p>
+                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                              {ev.number_of_pax} guests · {ev.type_name || ev.event_type_id}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
+                              {ev.booking_status}
+                            </span>
+                            <span className="text-xs text-[#2C1810]/40 font-['Lato']">
+                              #BK{String(ev.booking_id).padStart(4, "0")}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
-                            {ev.booking_status}
-                          </span>
-                          <span className="text-xs text-[#2C1810]/40 font-['Lato']">
-                            #BK{String(ev.booking_id).padStart(4, "0")}
-                          </span>
-                        </div>
+                        {renderPaymentSchedule(ev)}
                       </div>
                     </div>
                   );
