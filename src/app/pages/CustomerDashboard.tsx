@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
-import { getBookingPayments, createCheckoutSession, type Payment } from "../api/paymentApi";
+import {
+  getBookingPayments,
+  createCheckoutSession,
+  type Payment,
+} from "../api/paymentApi";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -28,39 +32,57 @@ const TABS = [
 
 function getStatusStyle(status: string) {
   switch (status) {
-    case "Confirmed": return "bg-[#7A8C5C]/15 text-[#7A8C5C]";
-    case "Completed": return "bg-[#EDE8DF] text-[#2C1810]/60";
-    case "Cancelled": return "bg-[#C4541A]/10 text-[#C4541A]";
-    case "Rejected": return "bg-[#C4541A]/10 text-[#C4541A]";
-    default: return "bg-[#C8922A]/15 text-[#C8922A]";
+    case "Confirmed":
+      return "bg-[#7A8C5C]/15 text-[#7A8C5C]";
+    case "Completed":
+      return "bg-[#EDE8DF] text-[#2C1810]/60";
+    case "Cancelled":
+      return "bg-[#C4541A]/10 text-[#C4541A]";
+    case "Rejected":
+      return "bg-[#C4541A]/10 text-[#C4541A]";
+    default:
+      return "bg-[#C8922A]/15 text-[#C8922A]";
   }
 }
 
 function formatDate(dateStr: string) {
   if (!dateStr) return "—";
   try {
-    return new Date(dateStr).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
-  } catch { return dateStr; }
+    return new Date(dateStr).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
-function parseBookingSummary(booking: Booking): { rejection_reason?: string; receipt_path?: string } {
+function parseBookingSummary(booking: Booking): {
+  rejection_reason?: string;
+  receipt_path?: string;
+} {
   if (!booking.booking_summary) return {};
-  try { return JSON.parse(booking.booking_summary); } catch { return {}; }
+  try {
+    return JSON.parse(booking.booking_summary);
+  } catch {
+    return {};
+  }
 }
 
 export function CustomerDashboard() {
   const { user, accessToken, updateProfile } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
-  const [feedbackText, setFeedbackText] = useState("");
-  const [feedbackRating, setFeedbackRating] = useState(5);
-  const [feedbackSent, setFeedbackSent] = useState(false);
   const [savedAllergies, setSavedAllergies] = useState<string[]>(["Nuts"]);
 
   // Real bookings
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
 
-  const [paymentsByBooking, setPaymentsByBooking] = useState<Record<number, Payment[]>>({});
+  const [paymentsByBooking, setPaymentsByBooking] = useState<
+    Record<number, Payment[]>
+  >({});
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState({
@@ -72,11 +94,16 @@ export function CustomerDashboard() {
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
+  const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>(
+    {},
+  );
 
   // Fetch bookings
   useEffect(() => {
-    if (!accessToken) { setBookingsLoading(false); return; }
+    if (!accessToken) {
+      setBookingsLoading(false);
+      return;
+    }
     getCustomerBookings(accessToken)
       .then(async (res) => {
         setBookings(res.bookings);
@@ -84,31 +111,45 @@ export function CustomerDashboard() {
         await Promise.all(
           res.bookings.map(async (b) => {
             try {
-              const paymentsRes = await getBookingPayments(accessToken, b.booking_id);
+              const paymentsRes = await getBookingPayments(
+                accessToken,
+                b.booking_id,
+              );
               paymentsMap[b.booking_id] = paymentsRes.payments;
             } catch (err) {
-              console.error("Failed to load payments for booking:", b.booking_id, err);
+              console.error(
+                "Failed to load payments for booking:",
+                b.booking_id,
+                err,
+              );
             }
-          })
+          }),
         );
         setPaymentsByBooking(paymentsMap);
       })
-      .catch(err => console.error("Failed to load bookings:", err))
+      .catch((err) => console.error("Failed to load bookings:", err))
       .finally(() => setBookingsLoading(false));
   }, [accessToken]);
 
   // Derive upcoming vs past
   const todayStr = new Date().toLocaleDateString("en-CA");
-  const upcomingBookings = bookings.filter(b =>
-    (b.booking_status === "Pending" || b.booking_status === "Reserved" || b.booking_status === "Confirmed") &&
-    b.event_date.split('T')[0] >= todayStr
+  const upcomingBookings = bookings.filter(
+    (b) =>
+      (b.booking_status === "Pending" ||
+        b.booking_status === "Reserved" ||
+        b.booking_status === "Confirmed") &&
+      b.event_date.split("T")[0] >= todayStr,
   );
-  const pastBookings = bookings.filter(b =>
-    b.booking_status === "Completed" || 
-    b.booking_status === "Cancelled" ||
-    ((b.booking_status === "Pending" || b.booking_status === "Reserved" || b.booking_status === "Confirmed") && b.event_date.split('T')[0] < todayStr)
+  const pastBookings = bookings.filter(
+    (b) =>
+      b.booking_status === "Completed" ||
+      b.booking_status === "Cancelled" ||
+      ((b.booking_status === "Pending" ||
+        b.booking_status === "Reserved" ||
+        b.booking_status === "Confirmed") &&
+        b.event_date.split("T")[0] < todayStr),
   );
-  const rejectedBookings = bookings.filter(b => {
+  const rejectedBookings = bookings.filter((b) => {
     const summary = parseBookingSummary(b);
     return b.booking_status === "Pending" && summary.rejection_reason;
   });
@@ -137,7 +178,9 @@ export function CustomerDashboard() {
   // Get full name
   const getFullName = () => {
     if (!user) return "Guest User";
-    const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
+    const parts = [user.first_name, user.middle_name, user.last_name].filter(
+      Boolean,
+    );
     return parts.join(" ");
   };
 
@@ -158,10 +201,12 @@ export function CustomerDashboard() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch (error) {
-      if (error && typeof error === 'object' && 'fieldErrors' in error) {
+      if (error && typeof error === "object" && "fieldErrors" in error) {
         setSettingsErrors(error.fieldErrors as Record<string, string>);
       } else {
-        setSettingsErrors({ general: "Failed to update profile. Please try again." });
+        setSettingsErrors({
+          general: "Failed to update profile. Please try again.",
+        });
       }
     } finally {
       setSettingsSaving(false);
@@ -173,14 +218,19 @@ export function CustomerDashboard() {
       const res = await createCheckoutSession(accessToken!, paymentId);
       if (res.checkout_url) {
         // Store checkout info for the success page
-        sessionStorage.setItem('pending_payment', JSON.stringify({
-          paymentId,
-          checkoutId: res.checkout_id
-        }));
+        sessionStorage.setItem(
+          "pending_payment",
+          JSON.stringify({
+            paymentId,
+            checkoutId: res.checkout_id,
+          }),
+        );
         window.location.href = res.checkout_url;
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to initiate payment.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to initiate payment.",
+      );
     }
   };
 
@@ -210,9 +260,11 @@ export function CustomerDashboard() {
       );
     }
 
-    const reservation = payments.find(p => p.payment_type === "Reservation");
-    const downPayment = payments.find(p => p.payment_type === "DownPayment");
-    const finalPayment = payments.find(p => p.payment_type === "FinalPayment");
+    const reservation = payments.find((p) => p.payment_type === "Reservation");
+    const downPayment = payments.find((p) => p.payment_type === "DownPayment");
+    const finalPayment = payments.find(
+      (p) => p.payment_type === "FinalPayment",
+    );
 
     const reservationPaid = reservation?.payment_status === "Paid";
     const downPaymentPaid = downPayment?.payment_status === "Paid";
@@ -222,20 +274,35 @@ export function CustomerDashboard() {
         <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm mb-3 font-semibold">
           Payment Schedule
         </h4>
-        
+
         {/* Financial Info */}
         <div className="grid grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 mb-4 text-xs font-['Lato']">
           <div>
             <span className="text-[#2C1810]/50 block">Total Price</span>
-            <span className="text-[#2C1810] font-semibold">₱{Number(booking.total_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+            <span className="text-[#2C1810] font-semibold">
+              ₱
+              {Number(booking.total_price).toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+              })}
+            </span>
           </div>
           <div>
             <span className="text-[#2C1810]/50 block">Amount Paid</span>
-            <span className="text-[#7A8C5C] font-semibold">₱{Number(booking.amount_paid || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+            <span className="text-[#7A8C5C] font-semibold">
+              ₱
+              {Number(booking.amount_paid || 0).toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+              })}
+            </span>
           </div>
           <div>
             <span className="text-[#2C1810]/50 block">Remaining</span>
-            <span className="text-[#C4541A] font-semibold">₱{Number(booking.remaining_balance ?? booking.total_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+            <span className="text-[#C4541A] font-semibold">
+              ₱
+              {Number(
+                booking.remaining_balance ?? booking.total_price,
+              ).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+            </span>
           </div>
         </div>
 
@@ -244,16 +311,27 @@ export function CustomerDashboard() {
           {reservation && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
               <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">Reservation Fee</span>
-                <span className="text-[#2C1810]/50 block">Due: {formatDate(reservation.due_date)}</span>
-                <span className="text-[#C8922A] font-medium block">₱{Number(reservation.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-[#2C1810] block">
+                  Reservation Fee
+                </span>
+                <span className="text-[#2C1810]/50 block">
+                  Due: {formatDate(reservation.due_date)}
+                </span>
+                <span className="text-[#C8922A] font-medium block">
+                  ₱
+                  {Number(reservation.amount).toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                  reservation.payment_status === "Paid"
-                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                    : "bg-[#C8922A]/15 text-[#C8922A]"
-                }`}>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                    reservation.payment_status === "Paid"
+                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                      : "bg-[#C8922A]/15 text-[#C8922A]"
+                  }`}
+                >
                   {reservation.payment_status}
                 </span>
                 {reservation.payment_status !== "Paid" && (
@@ -272,16 +350,27 @@ export function CustomerDashboard() {
           {downPayment && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
               <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">Down Payment</span>
-                <span className="text-[#2C1810]/50 block">Due: {formatDate(downPayment.due_date)}</span>
-                <span className="text-[#C8922A] font-medium block">₱{Number(downPayment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-[#2C1810] block">
+                  Down Payment
+                </span>
+                <span className="text-[#2C1810]/50 block">
+                  Due: {formatDate(downPayment.due_date)}
+                </span>
+                <span className="text-[#C8922A] font-medium block">
+                  ₱
+                  {Number(downPayment.amount).toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                  downPayment.payment_status === "Paid"
-                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                    : "bg-[#C8922A]/15 text-[#C8922A]"
-                }`}>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                    downPayment.payment_status === "Paid"
+                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                      : "bg-[#C8922A]/15 text-[#C8922A]"
+                  }`}
+                >
                   {downPayment.payment_status}
                 </span>
                 {downPayment.payment_status !== "Paid" && (
@@ -301,16 +390,27 @@ export function CustomerDashboard() {
           {finalPayment && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
               <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">Final Payment</span>
-                <span className="text-[#2C1810]/50 block">Due: {formatDate(finalPayment.due_date)}</span>
-                <span className="text-[#C8922A] font-medium block">₱{Number(finalPayment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+                <span className="font-semibold text-[#2C1810] block">
+                  Final Payment
+                </span>
+                <span className="text-[#2C1810]/50 block">
+                  Due: {formatDate(finalPayment.due_date)}
+                </span>
+                <span className="text-[#C8922A] font-medium block">
+                  ₱
+                  {Number(finalPayment.amount).toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                  finalPayment.payment_status === "Paid"
-                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                    : "bg-[#C8922A]/15 text-[#C8922A]"
-                }`}>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                    finalPayment.payment_status === "Paid"
+                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                      : "bg-[#C8922A]/15 text-[#C8922A]"
+                  }`}
+                >
                   {finalPayment.payment_status}
                 </span>
                 {finalPayment.payment_status !== "Paid" && (
@@ -346,7 +446,7 @@ export function CustomerDashboard() {
                 {getFullName()}
               </p>
               <p className="text-[#C8922A] text-xs font-['Lato']">
-                {user?.role || 'Customer'} Account
+                {user?.role || "Customer"} Account
               </p>
             </div>
           </div>
@@ -374,10 +474,11 @@ export function CustomerDashboard() {
             <button
               key={t}
               onClick={() => setActiveTab(t)}
-              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${activeTab === t
-                ? "border-[#C8922A] text-[#C8922A]"
-                : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
-                }`}
+              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === t
+                  ? "border-[#C8922A] text-[#C8922A]"
+                  : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
+              }`}
             >
               {t}
             </button>
@@ -418,13 +519,21 @@ export function CustomerDashboard() {
                 {
                   icon: Calendar,
                   label: "Upcoming Events",
-                  value: bookingsLoading ? "…" : String(upcomingBookings.length),
+                  value: bookingsLoading
+                    ? "…"
+                    : String(upcomingBookings.length),
                   color: "#C8922A",
                 },
                 {
                   icon: CheckCircle,
                   label: "Completed Events",
-                  value: bookingsLoading ? "…" : String(pastBookings.filter(b => b.booking_status === "Completed").length),
+                  value: bookingsLoading
+                    ? "…"
+                    : String(
+                        pastBookings.filter(
+                          (b) => b.booking_status === "Completed",
+                        ).length,
+                      ),
                   color: "#7A8C5C",
                 },
                 {
@@ -479,8 +588,15 @@ export function CustomerDashboard() {
                 </div>
               ) : upcomingBookings.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm">No upcoming events yet.</p>
-                  <Link to="/package-selection" className="text-[#C8922A] text-sm font-['Lato'] hover:underline mt-1 inline-block">Book your first event →</Link>
+                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
+                    No upcoming events yet.
+                  </p>
+                  <Link
+                    to="/package-selection"
+                    className="text-[#C8922A] text-sm font-['Lato'] hover:underline mt-1 inline-block"
+                  >
+                    Book your first event →
+                  </Link>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -496,10 +612,13 @@ export function CustomerDashboard() {
                               {ev.package_name || `Booking #${ev.booking_id}`}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} · {ev.start_time} · {ev.number_of_pax} guests
+                              {formatDate(ev.event_date)} · {ev.start_time} ·{" "}
+                              {ev.number_of_pax} guests
                             </p>
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                          >
                             {ev.booking_status}
                           </span>
                         </div>
@@ -525,7 +644,9 @@ export function CustomerDashboard() {
                   <Loader2 size={24} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : upcomingBookings.length === 0 ? (
-                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">No active bookings.</p>
+                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
+                  No active bookings.
+                </p>
               ) : (
                 upcomingBookings.map((ev) => {
                   return (
@@ -543,11 +664,14 @@ export function CustomerDashboard() {
                               {formatDate(ev.event_date)} at {ev.start_time}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {ev.number_of_pax} guests · {ev.type_name || ev.event_type_id}
+                              {ev.number_of_pax} guests ·{" "}
+                              {ev.type_name || ev.event_type_id}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                            >
                               {ev.booking_status}
                             </span>
                             <span className="text-xs text-[#2C1810]/40 font-['Lato']">
@@ -572,7 +696,9 @@ export function CustomerDashboard() {
                   <Loader2 size={24} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : pastBookings.length === 0 ? (
-                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">No past bookings yet.</p>
+                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
+                  No past bookings yet.
+                </p>
               ) : (
                 pastBookings.map((ev) => (
                   <div
@@ -587,7 +713,9 @@ export function CustomerDashboard() {
                         {formatDate(ev.event_date)} · {ev.number_of_pax} guests
                       </p>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}
+                    >
                       {ev.booking_status}
                     </span>
                   </div>
@@ -612,10 +740,11 @@ export function CustomerDashboard() {
                 <button
                   key={a}
                   onClick={() => toggleAllergy(a)}
-                  className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${savedAllergies.includes(a)
-                    ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
-                    : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
-                    }`}
+                  className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${
+                    savedAllergies.includes(a)
+                      ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
+                      : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
+                  }`}
                 >
                   {a}
                 </button>
@@ -631,79 +760,54 @@ export function CustomerDashboard() {
         {activeTab === "Feedback" && (
           <div className="max-w-xl bg-white rounded-2xl p-7 shadow-sm">
             <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-2">
-              Submit Feedback
+              Leave a Review
             </h3>
             <p className="text-[#2C1810]/55 text-sm font-['Lato'] mb-6">
               Share your experience to help us improve and help other guests.
             </p>
-            {feedbackSent ? (
+
+            {pastBookings.filter((b) => b.booking_status === "Completed")
+              .length === 0 ? (
               <div className="text-center py-8">
-                <CheckCircle
+                <MessageSquare
                   size={36}
-                  className="text-[#7A8C5C] mx-auto mb-3"
+                  className="text-[#2C1810]/20 mx-auto mb-3"
                 />
-                <p className="font-['Playfair_Display'] text-[#2C1810] text-xl">
-                  Thank You!
+                <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
+                  You don't have any completed events yet.
                 </p>
-                <p className="text-[#2C1810]/55 text-sm font-['Lato'] mt-2">
-                  Your feedback has been submitted and will be reviewed by Chef
-                  Ramos.
+                <p className="text-[#2C1810]/30 font-['Lato'] text-xs mt-1">
+                  Feedback can be submitted once your event is completed.
                 </p>
               </div>
             ) : (
-              <>
-                <div className="mb-5">
-                  <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
-                    Your Rating
-                  </label>
-                  <div className="flex gap-2">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <button key={i} onClick={() => setFeedbackRating(i + 1)}>
-                        <Star
-                          size={24}
-                          className={
-                            i < feedbackRating
-                              ? "text-[#C8922A] fill-[#C8922A]"
-                              : "text-[#C8922A]/25"
-                          }
-                        />
+              <div className="space-y-3">
+                {pastBookings
+                  .filter((b) => b.booking_status === "Completed")
+                  .map((ev) => (
+                    <div
+                      key={ev.booking_id}
+                      className="flex items-center justify-between p-4 rounded-xl border border-[#C8922A]/10 bg-[#F5F0E8] hover:border-[#C8922A]/30 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold truncate">
+                          {ev.package_name || `Booking #${ev.booking_id}`}
+                        </p>
+                        <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-0.5">
+                          {formatDate(ev.event_date)} · {ev.number_of_pax}{" "}
+                          guests
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/feedback/${ev.booking_id}`)}
+                        className="ml-3 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 transition-opacity whitespace-nowrap flex items-center gap-1.5"
+                      >
+                        <Star size={12} />
+                        Rate Event
                       </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mb-5">
-                  <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
-                    Event Package
-                  </label>
-                  <select className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']">
-                    {pastBookings.length === 0 ? (
-                      <option>No past events</option>
-                    ) : (
-                      pastBookings.map((ev) => (
-                        <option key={ev.booking_id}>{ev.package_name || `Booking #${ev.booking_id}`}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-                <div className="mb-6">
-                  <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
-                    Your Review
-                  </label>
-                  <textarea
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    placeholder="Tell us about your experience — the food, service, ambiance..."
-                    rows={5}
-                    className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
-                  />
-                </div>
-                <button
-                  onClick={() => setFeedbackSent(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 flex items-center gap-2"
-                >
-                  <MessageSquare size={16} /> Submit Feedback
-                </button>
-              </>
+                    </div>
+                  ))}
+              </div>
             )}
           </div>
         )}
@@ -759,12 +863,22 @@ export function CustomerDashboard() {
                 <input
                   type="text"
                   value={settingsForm.first_name}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, first_name: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.first_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                    }`}
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      first_name: e.target.value,
+                    })
+                  }
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.first_name
+                      ? "border-[#C4541A]"
+                      : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                  }`}
                 />
                 {settingsErrors.first_name && (
-                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.first_name}</p>
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                    {settingsErrors.first_name}
+                  </p>
                 )}
               </div>
               <div>
@@ -774,7 +888,12 @@ export function CustomerDashboard() {
                 <input
                   type="text"
                   value={settingsForm.middle_name}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, middle_name: e.target.value })}
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      middle_name: e.target.value,
+                    })
+                  }
                   className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                 />
               </div>
@@ -785,12 +904,22 @@ export function CustomerDashboard() {
                 <input
                   type="text"
                   value={settingsForm.last_name}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, last_name: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.last_name ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                    }`}
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      last_name: e.target.value,
+                    })
+                  }
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.last_name
+                      ? "border-[#C4541A]"
+                      : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                  }`}
                 />
                 {settingsErrors.last_name && (
-                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.last_name}</p>
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                    {settingsErrors.last_name}
+                  </p>
                 )}
               </div>
               <div>
@@ -800,12 +929,19 @@ export function CustomerDashboard() {
                 <input
                   type="email"
                   value={settingsForm.email}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, email: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.email ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                    }`}
+                  onChange={(e) =>
+                    setSettingsForm({ ...settingsForm, email: e.target.value })
+                  }
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.email
+                      ? "border-[#C4541A]"
+                      : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                  }`}
                 />
                 {settingsErrors.email && (
-                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.email}</p>
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                    {settingsErrors.email}
+                  </p>
                 )}
               </div>
               <div>
@@ -815,12 +951,22 @@ export function CustomerDashboard() {
                 <input
                   type="tel"
                   value={settingsForm.phone_number}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, phone_number: e.target.value })}
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${settingsErrors.phone_number ? 'border-[#C4541A]' : 'border-[#C8922A]/20 focus:border-[#C8922A]'
-                    }`}
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      phone_number: e.target.value,
+                    })
+                  }
+                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                    settingsErrors.phone_number
+                      ? "border-[#C4541A]"
+                      : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                  }`}
                 />
                 {settingsErrors.phone_number && (
-                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">{settingsErrors.phone_number}</p>
+                  <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                    {settingsErrors.phone_number}
+                  </p>
                 )}
               </div>
               <button
@@ -833,7 +979,7 @@ export function CustomerDashboard() {
                     <Loader2 size={16} className="animate-spin" /> Saving...
                   </>
                 ) : (
-                  'Save Changes'
+                  "Save Changes"
                 )}
               </button>
             </div>

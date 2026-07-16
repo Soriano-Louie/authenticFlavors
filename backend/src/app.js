@@ -7,6 +7,7 @@ import { authRouter } from "./routes/authRoutes.js";
 import { packageRouter } from "./routes/packageRoutes.js";
 import { bookingRouter } from "./routes/bookingRoutes.js";
 import { paymentRouter } from "./routes/paymentRoutes.js";
+import { feedbackRouter } from "./routes/feedbackRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -14,7 +15,11 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || env.nodeEnv === "development" || env.corsOrigins.includes(origin)) {
+        if (
+          !origin ||
+          env.nodeEnv === "development" ||
+          env.corsOrigins.includes(origin)
+        ) {
           callback(null, true);
           return;
         }
@@ -37,6 +42,7 @@ export function createApp() {
   app.use("/api", packageRouter);
   app.use("/api", bookingRouter);
   app.use("/api/payments", paymentRouter);
+  app.use("/api", feedbackRouter);
 
   app.use((err, _req, res, _next) => {
     console.error(err);

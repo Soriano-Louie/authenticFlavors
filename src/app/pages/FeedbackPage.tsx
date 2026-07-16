@@ -1,197 +1,429 @@
-import { useState } from "react";
-import { Star, TrendingUp, ThumbsUp, Smile, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router";
+import { useAuth } from "../auth/AuthContext";
+import { getCustomerBookings, type Booking } from "../api/bookingApi";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
-} from "recharts";
-import { TESTIMONIALS, ANALYTICS, FEEDBACK_DATA } from "../data/mockData";
+  createFeedback,
+  checkFeedbackExists,
+  getFeedback,
+} from "../api/feedbackApi";
+import { StarRating } from "../components/StarRating";
+import {
+  Loader2,
+  CheckCircle,
+  Calendar,
+  MapPin,
+  Users,
+  Clock,
+  ArrowLeft,
+} from "lucide-react";
 
-const PIE_COLORS = ["#C8922A", "#C4541A", "#7A8C5C", "#EDE8DF50", "#2C1810"];
+function formatDate(dateStr: string) {
+  if (!dateStr) return "—";
+  try {
+    return new Date(dateStr).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatTime(timeStr: string) {
+  if (!timeStr) return "—";
+  try {
+    // Handle HH:MM:SS or HH:MM format
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    if (isNaN(hours)) return timeStr;
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const h = hours % 12 || 12;
+    return `${h}:${String(minutes).padStart(2, "0")} ${ampm}`;
+  } catch {
+    return timeStr;
+  }
+}
 
 export function FeedbackPage() {
-  const [filter, setFilter] = useState<"all" | "positive" | "neutral">("all");
+  const { bookingId: rawBookingId } = useParams<{ bookingId: string }>();
+  const bookingId = rawBookingId ?? "";
+  const navigate = useNavigate();
+  const { user, accessToken } = useAuth();
 
-  const filtered = filter === "all" ? FEEDBACK_DATA : FEEDBACK_DATA.filter((f) => f.sentiment === filter);
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
 
-  return (
-    <div>
-      {/* Hero */}
-      <section className="bg-[#2C1810] pt-16 pb-12 px-4 text-center">
-        <p className="text-[#C8922A] text-xs tracking-widest uppercase font-['Lato'] mb-3">✦ Feedback & Analysis</p>
-        <h1 className="font-['Playfair_Display'] text-[#F5F0E8] mb-3" style={{ fontSize: "clamp(1.8rem, 4vw, 3rem)", fontWeight: 600 }}>
-          What Our Guests Say
-        </h1>
-        <p className="text-[#F5F0E8]/60 font-['Lato'] max-w-xl mx-auto text-sm leading-relaxed">
-          Real reviews from real celebrations — powered by AI sentiment analysis to continuously improve your experience.
-        </p>
-      </section>
+  // Feedback form state
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-      {/* AI Summary Banner */}
-      <section className="bg-gradient-to-r from-[#C8922A] to-[#C4541A] py-5 px-4">
-        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
-              <TrendingUp size={18} className="text-[#F5F0E8]" />
-            </div>
-            <div>
-              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">AI Sentiment Summary</p>
-              <p className="text-[#F5F0E8]/80 text-xs font-['Lato']">Updated in real-time based on all customer reviews</p>
-            </div>
+  // Success state
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedFeedback, setSubmittedFeedback] = useState<{
+    rating: number;
+    comment: string | null;
+    submitted_at: string;
+  } | null>(null);
+
+  // Load booking and check existing feedback
+  useEffect(() => {
+    if (!accessToken || !bookingId) return;
+
+    const parsedId = Number(bookingId);
+    if (!parsedId || isNaN(parsedId)) {
+      setPageError("Invalid booking ID.");
+      setPageLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      try {
+        // Fetch all customer bookings and find the matching one
+        const res = await getCustomerBookings(accessToken!);
+        const found = res.bookings.find((b) => b.booking_id === parsedId);
+
+        if (!found) {
+          setPageError(
+            "Booking not found. Please check the booking ID and try again.",
+          );
+          setPageLoading(false);
+          return;
+        }
+
+        setBooking(found);
+
+        // Check if feedback already exists
+        const checkRes = await checkFeedbackExists(accessToken!, parsedId);
+        if (checkRes.exists) {
+          // Feedback already submitted - show success state
+          try {
+            const feedbackRes = await getFeedback(accessToken!, parsedId);
+            if (!cancelled) {
+              setSubmitted(true);
+              setSubmittedFeedback({
+                rating: feedbackRes.feedback.rating,
+                comment: feedbackRes.feedback.comment,
+                submitted_at: feedbackRes.feedback.submitted_at,
+              });
+            }
+          } catch {
+            // If we can't fetch the existing feedback, still show success
+            if (!cancelled) {
+              setSubmitted(true);
+              setSubmittedFeedback(null);
+            }
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPageError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load booking details. Please try again later.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setPageLoading(false);
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, bookingId]);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!accessToken && !user) {
+      navigate("/auth", { replace: true });
+    }
+  }, [accessToken, user, navigate]);
+
+  const handleSubmit = async () => {
+    if (!accessToken || !bookingId || rating < 1) return;
+
+    // Prevent duplicate clicks
+    if (submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    // Preserve entered values on failure
+    const preservedRating = rating;
+    const preservedComment = comment;
+
+    try {
+      const trimmedComment = comment.trim() || undefined;
+      const res = await createFeedback(accessToken, {
+        booking_id: Number(bookingId),
+        rating: preservedRating,
+        comment: trimmedComment,
+      });
+
+      setSubmitted(true);
+      setSubmittedFeedback({
+        rating: res.feedback.rating,
+        comment: res.feedback.comment,
+        submitted_at: res.feedback.submitted_at,
+      });
+    } catch (err) {
+      setRating(preservedRating);
+      setComment(preservedComment);
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit feedback. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const commentLength = comment.trim().length;
+
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-[#C8922A]" />
+      </div>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl p-8 shadow-sm max-w-md w-full text-center">
+          <div className="w-16 h-16 rounded-full bg-[#C4541A]/10 flex items-center justify-center mx-auto mb-4">
+            <span className="text-[#C4541A] text-2xl font-bold">!</span>
           </div>
-          <div className="flex gap-4 flex-wrap">
-            {[
-              { icon: ThumbsUp, label: "Positive", value: "87%" },
-              { icon: Smile, label: "Neutral", value: "10%" },
-              { icon: AlertCircle, label: "Negative", value: "3%" },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-1.5">
-                <Icon size={14} className="text-[#F5F0E8]" />
-                <span className="text-[#F5F0E8] text-sm font-['Lato']">{label}: <strong>{value}</strong></span>
+          <h2 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-3">
+            Something went wrong
+          </h2>
+          <p className="text-[#2C1810]/60 font-['Lato'] text-sm mb-6">
+            {pageError}
+          </p>
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Success state — show thank you card with read-only feedback details
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center px-4 py-12">
+        <div className="bg-white rounded-2xl p-8 shadow-sm max-w-lg w-full">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 rounded-full bg-[#7A8C5C]/10 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} className="text-[#7A8C5C]" />
+            </div>
+            <h2 className="font-['Playfair_Display'] text-[#2C1810] text-2xl mb-2">
+              Thank you for your feedback!
+            </h2>
+            <p className="text-[#2C1810]/60 font-['Lato'] text-sm">
+              Your feedback has been submitted successfully.
+            </p>
+          </div>
+
+          {submittedFeedback && (
+            <div className="bg-[#F5F0E8] rounded-xl p-5 space-y-4">
+              <div>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50 uppercase tracking-wider mb-1.5">
+                  Rating
+                </p>
+                <StarRating
+                  rating={submittedFeedback.rating}
+                  onChange={() => {}}
+                  disabled
+                />
               </div>
-            ))}
+
+              {submittedFeedback.comment && (
+                <div>
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/50 uppercase tracking-wider mb-1.5">
+                    Comment
+                  </p>
+                  <p className="text-[#2C1810]/80 font-['Lato'] text-sm leading-relaxed">
+                    "{submittedFeedback.comment}"
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50 uppercase tracking-wider mb-1.5">
+                  Submitted
+                </p>
+                <p className="text-[#2C1810]/70 font-['Lato'] text-sm">
+                  {formatDate(submittedFeedback.submitted_at)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex-1 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+            >
+              Back to Dashboard
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="flex-1 px-6 py-2.5 border border-[#C8922A]/30 text-[#2C1810]/70 rounded-full text-sm font-['Lato'] hover:border-[#C8922A] transition-colors"
+            >
+              Go to Home
+            </button>
           </div>
         </div>
-      </section>
+      </div>
+    );
+  }
 
-      <div className="bg-[#F5F0E8] py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-          {/* Charts */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">Satisfaction by Event Type</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={ANALYTICS.satisfactionByEventType}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#EDE8DF" />
-                  <XAxis dataKey="type" tick={{ fontSize: 11, fill: "#2C181070" }} />
-                  <YAxis domain={[4, 5.2]} tick={{ fontSize: 11, fill: "#2C181070" }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #C8922A30", fontFamily: "Lato" }}
-                    formatter={(v: number) => [`${v} / 5.0`, "Score"]}
-                  />
-                  <Bar dataKey="score" fill="#C8922A" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+  // Feedback form
+  return (
+    <div className="min-h-screen bg-[#F5F0E8] py-12 px-4">
+      <div className="max-w-2xl mx-auto">
+        {/* Back button */}
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="flex items-center gap-1.5 text-[#2C1810]/50 hover:text-[#C8922A] text-sm font-['Lato'] mb-6 transition-colors"
+        >
+          <ArrowLeft size={16} />
+          Back to Dashboard
+        </button>
 
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">Rating Distribution</h3>
-              <div className="flex items-center gap-6">
-                <ResponsiveContainer width="60%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={ANALYTICS.ratingDistribution}
-                      dataKey="count"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={90}
-                    >
-                      {ANALYTICS.ratingDistribution.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: "8px", fontFamily: "Lato", fontSize: 12 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2">
-                  {ANALYTICS.ratingDistribution.map((r, i) => (
-                    <div key={r.rating} className="flex items-center gap-2 text-xs font-['Lato']">
-                      <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: PIE_COLORS[i] }} />
-                      <span className="text-[#2C1810]/70">{r.rating}</span>
-                      <span className="text-[#2C1810] font-medium">{r.count}</span>
-                    </div>
-                  ))}
-                </div>
+        {/* Booking Info Card */}
+        {booking && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#C8922A]/10 mb-8">
+            <h2 className="font-['Playfair_Display'] text-[#2C1810] text-lg mb-4 font-semibold">
+              {booking.package_name || `Booking #${booking.booking_id}`}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-2.5">
+                <Calendar size={16} className="text-[#C8922A] shrink-0" />
+                <span className="text-sm font-['Lato'] text-[#2C1810]/70">
+                  {formatDate(booking.event_date)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Clock size={16} className="text-[#C8922A] shrink-0" />
+                <span className="text-sm font-['Lato'] text-[#2C1810]/70">
+                  {formatTime(booking.start_time)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <MapPin size={16} className="text-[#C8922A] shrink-0" />
+                <span className="text-sm font-['Lato'] text-[#2C1810]/70">
+                  {booking.setup_name || "Standard Setup"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Users size={16} className="text-[#C8922A] shrink-0" />
+                <span className="text-sm font-['Lato'] text-[#2C1810]/70">
+                  {booking.number_of_pax} Guest
+                  {booking.number_of_pax > 1 ? "s" : ""}
+                </span>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Testimonials Highlight */}
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-['Playfair_Display'] text-[#2C1810]" style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.8rem)", fontWeight: 600 }}>
-                Featured Reviews
-              </h2>
-              <div className="flex items-center gap-1">
-                <Star size={16} className="text-[#C8922A] fill-[#C8922A]" />
-                <span className="text-[#2C1810] font-['Playfair_Display']">4.9</span>
-                <span className="text-[#2C1810]/50 text-sm font-['Lato']">/ 5.0 avg</span>
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {TESTIMONIALS.map((t) => (
-                <div key={t.id} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow border border-[#C8922A]/5">
-                  <div className="flex gap-1 mb-4">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} size={14} className={i < t.rating ? "text-[#C8922A] fill-[#C8922A]" : "text-[#C8922A]/20"} />
-                    ))}
-                  </div>
-                  <p className="text-[#2C1810]/75 text-sm font-['Lato'] leading-relaxed mb-5 italic">"{t.text}"</p>
-                  <div className="flex items-center gap-3 pt-4 border-t border-[#C8922A]/10">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center shrink-0">
-                      <span className="text-[#F5F0E8] text-sm font-['Playfair_Display']">{t.avatar}</span>
-                    </div>
-                    <div>
-                      <p className="text-[#2C1810] text-sm font-['Playfair_Display']">{t.name}</p>
-                      <p className="text-[#C8922A]/80 text-xs font-['Lato']">{t.event}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* Feedback Form Card */}
+        <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-[#C8922A]/10">
+          <div className="text-center mb-8">
+            <h1 className="font-['Playfair_Display'] text-[#2C1810] text-2xl sm:text-3xl mb-3">
+              How was your experience?
+            </h1>
+            <p className="text-[#2C1810]/60 font-['Lato'] text-sm max-w-md mx-auto">
+              We value your feedback. Your experience helps us improve our
+              catering services.
+            </p>
           </div>
 
-          {/* Detailed Feedback with Sentiment Filter */}
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              <h2 className="font-['Playfair_Display'] text-[#2C1810]" style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.8rem)", fontWeight: 600 }}>
-                All Feedback
-              </h2>
-              <div className="flex gap-2">
-                {(["all", "positive", "neutral"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`px-4 py-1.5 rounded-full text-sm font-['Lato'] capitalize transition-colors ${
-                      filter === f
-                        ? "bg-[#C8922A] text-[#F5F0E8]"
-                        : "bg-white border border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
-                    }`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {filtered.map((f) => (
-                <div key={f.id} className={`bg-white rounded-2xl p-5 shadow-sm border ${f.sentiment === "positive" ? "border-[#7A8C5C]/15" : "border-[#C8922A]/15"}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-                        <span className="text-[#F5F0E8] text-sm font-['Playfair_Display']">{f.customer.charAt(0)}</span>
-                      </div>
-                      <div>
-                        <p className="font-['Playfair_Display'] text-[#2C1810]">{f.customer}</p>
-                        <p className="text-[#2C1810]/50 text-xs font-['Lato']">{f.event} · {f.date}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-0.5">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} size={13} className={i < f.rating ? "text-[#C8922A] fill-[#C8922A]" : "text-[#C8922A]/20"} />
-                        ))}
-                      </div>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-['Lato'] capitalize ${f.sentiment === "positive" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C8922A]/15 text-[#C8922A]"}`}>
-                        {f.sentiment}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-[#2C1810]/70 font-['Lato'] text-sm leading-relaxed">"{f.comment}"</p>
-                </div>
-              ))}
-            </div>
+          {/* Rating */}
+          <div className="mb-8">
+            <label className="block text-sm font-['Lato'] text-[#2C1810]/60 mb-3 text-center">
+              Your Rating
+            </label>
+            <StarRating rating={rating} onChange={setRating} />
           </div>
+
+          {/* Comment */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label
+                htmlFor="feedback-comment"
+                className="text-sm font-['Lato'] text-[#2C1810]/60"
+              >
+                Your Review{" "}
+                <span className="text-[#2C1810]/30">(Optional)</span>
+              </label>
+              <span
+                className={`text-xs font-['Lato'] ${
+                  commentLength > 1000 ? "text-[#C4541A]" : "text-[#2C1810]/40"
+                }`}
+              >
+                {commentLength}/1000
+              </span>
+            </div>
+            <textarea
+              id="feedback-comment"
+              value={comment}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val.length <= 1000) {
+                  setComment(val);
+                }
+              }}
+              onBlur={() => {
+                // Trim leading/trailing spaces automatically on blur
+                setComment((prev) => prev.trim());
+              }}
+              placeholder="Tell us about your experience with our food, service, staff, and event."
+              rows={5}
+              maxLength={1000}
+              className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none transition-colors"
+            />
+          </div>
+
+          {/* Submit Error */}
+          {submitError && (
+            <div className="mb-6 p-4 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl">
+              <p className="text-[#C4541A] text-sm font-['Lato']">
+                {submitError}
+              </p>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            onClick={handleSubmit}
+            disabled={rating < 1 || submitting}
+            className="w-full px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          >
+            {submitting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Feedback"
+            )}
+          </button>
         </div>
       </div>
     </div>

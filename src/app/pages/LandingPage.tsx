@@ -44,21 +44,47 @@ const CAROUSEL_EVENTS = [
   },
 ];
 
+/**
+ * Normalize any date value to a 'YYYY-MM-DD' string in local time.
+ * Handles:
+ *   - ISO strings like "2026-07-16T16:00:00.000Z" (timezone-shifted)
+ *   - Already-correct strings like "2026-07-17" (from DATE_FORMAT)
+ *   - Date objects
+ */
+function toLocalDateStr(value: string | Date): string {
+  if (!value) return "";
+  // If it's already a plain YYYY-MM-DD string, return as-is
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  // If it's an ISO string or Date object, construct local date parts directly
+  // to avoid timezone shifting from Date.parse / JSON serialization
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (isNaN(d.getTime())) return String(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
+/** Parse a 'YYYY-MM-DD' string into a local-tz Date (no shift). */
+function localDateFromStr(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 
 export function LandingPage() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [showAllEvents, setShowAllEvents] = useState(false);
-  
+
   // Statistics state
   const [statistics, setStatistics] = useState<HomepageStatistics | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(true);
   const [statisticsError, setStatisticsError] = useState<string | null>(null);
-  
+
   // Upcoming events state
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [upcomingEventsLoading, setUpcomingEventsLoading] = useState(true);
-  const [upcomingEventsError, setUpcomingEventsError] = useState<string | null>(null);
+  const [upcomingEventsError, setUpcomingEventsError] = useState<string | null>(
+    null,
+  );
   const [selectedDate, setSelectedDate] = useState<string>("");
 
   // Fetch statistics on mount
@@ -69,12 +95,14 @@ export function LandingPage() {
         const data = await getHomepageStatistics();
         setStatistics(data.statistics);
       } catch (error) {
-        setStatisticsError(error instanceof Error ? error.message : "Failed to load statistics");
+        setStatisticsError(
+          error instanceof Error ? error.message : "Failed to load statistics",
+        );
       } finally {
         setStatisticsLoading(false);
       }
     }
-    
+
     fetchStatistics();
   }, []);
 
@@ -84,18 +112,27 @@ export function LandingPage() {
       try {
         setUpcomingEventsLoading(true);
         const data = await getUpcomingEvents();
-        setUpcomingEvents(data.events);
+        const events = data.events.map((ev) => ({
+          ...ev,
+          // Normalize the event_date to a local YYYY-MM-DD string immediately
+          event_date: toLocalDateStr(ev.event_date),
+        }));
+        setUpcomingEvents(events);
         // Set selected date to first event if available
-        if (data.events.length > 0) {
-          setSelectedDate(data.events[0].event_date);
+        if (events.length > 0) {
+          setSelectedDate(events[0].event_date);
         }
       } catch (error) {
-        setUpcomingEventsError(error instanceof Error ? error.message : "Failed to load upcoming events");
+        setUpcomingEventsError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load upcoming events",
+        );
       } finally {
         setUpcomingEventsLoading(false);
       }
     }
-    
+
     fetchUpcomingEvents();
   }, []);
 
@@ -125,35 +162,45 @@ export function LandingPage() {
     }
 
     return [
-      { 
-        icon: Calendar, 
-        label: "Events Hosted", 
-        value: statistics.eventsHosted.toLocaleString() 
+      {
+        icon: Calendar,
+        label: "Events Hosted",
+        value: statistics.eventsHosted.toLocaleString(),
       },
-      { 
-        icon: Users, 
-        label: "Happy Guests", 
-        value: statistics.happyGuests.toLocaleString() 
+      {
+        icon: Users,
+        label: "Happy Guests",
+        value: statistics.happyGuests.toLocaleString(),
       },
-      { 
-        icon: Award, 
-        label: "Years of Excellence", 
-        value: statistics.yearsOfExcellence.toString() 
+      {
+        icon: Award,
+        label: "Years of Excellence",
+        value: statistics.yearsOfExcellence.toString(),
       },
-      { 
-        icon: Star, 
-        label: "Average Rating", 
-        value: statistics.averageRating ? `${statistics.averageRating.toFixed(1)}★` : "N/A" 
+      {
+        icon: Star,
+        label: "Average Rating",
+        value: statistics.averageRating
+          ? `${statistics.averageRating.toFixed(1)}★`
+          : "N/A",
       },
     ];
   };
 
   const currentStats = getStatsDisplay();
 
-  // Calendar logic for upcoming events
+  // Calendar logic for upcoming events (dates are already normalized to YYYY-MM-DD)
   const currentMonth = new Date();
-  const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+  const monthStart = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth(),
+    1,
+  );
+  const daysInMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth() + 1,
+    0,
+  ).getDate();
   const firstDay = monthStart.getDay();
   const monthLabel = monthStart.toLocaleDateString("en-US", {
     month: "long",
@@ -161,7 +208,7 @@ export function LandingPage() {
   });
 
   // Get unique event dates from upcoming events
-  const eventDates = upcomingEvents.map(event => event.event_date.split('T')[0]);
+  const eventDates = upcomingEvents.map((event) => event.event_date);
 
   const calendarDays = [
     ...Array.from({ length: firstDay }, () => null),
@@ -178,8 +225,12 @@ export function LandingPage() {
     }),
   ];
 
-  const selectedEvent = upcomingEvents.find(event => event.event_date.split('T')[0] === selectedDate);
-  const visibleEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 3);
+  const selectedEvent = upcomingEvents.find(
+    (event) => event.event_date === selectedDate,
+  );
+  const visibleEvents = showAllEvents
+    ? upcomingEvents
+    : upcomingEvents.slice(0, 3);
 
   return (
     <div>
@@ -488,16 +539,25 @@ export function LandingPage() {
             <div className="rounded-3xl border border-[#C8922A]/20 bg-[#F5F0E8] p-6 sm:p-8 shadow-sm">
               {upcomingEventsLoading ? (
                 <div className="text-center py-8">
-                  <Loader2 size={32} className="animate-spin text-[#C8922A] mx-auto mb-3" />
-                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">Loading events...</p>
+                  <Loader2
+                    size={32}
+                    className="animate-spin text-[#C8922A] mx-auto mb-3"
+                  />
+                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">
+                    Loading events...
+                  </p>
                 </div>
               ) : upcomingEventsError ? (
                 <div className="text-center py-8">
-                  <p className="text-[#C4541A] text-sm font-['Lato'] mb-3">{upcomingEventsError}</p>
+                  <p className="text-[#C4541A] text-sm font-['Lato'] mb-3">
+                    {upcomingEventsError}
+                  </p>
                 </div>
               ) : upcomingEvents.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">No upcoming events scheduled.</p>
+                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">
+                    No upcoming events scheduled.
+                  </p>
                 </div>
               ) : (
                 <>
@@ -505,23 +565,30 @@ export function LandingPage() {
                     {selectedDate ? "Selected day" : "Upcoming events"}
                   </p>
                   <h3 className="mt-2 font-['Playfair_Display'] text-2xl text-[#2C1810]">
-                    {selectedDate ? new Date(selectedDate).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    }) : "All Events"}
+                    {selectedDate
+                      ? (() => {
+                          const dateObj = localDateFromStr(selectedDate);
+                          return dateObj.toLocaleDateString("en-US", {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                          });
+                        })()
+                      : "All Events"}
                   </h3>
-                  
+
                   <div className="mt-6 space-y-3">
-                    {(selectedDate 
-                      ? upcomingEvents.filter(event => event.event_date.split('T')[0] === selectedDate)
+                    {(selectedDate
+                      ? upcomingEvents.filter(
+                          (event) => event.event_date === selectedDate,
+                        )
                       : visibleEvents
                     ).map((event) => (
                       <button
                         key={event.booking_id}
                         type="button"
-                        onClick={() => setSelectedDate(event.event_date.split('T')[0])}
-                        className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date.split('T')[0] ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
+                        onClick={() => setSelectedDate(event.event_date)}
+                        className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -534,10 +601,15 @@ export function LandingPage() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
-                              {new Date(event.event_date).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                              })}
+                              {(() => {
+                                const dateObj = localDateFromStr(
+                                  event.event_date,
+                                );
+                                return dateObj.toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                });
+                              })()}
                             </p>
                             <p className="text-xs font-['Lato'] text-[#2C1810]/60">
                               {event.start_time}
@@ -552,7 +624,6 @@ export function LandingPage() {
                   </div>
                 </>
               )}
-
 
               {upcomingEvents.length > 3 && (
                 <button
