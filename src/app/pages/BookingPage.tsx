@@ -477,7 +477,16 @@ export function BookingPage() {
                   <input
                     type="date"
                     value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const [y, m, d] = value.split("-").map(Number);
+                      if (y && m && d && new Date(y, m - 1, d).getDay() === 1) {
+                        setSubmitError("The store is closed on Mondays. Please pick another date.");
+                        return;
+                      }
+                      setSubmitError(null);
+                      setEventDate(value);
+                    }}
                     min={new Date().toISOString().split("T")[0]}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />

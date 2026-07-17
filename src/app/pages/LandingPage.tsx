@@ -216,10 +216,17 @@ export function LandingPage() {
       const day = index + 1;
       const dateKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const hasEvent = eventDates.includes(dateKey);
+      const dayOfWeek = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth(),
+        day,
+      ).getDay();
+      const isClosed = dayOfWeek === 1;
       return {
         day,
         dateKey,
         hasEvent,
+        isClosed,
         isSelected: selectedDate === dateKey,
       };
     }),
@@ -504,27 +511,30 @@ export function LandingPage() {
                 )}
               </div>
 
-              <div className="mt-3 grid grid-cols-7 gap-2">
+                <div className="mt-3 grid grid-cols-7 gap-2">
                 {calendarDays.map((day, index) => (
                   <button
                     key={day ? day.dateKey : `empty-${index}`}
                     type="button"
-                    disabled={!day}
-                    onClick={() => day && setSelectedDate(day.dateKey)}
+                    disabled={!day || day.isClosed}
+                    onClick={() => day && !day.isClosed && setSelectedDate(day.dateKey)}
+                    title={day?.isClosed ? "Closed on Mondays" : undefined}
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day
-                        ? day.hasEvent
-                          ? day.isSelected
-                            ? "border-[#C8922A] bg-[#C8922A]/20 text-[#F5F0E8]"
-                            : "border-[#F5F0E8]/10 bg-[#1A0E08]/60 text-[#F5F0E8] hover:border-[#C8922A]/40"
-                          : "border-transparent bg-transparent text-[#F5F0E8]/40"
+                        ? day.isClosed
+                          ? "border-transparent bg-transparent text-[#F5F0E8]/20 cursor-not-allowed line-through"
+                          : day.hasEvent
+                            ? day.isSelected
+                              ? "border-[#C8922A] bg-[#C8922A]/20 text-[#F5F0E8]"
+                              : "border-[#F5F0E8]/10 bg-[#1A0E08]/60 text-[#F5F0E8] hover:border-[#C8922A]/40"
+                            : "border-transparent bg-transparent text-[#F5F0E8]/40"
                         : "border-transparent bg-transparent"
                     }`}
                   >
                     {day ? (
                       <>
                         <span>{day.day}</span>
-                        {day.hasEvent && (
+                        {day.hasEvent && !day.isClosed && (
                           <span
                             className={`mt-1 h-1.5 w-1.5 rounded-full ${day.isSelected ? "bg-[#F5F0E8]" : "bg-[#C8922A]"}`}
                           />

@@ -24,19 +24,15 @@ export async function getHappyGuestsCount() {
 
 /**
  * Calculates average rating from the feedback table.
- * Currently, the feedback module is not yet implemented, so this returns null
- * (representing "N/A").
- * 
- * Future implementation:
- * const [result] = await pool.query("SELECT AVG(rating) as avgRating FROM feedback");
- * return result[0].avgRating;
+ * Returns null when there is no feedback yet.
  */
 export async function getAverageRating() {
-  // Feedback module is not implemented yet.
-  // Once the feedback table exists, uncomment/replace with the following:
-  /*
-  const [result] = await pool.query("SELECT AVG(rating) as avgRating FROM feedback");
-  return result[0].avgRating;
-  */
-  return null;
+  const [result] = await pool.query(
+    "SELECT AVG(rating) as avgRating, COUNT(*) as total FROM feedback"
+  );
+  const avg = result[0]?.avgRating;
+  if (!avg || result[0]?.total === 0) {
+    return null;
+  }
+  return Math.round(Number(avg) * 10) / 10;
 }

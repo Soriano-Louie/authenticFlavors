@@ -766,25 +766,39 @@ export function CustomerDashboard() {
               Share your experience to help us improve and help other guests.
             </p>
 
-            {pastBookings.filter((b) => b.booking_status === "Completed")
-              .length === 0 ? (
-              <div className="text-center py-8">
-                <MessageSquare
-                  size={36}
-                  className="text-[#2C1810]/20 mx-auto mb-3"
-                />
-                <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
-                  You don't have any completed events yet.
-                </p>
-                <p className="text-[#2C1810]/30 font-['Lato'] text-xs mt-1">
-                  Feedback can be submitted once your event is completed.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pastBookings
-                  .filter((b) => b.booking_status === "Completed")
-                  .map((ev) => (
+            {(() => {
+              // Show bookings whose event date is today or in the past
+              // and whose status allows feedback (only Confirmed or Completed)
+              const feedbackEligibleBookings = bookings.filter((b) => {
+                if (
+                  b.booking_status !== "Confirmed" &&
+                  b.booking_status !== "Completed"
+                )
+                  return false;
+                const eventDate = b.event_date.split("T")[0];
+                return eventDate <= todayStr;
+              });
+
+              if (feedbackEligibleBookings.length === 0) {
+                return (
+                  <div className="text-center py-8">
+                    <MessageSquare
+                      size={36}
+                      className="text-[#2C1810]/20 mx-auto mb-3"
+                    />
+                    <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
+                      You don't have any completed events yet.
+                    </p>
+                    <p className="text-[#2C1810]/30 font-['Lato'] text-xs mt-1">
+                      Feedback can be submitted once your event date arrives.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {feedbackEligibleBookings.map((ev) => (
                     <div
                       key={ev.booking_id}
                       className="flex items-center justify-between p-4 rounded-xl border border-[#C8922A]/10 bg-[#F5F0E8] hover:border-[#C8922A]/30 transition-colors"
@@ -807,8 +821,9 @@ export function CustomerDashboard() {
                       </button>
                     </div>
                   ))}
-              </div>
-            )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

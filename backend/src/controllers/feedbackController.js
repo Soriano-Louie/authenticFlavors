@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { toPhilippineDateString, getPhilippineDateString } from "../utils/timezone.js";
 
 export async function createFeedback(req, res) {
   try {
@@ -52,8 +53,18 @@ export async function createFeedback(req, res) {
 
     const booking = bookings[0];
 
-    // Verify booking is completed
-    if (booking.booking_status !== "Completed") {
+    // Re-fetch with event_date to check date for Confirmed bookings
+    const [fullBooking] = await pool.query(
+      "SELECT event_date FROM bookings WHERE booking_id = ?",
+      [booking_id],
+    );
+
+    const isConfirmedWithPastDate =
+      booking.booking_status === "Confirmed" &&
+      fullBooking.length > 0 &&
+      toPhilippineDateString(fullBooking[0].event_date) < getPhilippineDateString();
+
+    if (booking.booking_status !== "Completed" && !isConfirmedWithPastDate) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -158,6 +169,41 @@ export async function checkFeedback(req, res) {
     console.error("Check feedback failed:", error);
     res.status(500).json({
       error: { code: "DATABASE_ERROR", message: "Failed to check feedback." },
+    });
+  }
+}
+
+export async function getPublicFeedbacks(req, res) {
+  try {
+    const [feedbackRows] = await pool.query(
+      `SELECT f.feedback_id, f.rating, f.comment, f.submitted_at,
+              f.is_analyzed, f.sentiment_status, f.sentiment_score, f.sentiment_summary,
+              u.first_name, u.last_name,
+              p.package_name
+       FROM feedback f
+       JOIN users u ON f.user_id = u.user_id
+       JOIN bookings b ON f.booking_id = b.booking_id
+       JOIN packages p ON b.package_id = p.package_id
+       ORDER BY f.submitted_at DESC`,
+    );
+
+    const feedbacks = feedbackRows.map((row) => ({
+      feedback_id: row.feedback_id,
+      rating: row.rating,
+      comment: row.comment,
+      submitted_at: row.submitted_at,
+      customer_name: `${row.first_name} ${row.last_name}`.trim(),
+      package_name: row.package_name,
+    }));
+
+    res.status(200).json({ feedbacks });
+  } catch (error) {
+    console.error("Get public feedbacks failed:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to retrieve feedbacks.",
+      },
     });
   }
 }

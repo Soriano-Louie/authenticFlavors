@@ -10,6 +10,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { CustomerDashboard } from "./pages/CustomerDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { FeedbackPage } from "./pages/FeedbackPage";
+import { PublicFeedbackPage } from "./pages/PublicFeedbackPage";
 import { SuccessPage } from "./pages/SuccessPage";
 import { CancelPage } from "./pages/CancelPage";
 import {
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: LandingPage },
       { path: "about", Component: AboutPage },
+      { path: "feedback", Component: PublicFeedbackPage },
       { path: "packages", Component: PackagesPage },
       { path: "packages/:id", Component: PackageDetailPage },
       { path: "package-selection", Component: PackageSelectionPage },
