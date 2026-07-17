@@ -431,3 +431,13 @@ FodyWeavers.xsd
 # Uploaded receipt files (local disk storage, not for version control)
 # backend/uploads/
 # uploads/
+
+# ─── Node / JavaScript ───
+node_modules/
+dist/
+backend/dist/
+*.log
+
+# ─── Kilo AI working directory (local assistant state, not app code) ───
+.kilo/
+
