@@ -126,11 +126,15 @@ export async function getVenueSetups(_req, res) {
   }
 }
 
-function cookieConfig() {
+function cookieConfig(req) {
+  const origin = req.headers.origin;
+  const isCrossOrigin = Boolean(origin) && new URL(origin).host !== req.headers.host;
+  const secure = isProduction || isCrossOrigin;
+
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure,
+    sameSite: secure ? "none" : "lax",
     path: "/api/auth",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
@@ -234,7 +238,7 @@ export async function register(req, res) {
   const user = normalizeUserRow(rows[0]);
   const { accessToken, refreshToken } = issueTokens(user);
 
-  res.cookie(env.refreshCookieName, refreshToken, cookieConfig());
+  res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
 
   return res.status(201).json({ user, accessToken });
 }
@@ -286,7 +290,7 @@ export async function login(req, res) {
   const user = normalizeUserRow(userRow);
   const { accessToken, refreshToken } = issueTokens(user);
 
-  res.cookie(env.refreshCookieName, refreshToken, cookieConfig());
+  res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
 
   return res.status(200).json({ user, accessToken });
 }
@@ -338,7 +342,7 @@ export async function refresh(req, res) {
     const user = normalizeUserRow(rows[0]);
     const { accessToken, refreshToken: nextRefreshToken } = issueTokens(user);
 
-    res.cookie(env.refreshCookieName, nextRefreshToken, cookieConfig());
+    res.cookie(env.refreshCookieName, nextRefreshToken, cookieConfig(req));
 
     return res.status(200).json({ user, accessToken });
   } catch {
@@ -347,7 +351,7 @@ export async function refresh(req, res) {
 }
 
 export function logout(_req, res) {
-  res.clearCookie(env.refreshCookieName, cookieConfig());
+  res.clearCookie(env.refreshCookieName, cookieConfig(req));
   return res.status(200).json({ message: "Logged out successfully." });
 }
 
