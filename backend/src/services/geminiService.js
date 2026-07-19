@@ -252,10 +252,11 @@ function buildHistory(messages) {
 // ─── Main: Send message to Gemini ────────────────────────────────────────────
 /**
  * Sends a user message to Gemini and returns the AI response.
+ * Uses models.generateContent with contents array for full conversation context.
  *
  * @param {string} userMessage - The user's message text.
  * @param {Array} [history=[]] - Previous messages for context.
- * @returns {Promise<{reply: string, usage: object|null}>}
+ * @returns {Promise<{reply: string, usage: object|null, processingTime: number}>}
  */
 export async function generateChatResponse(userMessage, history = []) {
   // Pre-filter off-topic questions
@@ -266,26 +267,32 @@ export async function generateChatResponse(userMessage, history = []) {
         "Flavors by Chef Ramos and our catering services. 😊 If you have " +
         "questions about our packages, booking, or menu, I'd be happy to help!",
       usage: null,
+      processingTime: 0,
     };
   }
 
   // Build the system prompt with live database data
   const systemPrompt = await buildSystemPrompt();
 
-  // Build conversation history for context
+  // Build conversation contents array: history + new user message
   const chatHistory = buildHistory(history);
+  const contents = [
+    ...chatHistory,
+    { role: "user", parts: [{ text: userMessage }] },
+  ];
+
+  const startTime = Date.now();
 
   try {
-    const chat = genAI.chats.create({
+    const result = await genAI.models.generateContent({
       model: "gemini-2.0-flash",
-      history: chatHistory,
-      systemInstruction: systemPrompt,
-    });
-
-    const startTime = Date.now();
-
-    const result = await chat.sendMessage({
-      message: userMessage,
+      contents,
+      config: {
+        systemInstruction: {
+          role: "user",
+          parts: [{ text: systemPrompt }],
+        },
+      },
     });
 
     const processingTime = Date.now() - startTime;
@@ -300,10 +307,24 @@ export async function generateChatResponse(userMessage, history = []) {
 
     return { reply, usage, processingTime };
   } catch (error) {
-    console.error("[GeminiService] API error:", error);
+    // Log the full error details for debugging
+    console.error("[GeminiService] API error details:", {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      name: error.name,
+      stack: error.stack?.split("\n").slice(0, 3).join("\n"),
+    });
 
-    // Handle rate limiting
-    if (error.status === 429 || error.message?.includes("429")) {
+    const errorMessage = (error.message ?? "").toLowerCase();
+    const errorStatus = error.status ?? error.code ?? 0;
+
+    // Handle rate limiting (HTTP 429)
+    if (
+      errorStatus === 429 ||
+      errorMessage.includes("429") ||
+      errorMessage.includes("rate")
+    ) {
       return {
         reply:
           "I'm receiving too many requests right now. Please wait a moment " +
@@ -313,12 +334,45 @@ export async function generateChatResponse(userMessage, history = []) {
       };
     }
 
-    // Handle quota exceeded
-    if (error.status === 403 || error.message?.includes("quota")) {
+    // Handle API key/auth errors (HTTP 403)
+    if (
+      errorStatus === 403 ||
+      errorMessage.includes("permission") ||
+      errorMessage.includes("denied") ||
+      errorMessage.includes("api key")
+    ) {
       return {
         reply:
           "I've reached my usage limit for now. Please try again later or " +
           "contact us directly at events@authenticflavors.ph. 📧",
+        usage: null,
+        processingTime: 0,
+      };
+    }
+
+    // Handle quota/resource exhausted errors
+    if (
+      errorMessage.includes("quota") ||
+      errorMessage.includes("resource_exhausted") ||
+      errorMessage.includes("429")
+    ) {
+      return {
+        reply:
+          "I'm currently at capacity. Please wait a moment and try again, " +
+          "or reach out to us at events@authenticflavors.ph. 😊",
+        usage: null,
+        processingTime: 0,
+      };
+    }
+
+    // Handle invalid API key
+    if (
+      errorMessage.includes("invalid") &&
+      (errorMessage.includes("key") || errorMessage.includes("credential"))
+    ) {
+      return {
+        reply:
+          "I'm having trouble authenticating. Please contact the site administrator. 📧",
         usage: null,
         processingTime: 0,
       };
