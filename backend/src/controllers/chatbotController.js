@@ -67,7 +67,7 @@ export async function sendMessage(req, res) {
     }
 
     // ── Call Gemini ─────────────────────────────────────────────────────
-    const { reply, usage, processingTime } = await generateChatResponse(
+    const { reply, usage, processingTimeMs } = await generateChatResponse(
       trimmedMessage,
       history,
     );
@@ -93,7 +93,7 @@ export async function sendMessage(req, res) {
           conversationId,
           trimmedMessage,
           reply,
-          processingTime ?? 0,
+          processingTimeMs ?? 0,
           usage?.promptTokenCount ?? null,
           usage?.candidatesTokenCount ?? null,
           usage?.totalTokenCount ?? null,

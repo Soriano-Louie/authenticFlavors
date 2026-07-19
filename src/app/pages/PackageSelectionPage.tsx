@@ -1,8 +1,18 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
-import { getPackages, getMenuCategories, getMenuItems, getPackagePricing } from "../api/packageApi";
-import type { Package, MenuCategory, MenuItem, PackagePricing } from "../api/packageApi";
+import {
+  getPackages,
+  getMenuCategories,
+  getMenuItems,
+  getPackagePricing,
+} from "../api/packageApi";
+import type {
+  Package,
+  MenuCategory,
+  MenuItem,
+  PackagePricing,
+} from "../api/packageApi";
 import { useAuth } from "../auth/AuthContext";
 
 // Function to get package label from package name
@@ -11,25 +21,30 @@ function getPackageLabel(packageName: string): string {
 }
 
 // Transform database package to match expected structure
-function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuItem[]) {
+function transformPackage(
+  pkg: Package,
+  categories: MenuCategory[],
+  items: MenuItem[],
+) {
   const packageId = String(pkg.package_id);
-  
+
   // Group menu items by category
-  const menuSections = categories.map(category => {
-    const categoryItems = items
-      .filter(item => item.category_id === category.category_id)
-      .map(item => item.item_name);
-    
-    return {
-      label: category.category_name,
-      items: categoryItems
-    };
-  }).filter(section => section.items.length > 0);
+  const menuSections = categories
+    .map((category) => {
+      const categoryItems = items
+        .filter((item) => item.category_id === category.category_id)
+        .map((item) => item.item_name);
+
+      return {
+        label: category.category_name,
+        items: categoryItems,
+      };
+    })
+    .filter((section) => section.items.length > 0);
 
   // Get starting price (lowest pax)
-  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
-    ? pkg.pricing[0].price 
-    : 0;
+  const startingPrice =
+    pkg.pricing && pkg.pricing.length > 0 ? pkg.pricing[0].price : 0;
 
   return {
     id: packageId,
@@ -40,7 +55,6 @@ function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuI
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
     image: pkg.image || "/packagesFood.png",
     pricing: pkg.pricing || [],
-    minPax: pkg.min_pax,
     maxPax: pkg.max_pax,
     menuSections,
     inclusions: [
@@ -48,14 +62,14 @@ function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuI
       "Service staff",
       "Event coordination",
       "Sound system",
-      "Basic table décor"
-    ]
+      "Basic table décor",
+    ],
   };
 }
 
 // Calculate price based on pax from pricing table
 function getPackagePriceForPax(pricing: PackagePricing[], pax: number) {
-  const pricingEntry = pricing.find(p => p.pax_count === pax);
+  const pricingEntry = pricing.find((p) => p.pax_count === pax);
   return pricingEntry ? pricingEntry.price : 0;
 }
 
@@ -69,7 +83,7 @@ export function PackageSelectionPage() {
   const [selectedPackageId, setSelectedPackageId] =
     useState<string>(selectedPackageQuery);
   const [selectedPax, setSelectedPax] = useState<number>(initialPax);
-  
+
   // Data fetching state
   const [packages, setPackages] = useState<Package[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -85,9 +99,9 @@ export function PackageSelectionPage() {
         const [packagesData, categoriesData, itemsData] = await Promise.all([
           getPackages(),
           getMenuCategories(),
-          getMenuItems()
+          getMenuItems(),
         ]);
-        
+
         setPackages(packagesData.packages);
         setCategories(categoriesData.categories);
         setItems(itemsData.items);
@@ -97,12 +111,12 @@ export function PackageSelectionPage() {
         setLoading(false);
       }
     }
-    
+
     fetchData();
   }, []);
 
   const transformedPackages = useMemo(() => {
-    return packages.map(pkg => transformPackage(pkg, categories, items));
+    return packages.map((pkg) => transformPackage(pkg, categories, items));
   }, [packages, categories, items]);
 
   const selectedPackage = useMemo(
@@ -114,8 +128,12 @@ export function PackageSelectionPage() {
 
   // Generate pax options from pricing data
   const paxOptions = useMemo(() => {
-    if (selectedPackage && selectedPackage.pricing && selectedPackage.pricing.length > 0) {
-      return selectedPackage.pricing.map(p => p.pax_count);
+    if (
+      selectedPackage &&
+      selectedPackage.pricing &&
+      selectedPackage.pricing.length > 0
+    ) {
+      return selectedPackage.pricing.map((p) => p.pax_count);
     }
     return [30, 40, 50, 60, 70, 80, 90, 100]; // Fallback
   }, [selectedPackage]);
@@ -140,7 +158,10 @@ export function PackageSelectionPage() {
     return (
       <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 size={48} className="animate-spin text-[#C8922A] mx-auto mb-4" />
+          <Loader2
+            size={48}
+            className="animate-spin text-[#C8922A] mx-auto mb-4"
+          />
           <p className="text-[#2C1810] font-['Lato']">Loading packages...</p>
         </div>
       </div>
@@ -152,7 +173,7 @@ export function PackageSelectionPage() {
       <div className="bg-[#F5F0E8] min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-[#C4541A] font-['Lato'] mb-4">{error}</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full font-['Lato'] hover:opacity-90"
           >
@@ -250,7 +271,10 @@ export function PackageSelectionPage() {
               <div className="text-left sm:text-right">
                 <p className="text-sm text-[#2C1810]/60">Starting Price</p>
                 <p className="text-3xl font-semibold text-[#C8922A]">
-                  ₱{Number(getPackagePriceForPax(selectedPackage.pricing, selectedPax)).toLocaleString()}
+                  ₱
+                  {Number(
+                    getPackagePriceForPax(selectedPackage.pricing, selectedPax),
+                  ).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -343,10 +367,9 @@ export function PackageSelectionPage() {
                 Estimated total:{" "}
                 <span className="font-semibold text-[#C8922A]">
                   ₱
-                  {Number(getPackagePriceForPax(
-                    selectedPackage.pricing,
-                    selectedPax,
-                  )).toLocaleString()}
+                  {Number(
+                    getPackagePriceForPax(selectedPackage.pricing, selectedPax),
+                  ).toLocaleString()}
                 </span>
               </p>
             </div>

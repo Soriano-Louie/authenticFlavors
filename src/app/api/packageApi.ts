@@ -8,10 +8,9 @@ export interface Package {
   package_id: number;
   package_name: string;
   description: string | null;
-  min_pax: number;
   max_pax: number;
   image: string | null;
-  status: 'Active' | 'Inactive';
+  status: "Active" | "Inactive";
   created_at: string;
   updated_at: string;
   pricing?: PackagePricing[];
@@ -22,7 +21,7 @@ export interface MenuCategory {
   category_name: string;
   description: string | null;
   display_order: number | null;
-  status: 'Active' | 'Inactive';
+  status: "Active" | "Inactive";
 }
 
 export interface MenuItem {
@@ -31,7 +30,7 @@ export interface MenuItem {
   item_name: string;
   description: string | null;
   additional_price: number;
-  availability_status: 'Active' | 'Inactive';
+  availability_status: "Active" | "Inactive";
   image: string | null;
   created_at: string;
   updated_at: string;
@@ -41,14 +40,14 @@ export interface MenuItem {
 export interface EventType {
   event_type_id: number;
   type_name: string;
-  status: 'Active' | 'Inactive';
+  status: "Active" | "Inactive";
 }
 
 export interface VenueSetup {
   venue_setup_id: number;
   setup_name: string;
   description: string | null;
-  status: 'Active' | 'Inactive';
+  status: "Active" | "Inactive";
 }
 
 interface ApiResponse<T> {
@@ -64,7 +63,9 @@ interface ApiResponse<T> {
   };
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authenticflavors.onrender.com";
+const API_BASE_URL =
+  (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
+  "https://authenticflavors.onrender.com";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -76,7 +77,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  const payload = (await response.json().catch(() => ({}))) as T & ApiResponse<T>;
+  const payload = (await response.json().catch(() => ({}))) as T &
+    ApiResponse<T>;
 
   if (!response.ok) {
     const message = payload.error?.message ?? "Request failed.";
@@ -91,16 +93,24 @@ export async function getPackages(): Promise<{ packages: Package[] }> {
   return request<{ packages: Package[] }>("/api/packages");
 }
 
-export async function getPackageById(id: number): Promise<{ package: Package }> {
+export async function getPackageById(
+  id: number,
+): Promise<{ package: Package }> {
   return request<{ package: Package }>(`/api/packages/${id}`);
 }
 
-export async function getPackagePricing(packageId: number): Promise<{ pricing: PackagePricing[] }> {
-  return request<{ pricing: PackagePricing[] }>(`/api/packages/${packageId}/pricing`);
+export async function getPackagePricing(
+  packageId: number,
+): Promise<{ pricing: PackagePricing[] }> {
+  return request<{ pricing: PackagePricing[] }>(
+    `/api/packages/${packageId}/pricing`,
+  );
 }
 
 // Menu functions
-export async function getMenuCategories(): Promise<{ categories: MenuCategory[] }> {
+export async function getMenuCategories(): Promise<{
+  categories: MenuCategory[];
+}> {
   return request<{ categories: MenuCategory[] }>("/api/menu/categories");
 }
 
@@ -108,8 +118,12 @@ export async function getMenuItems(): Promise<{ items: MenuItem[] }> {
   return request<{ items: MenuItem[] }>("/api/menu/items");
 }
 
-export async function getMenuItemsByCategory(categoryId: number): Promise<{ items: MenuItem[] }> {
-  return request<{ items: MenuItem[] }>(`/api/menu/categories/${categoryId}/items`);
+export async function getMenuItemsByCategory(
+  categoryId: number,
+): Promise<{ items: MenuItem[] }> {
+  return request<{ items: MenuItem[] }>(
+    `/api/menu/categories/${categoryId}/items`,
+  );
 }
 
 // Event types and venue setups
@@ -129,8 +143,12 @@ export interface HomepageStatistics {
   yearsOfExcellence: number;
 }
 
-export async function getHomepageStatistics(): Promise<{ statistics: HomepageStatistics }> {
-  return request<{ statistics: HomepageStatistics }>("/api/homepage/statistics");
+export async function getHomepageStatistics(): Promise<{
+  statistics: HomepageStatistics;
+}> {
+  return request<{ statistics: HomepageStatistics }>(
+    "/api/homepage/statistics",
+  );
 }
 
 // Upcoming Events
@@ -144,6 +162,8 @@ export interface UpcomingEvent {
   event_type: string;
 }
 
-export async function getUpcomingEvents(): Promise<{ events: UpcomingEvent[] }> {
+export async function getUpcomingEvents(): Promise<{
+  events: UpcomingEvent[];
+}> {
   return request<{ events: UpcomingEvent[] }>("/api/homepage/upcoming-events");
 }

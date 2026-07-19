@@ -15,7 +15,13 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { createBooking } from "../api/bookingApi";
-import { getPackages, getMenuCategories, getMenuItems, getEventTypes, getVenueSetups } from "../api/packageApi";
+import {
+  getPackages,
+  getMenuCategories,
+  getMenuItems,
+  getEventTypes,
+  getVenueSetups,
+} from "../api/packageApi";
 import type { Package, MenuCategory, MenuItem } from "../api/packageApi";
 
 const DEFAULT_EVENT_TYPES = [
@@ -79,23 +85,28 @@ function getPackagePriceForPax(selectedPkg: any, pax: number) {
 }
 
 // Transform database package to match expected structure
-function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuItem[]) {
+function transformPackage(
+  pkg: Package,
+  categories: MenuCategory[],
+  items: MenuItem[],
+) {
   const packageId = String(pkg.package_id);
-  
-  const menuSections = categories.map(category => {
-    const categoryItems = items
-      .filter(item => item.category_id === category.category_id)
-      .map(item => item.item_name);
-    
-    return {
-      label: category.category_name,
-      items: categoryItems
-    };
-  }).filter(section => section.items.length > 0);
 
-  const startingPrice = pkg.pricing && pkg.pricing.length > 0 
-    ? pkg.pricing[0].price 
-    : 0;
+  const menuSections = categories
+    .map((category) => {
+      const categoryItems = items
+        .filter((item) => item.category_id === category.category_id)
+        .map((item) => item.item_name);
+
+      return {
+        label: category.category_name,
+        items: categoryItems,
+      };
+    })
+    .filter((section) => section.items.length > 0);
+
+  const startingPrice =
+    pkg.pricing && pkg.pricing.length > 0 ? pkg.pricing[0].price : 0;
 
   return {
     id: packageId,
@@ -106,7 +117,6 @@ function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuI
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
     image: pkg.image || "/packagesFood.png",
     pricing: pkg.pricing || [],
-    minPax: pkg.min_pax,
     maxPax: pkg.max_pax,
     menuSections,
     inclusions: [
@@ -114,8 +124,8 @@ function transformPackage(pkg: Package, categories: MenuCategory[], items: MenuI
       "Service staff",
       "Event coordination",
       "Sound system",
-      "Basic table décor"
-    ]
+      "Basic table décor",
+    ],
   };
 }
 
@@ -123,7 +133,7 @@ export function BookingPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, accessToken } = useAuth();
-  
+
   const preselectedPackage = searchParams.get("package") ?? "";
   const preselectedEventType = searchParams.get("event") ?? "Birthday";
   const paxOptions = [30, 40, 50, 60, 70];
@@ -143,7 +153,9 @@ export function BookingPage() {
   // Dynamic Data States
   const [packages, setPackages] = useState<any[]>([]);
   const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
-  const [venueSetups, setVenueSetups] = useState<Array<{ key: string; label: string }>>(DEFAULT_VENUE_OPTIONS);
+  const [venueSetups, setVenueSetups] = useState<
+    Array<{ key: string; label: string }>
+  >(DEFAULT_VENUE_OPTIONS);
   const [loading, setLoading] = useState(true);
 
   // Step 1
@@ -175,7 +187,13 @@ export function BookingPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [packagesData, categoriesData, itemsData, eventTypesData, venueSetupsData] = await Promise.all([
+        const [
+          packagesData,
+          categoriesData,
+          itemsData,
+          eventTypesData,
+          venueSetupsData,
+        ] = await Promise.all([
           getPackages(),
           getMenuCategories(),
           getMenuItems(),
@@ -183,19 +201,24 @@ export function BookingPage() {
           getVenueSetups(),
         ]);
 
-        const transformed = packagesData.packages.map(pkg => 
-          transformPackage(pkg, categoriesData.categories, itemsData.items)
+        const transformed = packagesData.packages.map((pkg) =>
+          transformPackage(pkg, categoriesData.categories, itemsData.items),
         );
         setPackages(transformed);
 
         if (eventTypesData.eventTypes && eventTypesData.eventTypes.length > 0) {
-          setEventTypes(eventTypesData.eventTypes.map(t => t.type_name));
+          setEventTypes(eventTypesData.eventTypes.map((t) => t.type_name));
         }
-        if (venueSetupsData.venueSetups && venueSetupsData.venueSetups.length > 0) {
-          setVenueSetups(venueSetupsData.venueSetups.map(v => ({
-            key: v.setup_name,
-            label: v.setup_name,
-          })));
+        if (
+          venueSetupsData.venueSetups &&
+          venueSetupsData.venueSetups.length > 0
+        ) {
+          setVenueSetups(
+            venueSetupsData.venueSetups.map((v) => ({
+              key: v.setup_name,
+              label: v.setup_name,
+            })),
+          );
         }
       } catch (err) {
         console.error("Failed to load DB details, using fallbacks:", err);
@@ -209,9 +232,13 @@ export function BookingPage() {
   // Autofill user details from Auth Context (Requirement 1)
   useEffect(() => {
     if (user) {
-      setContactName(prev => prev || `${user.first_name}${user.middle_name ? " " + user.middle_name : ""} ${user.last_name}`);
-      setContactEmail(prev => prev || user.email);
-      setContactPhone(prev => prev || user.phone_number || "");
+      setContactName(
+        (prev) =>
+          prev ||
+          `${user.first_name}${user.middle_name ? " " + user.middle_name : ""} ${user.last_name}`,
+      );
+      setContactEmail((prev) => prev || user.email);
+      setContactPhone((prev) => prev || user.phone_number || "");
     }
   }, [user]);
 
@@ -228,13 +255,15 @@ export function BookingPage() {
   // Selected package memo matching legacy keys to numeric database IDs
   const selectedPackage = useMemo(() => {
     if (packages.length === 0) return null;
-    let found = packages.find((p) => String(p.id) === String(selectedPackageId));
+    let found = packages.find(
+      (p) => String(p.id) === String(selectedPackageId),
+    );
     if (!found) {
       const legacyMap: Record<string, string> = {
         "package-a": "1",
         "package-b": "2",
         "package-c": "3",
-        "package-d": "4"
+        "package-d": "4",
       };
       const mappedId = legacyMap[selectedPackageId];
       found = packages.find((p) => String(p.id) === String(mappedId));
@@ -300,8 +329,12 @@ export function BookingPage() {
     }
 
     const menuSelectionNames = Object.values(menuChoices).filter(Boolean);
-    const allergyText = allergies.map(k => ALLERGY_OPTIONS.find(a => a.key === k)?.label || k).join(", ");
-    const fullAllergyNotes = [allergyText, dietaryNotes].filter(Boolean).join("\n");
+    const allergyText = allergies
+      .map((k) => ALLERGY_OPTIONS.find((a) => a.key === k)?.label || k)
+      .join(", ");
+    const fullAllergyNotes = [allergyText, dietaryNotes]
+      .filter(Boolean)
+      .join("\n");
 
     setSubmitting(true);
     setSubmitError(null);
@@ -311,7 +344,8 @@ export function BookingPage() {
         package_id: Number(selectedPackage.id),
         event_type_name: eventType,
         venue_setup_name: venueOptions[0] || "Standard Setup",
-        venue_setup_names: venueOptions.length > 0 ? venueOptions : ["Standard Setup"],
+        venue_setup_names:
+          venueOptions.length > 0 ? venueOptions : ["Standard Setup"],
         number_of_pax: guestCount,
         contact_name: contactName,
         contact_email: contactEmail,
@@ -327,7 +361,10 @@ export function BookingPage() {
       toast.success("Booking submitted successfully!");
       navigate("/dashboard");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to submit booking. Please try again.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to submit booking. Please try again.";
       setSubmitError(message);
       toast.error(message);
     } finally {
@@ -352,8 +389,13 @@ export function BookingPage() {
     return (
       <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 size={40} className="animate-spin text-[#C8922A] mx-auto mb-3" />
-          <p className="text-[#2C1810] font-['Lato'] text-sm">Loading booking details...</p>
+          <Loader2
+            size={40}
+            className="animate-spin text-[#C8922A] mx-auto mb-3"
+          />
+          <p className="text-[#2C1810] font-['Lato'] text-sm">
+            Loading booking details...
+          </p>
         </div>
       </div>
     );
@@ -481,7 +523,9 @@ export function BookingPage() {
                       const value = e.target.value;
                       const [y, m, d] = value.split("-").map(Number);
                       if (y && m && d && new Date(y, m - 1, d).getDay() === 1) {
-                        setSubmitError("The store is closed on Mondays. Please pick another date.");
+                        setSubmitError(
+                          "The store is closed on Mondays. Please pick another date.",
+                        );
                         return;
                       }
                       setSubmitError(null);
@@ -521,7 +565,8 @@ export function BookingPage() {
                     ))}
                   </select>
                   <p className="text-xs text-[#2C1810]/45 font-['Lato'] mt-2">
-                    Package pricing adjusts automatically for 30, 40, 50, 60, and 70 guests.
+                    Package pricing adjusts automatically for 30, 40, 50, 60,
+                    and 70 guests.
                   </p>
                 </div>
               </div>
@@ -558,10 +603,9 @@ export function BookingPage() {
                     </p>
                     <p className="text-3xl font-semibold text-[#C8922A]">
                       ₱
-                      {Number(getPackagePriceForPax(
-                        selectedPackage,
-                        guestCount,
-                      )).toLocaleString()}
+                      {Number(
+                        getPackagePriceForPax(selectedPackage, guestCount),
+                      ).toLocaleString()}
                     </p>
                     <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1">
                       for {guestCount} pax
@@ -806,10 +850,9 @@ export function BookingPage() {
                         </p>
                         <p className="text-[#C8922A] font-['Lato'] text-sm mt-1">
                           ₱
-                          {Number(getPackagePriceForPax(
-                            selectedPackage,
-                            guestCount,
-                          )).toLocaleString()}{" "}
+                          {Number(
+                            getPackagePriceForPax(selectedPackage, guestCount),
+                          ).toLocaleString()}{" "}
                           for {guestCount} pax
                         </p>
                       </div>
@@ -917,7 +960,9 @@ export function BookingPage() {
           {/* Navigation Buttons */}
           <div className="flex flex-col gap-3 mt-8 pt-5 border-t border-[#C8922A]/10">
             {submitError && (
-              <p className="text-xs text-[#C4541A] font-['Lato'] text-center font-medium">{submitError}</p>
+              <p className="text-xs text-[#C4541A] font-['Lato'] text-center font-medium">
+                {submitError}
+              </p>
             )}
             <div className="flex justify-between">
               <button
@@ -942,9 +987,14 @@ export function BookingPage() {
                   className="px-7 py-2.5 bg-gradient-to-r from-[#7A8C5C] to-[#5A6C3C] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
-                    <><Loader2 size={16} className="animate-spin" /> Submitting...</>
+                    <>
+                      <Loader2 size={16} className="animate-spin" />{" "}
+                      Submitting...
+                    </>
                   ) : (
-                    <><CheckCircle size={16} /> Confirm Booking</>
+                    <>
+                      <CheckCircle size={16} /> Confirm Booking
+                    </>
                   )}
                 </button>
               )}

@@ -43,6 +43,10 @@ export const env = {
   paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY,
   paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,
   geminiApiKey: process.env.GEMINI_API_KEY,
+  geminiBaseUrl:
+    process.env.GEMINI_BASE_URL ??
+    "https://generativelanguage.googleapis.com/v1beta",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
 };
 
 export const isProduction = env.nodeEnv === "production";
