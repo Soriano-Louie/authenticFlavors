@@ -46,7 +46,7 @@ export const env = {
   geminiBaseUrl:
     process.env.GEMINI_BASE_URL ??
     "https://generativelanguage.googleapis.com/v1beta",
-  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite",
 };
 
 export const isProduction = env.nodeEnv === "production";
