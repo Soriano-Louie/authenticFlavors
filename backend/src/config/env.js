@@ -12,6 +12,7 @@ const required = [
   "JWT_REFRESH_SECRET",
   "PAYMONGO_PUBLIC_KEY",
   "PAYMONGO_SECRET_KEY",
+  "GEMINI_API_KEY",
 ];
 
 for (const key of required) {
@@ -41,6 +42,7 @@ export const env = {
   refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? "af_refresh",
   paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY,
   paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,
+  geminiApiKey: process.env.GEMINI_API_KEY,
 };
 
 export const isProduction = env.nodeEnv === "production";

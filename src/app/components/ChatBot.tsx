@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send, ChefHat, Bot } from "lucide-react";
+import { sendChatMessage } from "../api/chatApi";
+import { useAuth } from "../auth/AuthContext";
 
 const QUICK_REPLIES = [
   "What packages do you offer?",
@@ -7,19 +9,6 @@ const QUICK_REPLIES = [
   "Do you handle dietary restrictions?",
   "What's your booking process?",
 ];
-
-const BOT_RESPONSES: Record<string, string> = {
-  "what packages do you offer?":
-    "We offer 6 curated event packages: 🎂 Birthday Bliss (Plated, from ₱1,800/person), 💼 Corporate Feast (Buffet, from ₱1,500/person), 💍 Wedding Elegance (Plated, from ₱3,200/person), 👨‍👩‍👧 Family Fiesta (Family Style, from ₱1,200/person), 💑 Anniversary Romance (Plated, from ₱2,500/person), and 🍽️ Grand Gourmet Buffet (from ₱1,700/person). Which interests you most?",
-  "how many guests can you accommodate?":
-    "Our venue comfortably hosts between 10 and 100 guests depending on the package. Intimate setups start at 10 pax, while our Grand Buffet can serve up to 100 guests. Would you like me to recommend a package based on your guest count?",
-  "do you handle dietary restrictions?":
-    "Absolutely! Chef Ramos personally reviews all dietary restrictions and customizes the menu accordingly. We accommodate nut-free, gluten-free, dairy-free, shellfish-free, vegetarian, and religious dietary requirements (halal/kosher). Please list all allergies during booking. 🌿",
-  "what's your booking process?":
-    "Booking is simple! 1️⃣ Choose your event package on our Packages page. 2️⃣ Click 'Book Now' and fill in your event details. 3️⃣ Select your food package and note dietary needs. 4️⃣ We confirm within 24–48 hours and you're all set! Shall I guide you to our Booking page?",
-  default:
-    "Thank you for your question! Our team at Authentic Flavors by Chef Ramos is here to help plan your perfect celebration. For detailed inquiries, please reach us at events@authenticflavors.ph or call +63 (2) 8888-RAMOS. Would you like to explore our packages or book an event?",
-};
 
 interface Message {
   id: number;
@@ -29,43 +18,87 @@ interface Message {
 }
 
 export function ChatBot() {
+  const { accessToken } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 0,
       sender: "bot",
-      text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm your event planning assistant. How can I help you plan a memorable celebration today?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm your AI event planning assistant. How can I help you plan a memorable celebration today?",
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     },
   ]);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Auto-scroll to the latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-    const userMsg: Message = { id: Date.now(), sender: "user", text, time: now };
-    const key = text.toLowerCase();
-    const botText =
-      BOT_RESPONSES[key] ||
-      (key.includes("book") || key.includes("reserv")
-        ? BOT_RESPONSES["what's your booking process?"]
-        : key.includes("diet") || key.includes("allerg")
-        ? BOT_RESPONSES["do you handle dietary restrictions?"]
-        : key.includes("guest") || key.includes("people") || key.includes("how many")
-        ? BOT_RESPONSES["how many guests can you accommodate?"]
-        : key.includes("package") || key.includes("menu") || key.includes("offer")
-        ? BOT_RESPONSES["what packages do you offer?"]
-        : BOT_RESPONSES.default);
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    const now = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
+    const userMsg: Message = {
+      id: Date.now(),
+      sender: "user",
+      text: text.trim(),
+      time: now,
+    };
+
+    // Add user message immediately
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now() + 1, sender: "bot", text: botText, time: now },
-      ]);
-    }, 800);
+    setIsLoading(true);
+
+    try {
+      // Call the Gemini-powered backend
+      const response = await sendChatMessage(
+        text.trim(),
+        conversationId,
+        accessToken,
+      );
+
+      // Store the conversation ID for context continuity
+      if (response.conversation_id) {
+        setConversationId(response.conversation_id);
+      }
+
+      // Add bot response
+      const botMsg: Message = {
+        id: Date.now() + 1,
+        sender: "bot",
+        text: response.reply,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (error) {
+      // Handle API errors gracefully
+      const errorMsg: Message = {
+        id: Date.now() + 1,
+        sender: "bot",
+        text: "I apologize, but I'm having trouble connecting right now. Please try again in a moment, or contact us at events@authenticflavors.ph for immediate assistance. 😊",
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -81,14 +114,19 @@ export function ChatBot() {
 
       {/* Chat Window */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-[#F5F0E8] rounded-2xl shadow-2xl overflow-hidden border border-[#C8922A]/20 flex flex-col" style={{ maxHeight: "480px" }}>
+        <div
+          className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-[#F5F0E8] rounded-2xl shadow-2xl overflow-hidden border border-[#C8922A]/20 flex flex-col"
+          style={{ maxHeight: "480px" }}
+        >
           {/* Header */}
           <div className="bg-gradient-to-r from-[#2C1810] to-[#3D1F0D] px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
               <ChefHat size={18} className="text-[#F5F0E8]" />
             </div>
             <div>
-              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">Chef Ramos Assistant</p>
+              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
+                Chef Ramos Assistant
+              </p>
               <p className="text-[#C8922A] text-xs flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                 Online · AI-Powered
@@ -97,9 +135,15 @@ export function ChatBot() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ maxHeight: "290px" }}>
+          <div
+            className="flex-1 overflow-y-auto px-3 py-3 space-y-3"
+            style={{ maxHeight: "290px" }}
+          >
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={msg.id}
+                className={`flex gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+              >
                 {msg.sender === "bot" && (
                   <div className="w-7 h-7 rounded-full bg-[#C8922A]/20 flex items-center justify-center shrink-0 mt-0.5">
                     <Bot size={14} className="text-[#C8922A]" />
@@ -113,10 +157,41 @@ export function ChatBot() {
                   }`}
                 >
                   {msg.text}
-                  <p className={`text-[10px] mt-1 ${msg.sender === "user" ? "text-[#F5F0E8]/60" : "text-[#2C1810]/40"}`}>{msg.time}</p>
+                  <p
+                    className={`text-[10px] mt-1 ${msg.sender === "user" ? "text-[#F5F0E8]/60" : "text-[#2C1810]/40"}`}
+                  >
+                    {msg.time}
+                  </p>
                 </div>
               </div>
             ))}
+
+            {/* Loading indicator */}
+            {isLoading && (
+              <div className="flex gap-2 justify-start">
+                <div className="w-7 h-7 rounded-full bg-[#C8922A]/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot size={14} className="text-[#C8922A]" />
+                </div>
+                <div className="max-w-[75%] rounded-2xl px-3 py-3 bg-white rounded-bl-sm shadow-sm">
+                  <div className="flex gap-1">
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A]/40 animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A]/40 animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A]/40 animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Quick Replies */}
@@ -125,7 +200,8 @@ export function ChatBot() {
               <button
                 key={qr}
                 onClick={() => sendMessage(qr)}
-                className="text-[10px] px-2 py-1 rounded-full border border-[#C8922A]/50 text-[#C8922A] hover:bg-[#C8922A]/10 transition-colors font-['Lato']"
+                disabled={isLoading}
+                className="text-[10px] px-2 py-1 rounded-full border border-[#C8922A]/50 text-[#C8922A] hover:bg-[#C8922A]/10 transition-colors font-['Lato'] disabled:opacity-50"
               >
                 {qr}
               </button>
@@ -140,11 +216,13 @@ export function ChatBot() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
               placeholder="Ask about packages, booking..."
-              className="flex-1 text-sm text-[#2C1810] placeholder-[#2C1810]/40 bg-transparent outline-none font-['Lato']"
+              disabled={isLoading}
+              className="flex-1 text-sm text-[#2C1810] placeholder-[#2C1810]/40 bg-transparent outline-none font-['Lato'] disabled:opacity-50"
             />
             <button
               onClick={() => sendMessage(input)}
-              className="w-8 h-8 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center hover:opacity-90 transition-opacity"
+              disabled={isLoading || !input.trim()}
+              className="w-8 h-8 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               <Send size={14} className="text-[#F5F0E8]" />
             </button>
