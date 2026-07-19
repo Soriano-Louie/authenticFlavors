@@ -1,7 +1,6 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
-import path from "path";
 import { env } from "./config/env.js";
 import { authRouter } from "./routes/authRoutes.js";
 import { packageRouter } from "./routes/packageRoutes.js";
@@ -15,6 +14,11 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
+        if (env.corsOrigins.length === 0) {
+          callback(null, true);
+          return;
+        }
+
         if (
           !origin ||
           env.nodeEnv === "development" ||
@@ -32,7 +36,6 @@ export function createApp() {
 
   app.use(express.json());
   app.use(cookieParser());
-  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   app.get("/api/health", (_req, res) => {
     res.status(200).json({ status: "ok" });

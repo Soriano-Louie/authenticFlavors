@@ -51,7 +51,7 @@ export interface Booking {
   menu_selections?: BookingMenuSelection[];
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
+const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authentic-flavors-backend.onrender.com";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string; code?: string } };
@@ -94,26 +94,6 @@ export function getCustomerBookings(accessToken: string): Promise<{ bookings: Bo
       Authorization: `Bearer ${accessToken}`,
     },
   });
-}
-
-export async function uploadReceiptImage(accessToken: string, bookingId: number, file: File): Promise<{ receipt_path: string }> {
-  const formData = new FormData();
-  formData.append("receipt", file);
-
-  const response = await fetch(`${API_BASE_URL}/api/bookings/${bookingId}/receipt`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: formData,
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload.error?.message ?? "Failed to upload receipt.";
-    throw new Error(message);
-  }
-  return payload as { receipt_path: string };
 }
 
 export function getAdminBookings(accessToken: string): Promise<{ bookings: Booking[] }> {

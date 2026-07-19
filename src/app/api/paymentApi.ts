@@ -14,7 +14,7 @@ export interface Payment {
   updated_at: string;
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
+const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authentic-flavors-backend.onrender.com";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string; code?: string } };
@@ -75,15 +75,5 @@ export function getBookingPayments(accessToken: string, bookingId: number): Prom
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-  });
-}
-
-export function simulateWebhook(accessToken: string, checkoutId: string): Promise<{ success: boolean; payment_id: number; booking_id: number }> {
-  return request<{ success: boolean; payment_id: number; booking_id: number }>("/api/payments/simulate-webhook", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ checkout_id: checkoutId }),
   });
 }

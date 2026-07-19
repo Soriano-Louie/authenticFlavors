@@ -9,7 +9,7 @@ export interface PublicFeedback {
 
 const API_BASE_URL =
   (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
-  `${window.location.protocol}//${window.location.hostname}:4000`;
+  "https://authentic-flavors-backend.onrender.com";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {

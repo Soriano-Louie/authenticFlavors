@@ -10,7 +10,6 @@ const required = [
   "DB_NAME",
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
-  "CORS_ORIGIN",
   "PAYMONGO_PUBLIC_KEY",
   "PAYMONGO_SECRET_KEY",
 ];
@@ -21,10 +20,15 @@ for (const key of required) {
   }
 }
 
+const corsOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv: process.env.NODE_ENV ?? "development",
-  corsOrigins: process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
+  corsOrigins,
   dbHost: process.env.DB_HOST,
   dbPort: Number(process.env.DB_PORT),
   dbUser: process.env.DB_USER,

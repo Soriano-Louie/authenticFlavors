@@ -50,7 +50,7 @@ export interface ApiErrorShape {
   };
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
+const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authentic-flavors-backend.onrender.com";
 
 export class ApiError extends Error {
   status: number;
