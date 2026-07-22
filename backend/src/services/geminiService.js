@@ -546,7 +546,7 @@ function buildHistory(messages) {
  * @param {Array} [history=[]] - Previous messages for conversation continuity.
  * @returns {Promise<{reply: string, usage: object|null, processingTimeMs: number}>}
  */
-export async function generateChatResponse(userMessage, history = []) {
+export async function generateChatResponse(userMessage, history = [], userProfile = null, req = null) {
   // Pre-filter off-topic questions
   if (!isRestaurantRelated(userMessage)) {
     return {
@@ -562,35 +562,40 @@ export async function generateChatResponse(userMessage, history = []) {
   // Build system prompt with live restaurant data
   const restaurantContext = await buildRestaurantContext();
 
+  const userContextStr = userProfile
+    ? `LOGGED IN USER CONTEXT:\n- Name: ${userProfile.name}\n- Email: ${userProfile.email}\n(You may auto-fill and confirm these contact details when making a booking unless the user specifies otherwise.)`
+    : "LOGGED IN USER CONTEXT: User is not logged in. (You must ask for Customer Name, Email, and Contact Number during booking.)";
+
   const systemPrompt =
-    "You are a friendly, professional customer support assistant for " +
-    '"Authentic Flavors by Chef Ramos", a premium catering and event ' +
-    "services company. Your role is to help customers plan their perfect " +
-    "celebration by answering questions about packages, pricing, booking, " +
-    "and restaurant services.\n\n" +
-    "CRITICAL RULE: You MUST ONLY answer questions related to Authentic " +
-    "Flavors by Chef Ramos and its catering/event services. If a user asks " +
-    "about anything unrelated (e.g., math, programming, history, general " +
-    "knowledge, other businesses), politely respond that you can only assist " +
-    "with questions about Authentic Flavors by Chef Ramos and its services. " +
-    "Do NOT make up or hallucinate any information. If you don't know the " +
-    "answer based on the data provided below, say so politely.\n\n" +
+    "You are a friendly, professional customer support and conversational booking assistant for " +
+    '"Authentic Flavors by Chef Ramos", a premium catering and event services company.\n\n' +
+    "CONVERSATIONAL BOOKING AUTOMATION INSTRUCTIONS:\n" +
+    "1. When the user wants to make a booking (or is in the middle of a booking flow), guide them conversationally through collecting ALL required booking details:\n" +
+    "   - Event Type (e.g. Birthday, Wedding, Corporate Dinner, Anniversary)\n" +
+    "   - Event Date (YYYY-MM-DD format, must NOT be in the past, and NOT a Monday as the store is closed on Mondays)\n" +
+    "   - Event Time / Start Time (e.g., 12:00 PM, 6:00 PM - operating hours 11:00 AM - 10:00 PM)\n" +
+    "   - Number of Guests / Pax (must fit within the selected package's supported guest counts)\n" +
+    "   - Catering Package Name (e.g., Signature Buffet, Elegance Plated, Deluxe Celebration)\n" +
+    "   - Venue / Event Location & Setup (e.g., Standard Setup, Garden Pavilion Setup, Indoor Private Dining)\n" +
+    "   - Menu Selections (at least one main dish/item choice)\n" +
+    "   - Customer Name (auto-fill if logged in user context is present)\n" +
+    "   - Email (auto-fill if logged in user context is present)\n" +
+    "   - Contact Phone Number\n" +
+    "   - Special Requests / Allergy / Dietary Notes (optional)\n" +
+    "2. Remember previously supplied details throughout the conversation. DO NOT ask again for information already provided. If the user edits a previous field, update it.\n" +
+    "3. Validate each input gracefully. If an event date is a Monday or invalid/past, explain politely and ask for a valid date. If pax count doesn't match available package tiers, suggest valid package/pax options.\n" +
+    "4. If the user wants to cancel or restart the booking, acknowledge and clear booking context.\n" +
+    "5. ONCE ALL REQUIRED DETAILS ARE COLLECTED AND VALIDATED, present a clear **BOOKING SUMMARY** listing all collected details and ask the user explicitly to confirm.\n" +
+    "6. Structure your responses clearly using Markdown (bold headings, bullet points).\n\n" +
+    userContextStr + "\n\n" +
     restaurantContext +
     "\n\n" +
-    "Always be warm, conversational, and helpful. Use emojis sparingly. " +
-    "If the user asks about something not covered in the data above, " +
-    "politely say you don't have that information and suggest they contact " +
-    "the restaurant directly at events@authenticflavors.ph or call +63 (2) 8888-RAMOS.\n\n" +
     "CRITICAL FORMATTING RULES — You MUST follow these rules for EVERY response:\n" +
     "1. Use proper Markdown formatting in ALL responses.\n" +
-    "2. Separate paragraphs with a blank line (double newline).\n" +
-    "3. Use bullet points (- or *) for lists of items.\n" +
-    "4. Use **bold text** for headings, package names, and important information like prices.\n" +
-    "5. Separate package or section descriptions with blank lines for readability.\n" +
-    "6. Do NOT output everything as one long paragraph.\n" +
-    "7. Do NOT insert unnecessary leading spaces or excessive blank lines.\n" +
-    "8. Keep responses clean, well-structured, and easy to read.\n" +
-    "9. For numbers with currency, format the price range like: ₱28,500 (30 pax) to ₱63,700 (70 pax)";
+    "2. Separate paragraphs with a blank line.\n" +
+    "3. Use bullet points (- or *) for lists.\n" +
+    "4. Use **bold text** for headings and key values.\n" +
+    "5. Keep responses clean, warm, and helpful.";
 
   // Build conversation contents
   const chatHistory = buildHistory(history);

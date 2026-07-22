@@ -1,6 +1,13 @@
 export interface ChatResponse {
   reply: string;
   conversation_id: number | null;
+  booking_action?: {
+    type: "SUMMARY" | "CONFIRMED" | "CANCELLED";
+    booking_details?: any;
+    booking_id?: number;
+    ai_booking_reference?: number;
+    total_price?: number;
+  } | null;
 }
 
 export interface Conversation {

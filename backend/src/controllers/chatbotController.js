@@ -66,10 +66,18 @@ export async function sendMessage(req, res) {
       );
     }
 
-    // ── Call Gemini ─────────────────────────────────────────────────────
-    const { reply, usage, processingTimeMs } = await generateChatResponse(
+    // ── Call Gemini with user context & DB validation ──────────────────
+    const userProfile = req.auth ? {
+      userId,
+      email: req.auth.email,
+      name: `${req.auth.first_name || ""} ${req.auth.last_name || ""}`.trim() || req.auth.email,
+    } : null;
+
+    const { reply, usage, processingTimeMs, action } = await generateChatResponse(
       trimmedMessage,
       history,
+      userProfile,
+      req
     );
 
     // ── Store AI response ───────────────────────────────────────────────
@@ -104,6 +112,7 @@ export async function sendMessage(req, res) {
     res.status(200).json({
       reply,
       conversation_id: conversationId,
+      booking_action: action || null,
     });
   } catch (error) {
     console.error("[ChatbotController] sendMessage error:", error);
