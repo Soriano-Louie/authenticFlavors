@@ -128,13 +128,14 @@ export async function createCheckout(req, res) {
   }
 }
 
-// Get payment status for polling
+// Get payment status for polling — actively verifies with PayMongo when still Pending
 export async function getPaymentStatus(req, res) {
+  const connection = await pool.getConnection();
   try {
     const { paymentId } = req.params;
     const userId = Number(req.auth.sub);
 
-    const [payments] = await pool.query(
+    const [payments] = await connection.query(
       `SELECT p.*, b.user_id 
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
@@ -157,6 +158,82 @@ export async function getPaymentStatus(req, res) {
       });
     }
 
+    // If already paid, return immediately
+    if (payment.payment_status === "Paid") {
+      return res.status(200).json({
+        payment_status: payment.payment_status,
+        paid_at: payment.paid_at,
+        payment_method: payment.payment_method,
+        payment_reference: payment.payment_reference,
+      });
+    }
+
+    // ── Active PayMongo verification when status is still Pending ──
+    if (payment.payment_status === "Pending" && payment.paymongo_checkout_id) {
+      try {
+        const pmResponse = await fetch(
+          `https://api.paymongo.com/v1/checkout_sessions/${payment.paymongo_checkout_id}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${env.paymongoSecretKey}:`).toString("base64")}`,
+            },
+          }
+        );
+
+        if (pmResponse.ok) {
+          const pmData = await pmResponse.json();
+          const session = pmData.data;
+          const sessionPayments = session?.attributes?.payments || [];
+
+          // Check if any payment in the session was successful
+          const successfulPayment = sessionPayments.find(
+            (p) => p.attributes?.status === "paid"
+          );
+
+          if (successfulPayment) {
+            const paidAt = successfulPayment.attributes?.paid_at
+              ? new Date(successfulPayment.attributes.paid_at * 1000).toISOString()
+              : new Date().toISOString();
+            const paymentMethod =
+              successfulPayment.attributes?.source?.type || "online";
+            const paymentReference =
+              successfulPayment.id || session.id;
+
+            // Update payment record
+            await connection.query(
+              `UPDATE payments 
+               SET payment_status = 'Paid', paid_at = ?, payment_method = ?, 
+                   payment_reference = ?, paymongo_payment_id = ?
+               WHERE payment_id = ?`,
+              [paidAt, paymentMethod, paymentReference, successfulPayment.id, paymentId]
+            );
+
+            // Update booking status: Pending → Reserved, update amount_paid
+            await connection.query(
+              `UPDATE bookings 
+               SET booking_status = CASE WHEN booking_status = 'Pending' THEN 'Reserved' ELSE booking_status END,
+                   amount_paid = amount_paid + ?,
+                   remaining_balance = GREATEST(total_price - (amount_paid + ?), 0),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE booking_id = ?`,
+              [parseFloat(payment.amount), parseFloat(payment.amount), payment.booking_id]
+            );
+
+            return res.status(200).json({
+              payment_status: "Paid",
+              paid_at: paidAt,
+              payment_method: paymentMethod,
+              payment_reference: paymentReference,
+            });
+          }
+        }
+      } catch (pmError) {
+        console.error("PayMongo verification check failed:", pmError.message);
+        // Fall through to return current DB status
+      }
+    }
+
     res.status(200).json({
       payment_status: payment.payment_status,
       paid_at: payment.paid_at,
@@ -168,8 +245,11 @@ export async function getPaymentStatus(req, res) {
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to get payment status." },
     });
+  } finally {
+    connection.release();
   }
 }
+
 
 // Get all payments for a booking
 export async function getBookingPayments(req, res) {

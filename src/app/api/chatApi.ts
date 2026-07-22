@@ -112,3 +112,60 @@ export function getMessages(
     },
   );
 }
+
+/**
+ * Start a booking session — creates ai_conversation + ai_booking_session.
+ */
+export function startBookingSession(
+  accessToken: string,
+): Promise<{ conversation_id: number; session_id: number }> {
+  return request<{ conversation_id: number; session_id: number }>(
+    "/api/chat/booking-session/start",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+}
+
+/**
+ * Update the booking session with current wizard step and extracted data.
+ */
+export function updateBookingSession(
+  accessToken: string,
+  data: {
+    session_id: number;
+    conversation_id?: number;
+    current_step?: string;
+    event_date?: string;
+    event_time?: string;
+    pax?: number;
+    event_type_id?: number | null;
+    package_id?: number | null;
+  },
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>("/api/chat/booking-session/update", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Complete the booking session after successful booking creation.
+ */
+export function completeBookingSession(
+  accessToken: string,
+  data: {
+    session_id: number;
+    conversation_id: number;
+    booking_id: number;
+    summary_text?: string;
+  },
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>("/api/chat/booking-session/complete", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(data),
+  });
+}
