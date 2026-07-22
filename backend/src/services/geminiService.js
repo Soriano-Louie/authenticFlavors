@@ -580,7 +580,17 @@ export async function generateChatResponse(userMessage, history = []) {
     "Always be warm, conversational, and helpful. Use emojis sparingly. " +
     "If the user asks about something not covered in the data above, " +
     "politely say you don't have that information and suggest they contact " +
-    "the restaurant directly at events@authenticflavors.ph or call +63 (2) 8888-RAMOS.";
+    "the restaurant directly at events@authenticflavors.ph or call +63 (2) 8888-RAMOS.\n\n" +
+    "CRITICAL FORMATTING RULES — You MUST follow these rules for EVERY response:\n" +
+    "1. Use proper Markdown formatting in ALL responses.\n" +
+    "2. Separate paragraphs with a blank line (double newline).\n" +
+    "3. Use bullet points (- or *) for lists of items.\n" +
+    "4. Use **bold text** for headings, package names, and important information like prices.\n" +
+    "5. Separate package or section descriptions with blank lines for readability.\n" +
+    "6. Do NOT output everything as one long paragraph.\n" +
+    "7. Do NOT insert unnecessary leading spaces or excessive blank lines.\n" +
+    "8. Keep responses clean, well-structured, and easy to read.\n" +
+    "9. For numbers with currency, format the price range like: ₱28,500 (30 pax) to ₱63,700 (70 pax)";
 
   // Build conversation contents
   const chatHistory = buildHistory(history);

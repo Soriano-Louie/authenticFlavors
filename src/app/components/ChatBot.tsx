@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send, ChefHat, Bot } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { sendChatMessage } from "../api/chatApi";
 import { useAuth } from "../auth/AuthContext";
 
@@ -150,13 +151,45 @@ export function ChatBot() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm font-['Lato'] ${
+                  className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm font-['Lato'] prose prose-sm max-w-none ${
                     msg.sender === "user"
                       ? "bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-br-sm"
                       : "bg-white text-[#2C1810] rounded-bl-sm shadow-sm"
                   }`}
                 >
-                  {msg.text}
+                  {msg.sender === "bot" ? (
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => (
+                          <span className="block mb-1.5 last:mb-0">
+                            {children}
+                          </span>
+                        ),
+                        ul: ({ children }) => (
+                          <ul className="list-disc pl-4 mb-1.5 space-y-0.5">
+                            {children}
+                          </ul>
+                        ),
+                        ol: ({ children }) => (
+                          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5">
+                            {children}
+                          </ol>
+                        ),
+                        li: ({ children }) => (
+                          <li className="leading-snug">{children}</li>
+                        ),
+                        strong: ({ children }) => (
+                          <strong className="font-bold text-[#C8922A]">
+                            {children}
+                          </strong>
+                        ),
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  ) : (
+                    msg.text
+                  )}
                   <p
                     className={`text-[10px] mt-1 ${msg.sender === "user" ? "text-[#F5F0E8]/60" : "text-[#2C1810]/40"}`}
                   >
