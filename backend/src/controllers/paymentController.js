@@ -192,9 +192,11 @@ export async function getPaymentStatus(req, res) {
           );
 
           if (successfulPayment) {
-            const paidAt = successfulPayment.attributes?.paid_at
-              ? new Date(successfulPayment.attributes.paid_at * 1000).toISOString()
-              : new Date().toISOString();
+            const rawPaidAt = successfulPayment.attributes?.paid_at
+              ? new Date(successfulPayment.attributes.paid_at * 1000)
+              : new Date();
+            // Format to YYYY-MM-DD HH:MM:SS for MySQL
+            const paidAt = rawPaidAt.toISOString().slice(0, 19).replace('T', ' ');
             const paymentMethod =
               successfulPayment.attributes?.source?.type || "online";
             const paymentReference =
