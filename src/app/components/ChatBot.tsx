@@ -870,23 +870,38 @@ export function ChatBot() {
               </div>
             )}
 
-            {/* STEP 4: DATE PICKER (Disables Mondays & Past Dates) */}
+            {/* STEP 4: DATE PICKER (Disables Mondays & Past Dates / Less than 2 weeks) */}
             {wizard.step === "DATE" && (
               <div className="bg-white rounded-2xl p-3.5 border border-[#C8922A]/30 shadow-md space-y-3 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-[#2C1810] uppercase tracking-wider">
                     Select Event Date:
                   </p>
-                  <span className="text-[10px] text-[#C4541A] italic">
-                    Closed on Mondays
+                  <span className="text-[10px] text-[#C4541A] italic font-semibold">
+                    Min. 14 Days Lead Time
                   </span>
                 </div>
                 <input
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={(() => {
+                    const minDate = new Date();
+                    minDate.setDate(minDate.getDate() + 14);
+                    return minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                  })()}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (!val) return;
+                    
+                    const minDate = new Date();
+                    minDate.setDate(minDate.getDate() + 14);
+                    const minStr = minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                    
+                    if (val < minStr) {
+                      alert("Events must be booked at least 14 days (two weeks) in advance.");
+                      e.target.value = "";
+                      return;
+                    }
+
                     const dateObj = new Date(val);
                     if (dateObj.getDay() === 1) {
                       alert("Chef Ramos is closed on Mondays. Please select another day!");

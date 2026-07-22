@@ -61,6 +61,20 @@ export async function createBooking(req, res) {
       });
     }
 
+    // 2a. Validate event date is at least 14 days (two weeks) from today
+    const minLeadTimeDate = new Date();
+    minLeadTimeDate.setDate(minLeadTimeDate.getDate() + 14);
+    // Format to local date string (YYYY-MM-DD) matching Philippine time
+    const minLeadTimeStr = minLeadTimeDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+    if (event_date < minLeadTimeStr) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Event booking must be scheduled at least 14 days (two weeks) in advance to allow time for the down payment.",
+        },
+      });
+    }
+
     // 2b. Store is closed on Mondays (open Tue-Sun, 11am-10pm)
     const [year, month, day] = event_date.split("-").map(Number);
     const eventDay = new Date(year, month - 1, day).getDay();
