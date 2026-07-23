@@ -563,7 +563,7 @@ export async function generateChatResponse(userMessage, history = [], userProfil
   const restaurantContext = await buildRestaurantContext();
 
   const userContextStr = userProfile
-    ? `LOGGED IN USER CONTEXT:\n- Name: ${userProfile.name}\n- Email: ${userProfile.email}\n(You may auto-fill and confirm these contact details when making a booking unless the user specifies otherwise.)`
+    ? `LOGGED IN USER CONTEXT:\n- Name: ${userProfile.name}\n- Email: ${userProfile.email}\n- Saved Dietary Preferences: ${userProfile.dietaryPreferences || "None"}\n(You may auto-fill and confirm these contact details when making a booking. If saved dietary preferences exist, inform the user that their saved preference has been applied and ask if they wish to keep or adjust it for this booking.)`
     : "LOGGED IN USER CONTEXT: User is not logged in. (You must ask for Customer Name, Email, and Contact Number during booking.)";
 
   const systemPrompt =

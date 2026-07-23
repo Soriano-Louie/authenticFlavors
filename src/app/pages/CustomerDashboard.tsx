@@ -75,7 +75,12 @@ export function CustomerDashboard() {
   const { user, accessToken, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
-  const [savedAllergies, setSavedAllergies] = useState<string[]>(["Nuts"]);
+
+  // Dietary Preferences state
+  const [dietaryText, setDietaryText] = useState("");
+  const [dietarySaving, setDietarySaving] = useState(false);
+  const [dietarySaved, setDietarySaved] = useState(false);
+  const [dietaryError, setDietaryError] = useState<string | null>(null);
 
   // Real bookings
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -211,7 +216,7 @@ export function CustomerDashboard() {
     return b.booking_status === "Pending" && summary.rejection_reason;
   });
 
-  // Initialize settings form when user data loads
+  // Initialize settings form and dietary preferences when user data loads
   useEffect(() => {
     if (user) {
       setSettingsForm({
@@ -221,8 +226,41 @@ export function CustomerDashboard() {
         email: user.email || "",
         phone_number: user.phone_number || "",
       });
+      setDietaryText(user.dietary_preferences || "");
     }
   }, [user]);
+
+  // Handle saving dietary preferences
+  const handleDietarySave = async (overrideValue?: string) => {
+    const textToSave = overrideValue !== undefined ? overrideValue : dietaryText;
+    setDietarySaving(true);
+    setDietaryError(null);
+    setDietarySaved(false);
+
+    try {
+      await updateProfile({
+        first_name: user?.first_name || "",
+        middle_name: user?.middle_name || undefined,
+        last_name: user?.last_name || "",
+        email: user?.email || "",
+        phone_number: user?.phone_number || "",
+        dietary_preferences: textToSave.trim() ? textToSave.trim() : null,
+      });
+      setDietarySaved(true);
+      setTimeout(() => setDietarySaved(false), 3000);
+    } catch (err) {
+      setDietaryError(
+        err instanceof Error ? err.message : "Failed to save dietary preferences.",
+      );
+    } finally {
+      setDietarySaving(false);
+    }
+  };
+
+  const handleClearDietary = async () => {
+    setDietaryText("");
+    await handleDietarySave("");
+  };
 
   // Generate user initials
   const getUserInitials = () => {
@@ -291,21 +329,8 @@ export function CustomerDashboard() {
     }
   };
 
-  const ALLERGY_OPTIONS = [
-    "Nuts",
-    "Dairy",
-    "Gluten",
-    "Shellfish",
-    "Pork",
-    "Seafood",
-    "Alcohol",
-    "Eggs",
-    "Soy",
-  ];
-  const toggleAllergy = (a: string) =>
-    setSavedAllergies((prev) =>
-      prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
-    );
+
+
 
   const renderPaymentSchedule = (booking: Booking) => {
     const payments = paymentsByBooking[booking.booking_id] || [];
@@ -789,27 +814,112 @@ export function CustomerDashboard() {
               Dietary Preferences
             </h3>
             <p className="text-[#2C1810]/55 text-sm font-['Lato'] mb-6">
-              Save your dietary restrictions to automatically pre-fill them for
-              future bookings.
+              Save your dietary preferences, restrictions, or allergies. They will automatically pre-fill for all future bookings.
             </p>
-            <div className="flex flex-wrap gap-2.5 mb-6">
-              {ALLERGY_OPTIONS.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => toggleAllergy(a)}
-                  className={`px-4 py-2 rounded-full text-sm font-['Lato'] border-2 transition-all ${
-                    savedAllergies.includes(a)
-                      ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8]"
-                      : "border-[#C8922A]/30 text-[#2C1810]/60 hover:border-[#C8922A]"
-                  }`}
-                >
-                  {a}
-                </button>
-              ))}
+
+            {dietarySaved && (
+              <div className="mb-5 p-4 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl flex items-center gap-3">
+                <CheckCircle size={20} className="text-[#7A8C5C]" />
+                <p className="text-[#7A8C5C] text-sm font-['Lato']">
+                  Dietary preferences saved successfully!
+                </p>
+              </div>
+            )}
+
+            {dietaryError && (
+              <div className="mb-5 p-4 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl flex items-center gap-3">
+                <AlertCircle size={20} className="text-[#C4541A]" />
+                <p className="text-[#C4541A] text-sm font-['Lato']">
+                  {dietaryError}
+                </p>
+              </div>
+            )}
+
+            <div className="mb-5">
+              <label className="block text-sm font-semibold text-[#2C1810]/70 font-['Lato'] mb-2">
+                Quick Tag Helpers (Click to add/remove):
+              </label>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  "Nut-Free",
+                  "Peanut Allergy",
+                  "Gluten-Free",
+                  "Dairy-Free",
+                  "Vegetarian",
+                  "Vegan",
+                  "Shellfish Allergy",
+                  "Halal",
+                  "Kosher",
+                  "Pork-Free",
+                ].map((tag) => {
+                  const isIncluded = dietaryText.toLowerCase().includes(tag.toLowerCase());
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        if (isIncluded) {
+                          const regex = new RegExp(`(?:,\\s*)?${tag}`, "gi");
+                          const updated = dietaryText.replace(regex, "").replace(/^,\s*/, "").trim();
+                          setDietaryText(updated);
+                        } else {
+                          const updated = dietaryText.trim()
+                            ? `${dietaryText.trim()}, ${tag}`
+                            : tag;
+                          setDietaryText(updated);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-['Lato'] border transition-all cursor-pointer ${
+                        isIncluded
+                          ? "bg-[#C4541A] border-[#C4541A] text-[#F5F0E8] font-bold"
+                          : "border-[#C8922A]/30 bg-[#F5F0E8]/50 text-[#2C1810]/70 hover:border-[#C8922A]"
+                      }`}
+                    >
+                      {isIncluded ? `✓ ${tag}` : `+ ${tag}`}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                Saved Dietary Preferences / Notes
+              </label>
+              <textarea
+                value={dietaryText}
+                onChange={(e) => setDietaryText(e.target.value)}
+                placeholder="e.g. Severe peanut allergy, strictly halal food, no shellfish, 2 guests are vegetarian..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+              />
             </div>
-            <button className="px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90">
-              Save Preferences
-            </button>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDietarySave()}
+                disabled={dietarySaving}
+                className="px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              >
+                {dietarySaving ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Saving...
+                  </>
+                ) : (
+                  "Save Preferences"
+                )}
+              </button>
+
+              {dietaryText.trim() && (
+                <button
+                  type="button"
+                  onClick={handleClearDietary}
+                  disabled={dietarySaving}
+                  className="px-5 py-2.5 border border-[#C4541A]/40 text-[#C4541A] rounded-full text-sm font-['Lato'] hover:bg-[#C4541A]/10 disabled:opacity-50 cursor-pointer"
+                >
+                  Clear Field
+                </button>
+              )}
+            </div>
           </div>
         )}
 

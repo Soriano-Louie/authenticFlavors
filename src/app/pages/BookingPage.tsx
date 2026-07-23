@@ -229,7 +229,7 @@ export function BookingPage() {
     loadData();
   }, []);
 
-  // Autofill user details from Auth Context (Requirement 1)
+  // Autofill user details and saved dietary preferences from Auth Context
   useEffect(() => {
     if (user) {
       setContactName(
@@ -239,6 +239,9 @@ export function BookingPage() {
       );
       setContactEmail((prev) => prev || user.email);
       setContactPhone((prev) => prev || user.phone_number || "");
+      if (user.dietary_preferences) {
+        setDietaryNotes((prev) => prev || user.dietary_preferences || "");
+      }
     }
   }, [user]);
 

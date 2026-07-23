@@ -9,6 +9,7 @@ export interface AuthUser {
   account_status: "Active" | "Inactive" | "Suspended";
   created_at: string;
   updated_at: string;
+  dietary_preferences?: string | null;
 }
 
 interface AuthSuccessResponse {
@@ -40,6 +41,7 @@ export interface UpdateProfilePayload {
   last_name: string;
   email: string;
   phone_number: string;
+  dietary_preferences?: string | null;
 }
 
 export interface ApiErrorShape {

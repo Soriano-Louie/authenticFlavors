@@ -95,6 +95,7 @@ interface WizardState {
   contactName: string;
   contactEmail: string;
   contactPhone: string;
+  dietaryNotes: string;
   notes: string;
   isEditingUserInfo: boolean;
   totalPrice: number;
@@ -114,6 +115,7 @@ const initialWizardState: WizardState = {
   contactName: "",
   contactEmail: "",
   contactPhone: "",
+  dietaryNotes: "",
   notes: "",
   isEditingUserInfo: false,
   totalPrice: 0,
@@ -199,6 +201,7 @@ export function ChatBot() {
           `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
         contactEmail: user.email || "",
         contactPhone: user.phone_number || "",
+        dietaryNotes: user.dietary_preferences || "",
       }));
     }
   }, [user]);
@@ -235,6 +238,7 @@ export function ChatBot() {
       contactName: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
       contactEmail: user.email || "",
       contactPhone: user.phone_number || "",
+      dietaryNotes: user.dietary_preferences || "",
       step: "EVENT_TYPE",
     }));
 
@@ -435,9 +439,17 @@ export function ChatBot() {
       return;
     }
     setWizard((prev) => ({ ...prev, step: "USER_INFO" }));
-    addBotMessage(
-      "Menu selections saved! 👤 Please review and confirm your **Contact Details**:",
-    );
+
+    if (wizard.dietaryNotes) {
+      addBotMessage(
+        `Menu selections saved! 🥗 Your saved dietary preference (**"${wizard.dietaryNotes}"**) has been pre-filled for this booking. Would you like to keep it or change it for this booking?`,
+      );
+    } else {
+      addBotMessage(
+        "Menu selections saved! 👤 Please review your contact details and specify any dietary preferences below:",
+      );
+    }
+
     if (bookingSessionId && accessToken) {
       updateBookingSession(accessToken, {
         session_id: bookingSessionId,
@@ -478,6 +490,7 @@ export function ChatBot() {
     setIsLoading(true);
     try {
       const menuChoices = Object.values(wizard.selectedMenuItems);
+      const finalDietaryNotes = wizard.dietaryNotes || wizard.notes || undefined;
       const res = await createBooking(accessToken, {
         package_id: wizard.packageId,
         event_type_name: wizard.eventType || "Birthday",
@@ -488,7 +501,8 @@ export function ChatBot() {
         contact_phone: wizard.contactPhone || "09170000000",
         event_date: wizard.eventDate,
         start_time: to24Hour(wizard.eventTime),
-        allergy_notes: wizard.notes || undefined,
+        allergy_notes: finalDietaryNotes,
+        dietary_notes: finalDietaryNotes,
         menu_selections:
           menuChoices.length > 0 ? menuChoices : ["Filipino Feast Buffet"],
         total_price: wizard.totalPrice || undefined,
@@ -1129,9 +1143,26 @@ export function ChatBot() {
                         className="w-full p-2 border rounded-lg outline-none focus:border-[#C8922A]"
                       />
                     </div>
+                    <div>
+                      <label className="text-[10px] text-[#2C1810]/60 block font-semibold">
+                        Dietary Preferences (This Booking):
+                      </label>
+                      <input
+                        type="text"
+                        value={wizard.dietaryNotes}
+                        placeholder="e.g. Vegetarian, Nut Allergy"
+                        onChange={(e) =>
+                          setWizard((prev) => ({
+                            ...prev,
+                            dietaryNotes: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 border rounded-lg outline-none focus:border-[#C8922A]"
+                      />
+                    </div>
                   </div>
                 ) : (
-                  <div className="bg-[#F5F0E8]/50 p-2.5 rounded-xl text-xs space-y-1 border border-[#C8922A]/10">
+                  <div className="bg-[#F5F0E8]/50 p-2.5 rounded-xl text-xs space-y-1.5 border border-[#C8922A]/10">
                     <p className="font-semibold text-[#2C1810]">
                       👤 {wizard.contactName || "Not provided"}
                     </p>
@@ -1141,6 +1172,14 @@ export function ChatBot() {
                     <p className="text-[#2C1810]/70">
                       📞 {wizard.contactPhone || "Not provided"}
                     </p>
+                    <div className="pt-1 border-t border-[#C8922A]/10">
+                      <p className="text-[10px] text-[#2C1810]/60 font-semibold">
+                        🥗 Dietary Preferences (For this booking):
+                      </p>
+                      <p className="text-xs text-[#C8922A] font-semibold">
+                        {wizard.dietaryNotes || "None specified"}
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -1195,6 +1234,14 @@ export function ChatBot() {
                     <p className="font-semibold text-[11px] text-[#C8922A]">
                       {Object.values(wizard.selectedMenuItems).join(", ") ||
                         "Standard Package Menu"}
+                    </p>
+                  </div>
+                  <div className="border-t border-[#C8922A]/10 pt-1.5">
+                    <span className="text-[#2C1810]/60 block text-[10px]">
+                      Dietary Notes:
+                    </span>
+                    <p className="font-semibold text-[11px] text-[#C4541A]">
+                      {wizard.dietaryNotes || "None"}
                     </p>
                   </div>
                   <div className="border-t border-[#C8922A]/15 pt-2 flex justify-between items-center">

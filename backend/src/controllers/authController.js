@@ -152,6 +152,7 @@ function normalizeUserRow(row) {
     account_status: row.account_status,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    dietary_preferences: row.dietary_preferences ?? null,
   };
 }
 
@@ -231,7 +232,7 @@ export async function register(req, res) {
   );
 
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at FROM users WHERE user_id = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
     [result.insertId],
   );
 
@@ -259,7 +260,7 @@ export async function login(req, res) {
   const { email, password } = parsed.data;
 
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, password_hash, role, account_status, created_at, updated_at FROM users WHERE email = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, password_hash, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE email = ? LIMIT 1",
     [email],
   );
 
@@ -299,7 +300,7 @@ export async function me(req, res) {
   const userId = Number(req.auth.sub);
 
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at FROM users WHERE user_id = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
     [userId],
   );
 
@@ -331,7 +332,7 @@ export async function refresh(req, res) {
     const userId = Number(decoded.sub);
 
     const [rows] = await pool.query(
-      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at FROM users WHERE user_id = ? LIMIT 1",
+      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
       [userId],
     );
 
@@ -369,7 +370,7 @@ export async function updateProfile(req, res) {
     });
   }
 
-  const { first_name, middle_name, last_name, email, phone_number } = parsed.data;
+  const { first_name, middle_name, last_name, email, phone_number, dietary_preferences } = parsed.data;
 
   // Check if email is already taken by another user
   const [existing] = await pool.query(
@@ -391,15 +392,15 @@ export async function updateProfile(req, res) {
   await pool.query(
     `
       UPDATE users 
-      SET first_name = ?, middle_name = ?, last_name = ?, email = ?, phone_number = ?
+      SET first_name = ?, middle_name = ?, last_name = ?, email = ?, phone_number = ?, dietary_preferences = ?
       WHERE user_id = ?
     `,
-    [first_name, middle_name, last_name, email, phone_number, userId],
+    [first_name, middle_name, last_name, email, phone_number, dietary_preferences, userId],
   );
 
   // Fetch updated user data
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at FROM users WHERE user_id = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
     [userId],
   );
 

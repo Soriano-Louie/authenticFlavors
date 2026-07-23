@@ -67,11 +67,22 @@ export async function sendMessage(req, res) {
     }
 
     // ── Call Gemini with user context & DB validation ──────────────────
-    const userProfile = req.auth ? {
-      userId,
-      email: req.auth.email,
-      name: `${req.auth.first_name || ""} ${req.auth.last_name || ""}`.trim() || req.auth.email,
-    } : null;
+    let userProfile = null;
+    if (userId) {
+      const [userRows] = await pool.query(
+        "SELECT first_name, last_name, email, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
+        [userId],
+      );
+      if (userRows.length > 0) {
+        const u = userRows[0];
+        userProfile = {
+          userId,
+          email: u.email,
+          name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email,
+          dietaryPreferences: u.dietary_preferences || null,
+        };
+      }
+    }
 
     const { reply, usage, processingTimeMs, action } = await generateChatResponse(
       trimmedMessage,

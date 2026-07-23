@@ -78,6 +78,9 @@ export function validateProfileUpdateInput(body) {
   const lastName = String(body.last_name ?? "").trim();
   const email = normalizeEmail(body.email);
   const phoneNumber = normalizePhone(body.phone_number);
+  const dietaryPreferences = body.dietary_preferences !== undefined && body.dietary_preferences !== null
+    ? String(body.dietary_preferences).trim()
+    : null;
 
   if (!firstName) fieldErrors.first_name = "First name is required.";
   if (!lastName) fieldErrors.last_name = "Last name is required.";
@@ -98,6 +101,7 @@ export function validateProfileUpdateInput(body) {
       last_name: lastName,
       email,
       phone_number: phoneNumber,
+      dietary_preferences: dietaryPreferences || null,
     },
   };
 }
