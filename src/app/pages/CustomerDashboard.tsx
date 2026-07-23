@@ -7,6 +7,7 @@ import {
   createCheckoutSession,
   type Payment,
 } from "../api/paymentApi";
+import { checkFeedbackExists } from "../api/feedbackApi";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -80,6 +81,12 @@ export function CustomerDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
 
+  // Track which bookings already have feedback submitted
+  const [feedbackAlreadySubmitted, setFeedbackAlreadySubmitted] = useState<
+    Record<number, boolean>
+  >({});
+  const [feedbackCheckLoading, setFeedbackCheckLoading] = useState(false);
+
   const [paymentsByBooking, setPaymentsByBooking] = useState<
     Record<number, Payment[]>
   >({});
@@ -130,6 +137,56 @@ export function CustomerDashboard() {
       .catch((err) => console.error("Failed to load bookings:", err))
       .finally(() => setBookingsLoading(false));
   }, [accessToken]);
+
+  // Check feedback existence for eligible bookings when bookings data is ready
+  useEffect(() => {
+    if (!accessToken || bookings.length === 0) return;
+
+    const todayStr = new Date().toLocaleDateString("en-CA");
+    const eligibleBookings = bookings.filter((b) => {
+      if (b.booking_status !== "Confirmed" && b.booking_status !== "Completed")
+        return false;
+      const eventDate = b.event_date.split("T")[0];
+      return eventDate <= todayStr;
+    });
+
+    if (eligibleBookings.length === 0) return;
+
+    let cancelled = false;
+    setFeedbackCheckLoading(true);
+
+    async function checkAll() {
+      const result: Record<number, boolean> = {};
+      await Promise.all(
+        eligibleBookings.map(async (b) => {
+          try {
+            const res = await checkFeedbackExists(accessToken!, b.booking_id);
+            if (!cancelled) {
+              result[b.booking_id] = res.exists;
+            }
+          } catch (err) {
+            // If the check fails, assume no feedback exists so the button remains active
+            if (!cancelled) {
+              result[b.booking_id] = false;
+            }
+          }
+        }),
+      );
+      if (!cancelled) {
+        setFeedbackAlreadySubmitted(result);
+      }
+    }
+
+    checkAll().finally(() => {
+      if (!cancelled) {
+        setFeedbackCheckLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, bookings]);
 
   // Derive upcoming vs past
   const todayStr = new Date().toLocaleDateString("en-CA");
@@ -798,29 +855,42 @@ export function CustomerDashboard() {
 
               return (
                 <div className="space-y-3">
-                  {feedbackEligibleBookings.map((ev) => (
-                    <div
-                      key={ev.booking_id}
-                      className="flex items-center justify-between p-4 rounded-xl border border-[#C8922A]/10 bg-[#F5F0E8] hover:border-[#C8922A]/30 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold truncate">
-                          {ev.package_name || `Booking #${ev.booking_id}`}
-                        </p>
-                        <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-0.5">
-                          {formatDate(ev.event_date)} · {ev.number_of_pax}{" "}
-                          guests
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => navigate(`/feedback/${ev.booking_id}`)}
-                        className="ml-3 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 transition-opacity whitespace-nowrap flex items-center gap-1.5"
+                  {feedbackEligibleBookings.map((ev) => {
+                    const alreadyRated =
+                      feedbackAlreadySubmitted[ev.booking_id] === true;
+                    return (
+                      <div
+                        key={ev.booking_id}
+                        className="flex items-center justify-between p-4 rounded-xl border border-[#C8922A]/10 bg-[#F5F0E8] transition-colors"
                       >
-                        <Star size={12} />
-                        Rate Event
-                      </button>
-                    </div>
-                  ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold truncate">
+                            {ev.package_name || `Booking #${ev.booking_id}`}
+                          </p>
+                          <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-0.5">
+                            {formatDate(ev.event_date)} · {ev.number_of_pax}{" "}
+                            guests
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (!alreadyRated) {
+                              navigate(`/feedback/${ev.booking_id}`);
+                            }
+                          }}
+                          disabled={alreadyRated || feedbackCheckLoading}
+                          className={`ml-3 px-4 py-2 rounded-full text-xs font-['Lato'] whitespace-nowrap flex items-center gap-1.5 transition-opacity ${
+                            alreadyRated
+                              ? "bg-[#7A8C5C]/15 text-[#7A8C5C] cursor-default"
+                              : "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] hover:opacity-90"
+                          }`}
+                        >
+                          <Star size={12} />
+                          {alreadyRated ? "Rated" : "Rate Event"}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}
