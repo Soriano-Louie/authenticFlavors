@@ -517,13 +517,22 @@ export function BookingPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
-                    Event Date *
+                    Event Date * <span className="text-[10px] text-[#C4541A] italic font-semibold">(Min. 14 days lead time)</span>
                   </label>
                   <input
                     type="date"
                     value={eventDate}
                     onChange={(e) => {
                       const value = e.target.value;
+                      const minDate = new Date();
+                      minDate.setDate(minDate.getDate() + 14);
+                      const minStr = minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                      if (value < minStr) {
+                        setSubmitError(
+                          "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.",
+                        );
+                        return;
+                      }
                       const [y, m, d] = value.split("-").map(Number);
                       if (y && m && d && new Date(y, m - 1, d).getDay() === 1) {
                         setSubmitError(
@@ -534,7 +543,11 @@ export function BookingPage() {
                       setSubmitError(null);
                       setEventDate(value);
                     }}
-                    min={new Date().toISOString().split("T")[0]}
+                    min={(() => {
+                      const minDate = new Date();
+                      minDate.setDate(minDate.getDate() + 14);
+                      return minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                    })()}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
                 </div>
