@@ -17,9 +17,16 @@ import {
   Edit2,
   RotateCcw,
   Sparkles,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { sendChatMessage, startBookingSession, updateBookingSession, completeBookingSession } from "../api/chatApi";
+import {
+  sendChatMessage,
+  startBookingSession,
+  updateBookingSession,
+  completeBookingSession,
+} from "../api/chatApi";
 import { createBooking } from "../api/bookingApi";
 import { getBookingPayments, createCheckoutSession } from "../api/paymentApi";
 import {
@@ -133,6 +140,7 @@ export function ChatBot() {
   const { accessToken, user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [isFloating, setIsFloating] = useState(false);
 
   // DB Data State for controls
   const [dbPackages, setDbPackages] = useState<Package[]>([]);
@@ -170,6 +178,18 @@ export function ChatBot() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Prevent background scrolling when floating mode is active
+  useEffect(() => {
+    if (isFloating && open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isFloating, open]);
+
   // Load backend database options on mount
   useEffect(() => {
     async function loadDbOptions() {
@@ -198,7 +218,8 @@ export function ChatBot() {
       setWizard((prev) => ({
         ...prev,
         contactName:
-          `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
+          `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+          user.email,
         contactEmail: user.email || "",
         contactPhone: user.phone_number || "",
         dietaryNotes: user.dietary_preferences || "",
@@ -235,7 +256,8 @@ export function ChatBot() {
 
     setWizard((prev) => ({
       ...initialWizardState,
-      contactName: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
+      contactName:
+        `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
       contactEmail: user.email || "",
       contactPhone: user.phone_number || "",
       dietaryNotes: user.dietary_preferences || "",
@@ -284,8 +306,14 @@ export function ChatBot() {
   // 1. Select Event Type
   const handleSelectEventType = (type: string) => {
     if (type === "Others") {
-      setWizard((prev) => ({ ...prev, eventType: type, step: "OTHER_EVENT_TYPE" }));
-      addBotMessage("Please specify your custom **Event Type** in the box below:");
+      setWizard((prev) => ({
+        ...prev,
+        eventType: type,
+        step: "OTHER_EVENT_TYPE",
+      }));
+      addBotMessage(
+        "Please specify your custom **Event Type** in the box below:",
+      );
       if (bookingSessionId && accessToken) {
         updateBookingSession(accessToken, {
           session_id: bookingSessionId,
@@ -490,7 +518,8 @@ export function ChatBot() {
     setIsLoading(true);
     try {
       const menuChoices = Object.values(wizard.selectedMenuItems);
-      const finalDietaryNotes = wizard.dietaryNotes || wizard.notes || undefined;
+      const finalDietaryNotes =
+        wizard.dietaryNotes || wizard.notes || undefined;
       const res = await createBooking(accessToken, {
         package_id: wizard.packageId,
         event_type_name: wizard.eventType || "Birthday",
@@ -512,7 +541,10 @@ export function ChatBot() {
 
       // Automatically fetch PayMongo Checkout URL if possible
       try {
-        const paymentsRes = await getBookingPayments(accessToken, res.booking_id);
+        const paymentsRes = await getBookingPayments(
+          accessToken,
+          res.booking_id,
+        );
         const reservationPayment = paymentsRes.payments.find(
           (p) => p.payment_type === "Reservation",
         );
@@ -573,7 +605,10 @@ export function ChatBot() {
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
 
-    if (text.toLowerCase().includes("book") || text.toLowerCase().includes("reserve")) {
+    if (
+      text.toLowerCase().includes("book") ||
+      text.toLowerCase().includes("reserve")
+    ) {
       startWizard();
       return;
     }
@@ -634,6 +669,15 @@ export function ChatBot() {
     }
   };
 
+  const handleClose = () => {
+    setOpen(false);
+    setIsFloating(false);
+  };
+
+  const toggleFloatingMode = () => {
+    setIsFloating((prev) => !prev);
+  };
+
   return (
     <>
       {/* Floating Toggle Button */}
@@ -645,20 +689,43 @@ export function ChatBot() {
         {open ? <X size={22} /> : <MessageCircle size={22} />}
       </button>
 
+      {/* Overlay for Floating Mode */}
+      {open && isFloating && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
+          onClick={handleClose}
+        />
+      )}
+
       {/* Main Chat / Wizard Window */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 w-80 sm:w-[420px] bg-[#F5F0E8] rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col transition-all duration-300"
-          style={{ height: "580px", maxHeight: "85vh" }}
+          className={
+            isFloating
+              ? "fixed z-50 transition-all duration-300 ease-in-out rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col bg-[#F5F0E8] animate-in fade-in zoom-in-95"
+              : "fixed bottom-24 right-6 z-50 w-80 sm:w-[420px] bg-[#F5F0E8] rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col transition-all duration-300"
+          }
+          style={
+            isFloating
+              ? {
+                  width: "min(800px, 90vw, 95vw)",
+                  maxWidth: "900px",
+                  height: "min(700px, 85vh, 90vh)",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                }
+              : { height: "580px", maxHeight: "85vh" }
+          }
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-[#2C1810] to-[#3D1F0D] px-4 py-3.5 flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center shadow-inner">
+          <div className="bg-gradient-to-r from-[#2C1810] to-[#3D1F0D] px-4 py-3.5 flex items-center justify-between shadow-md shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center shadow-inner shrink-0">
                 <ChefHat size={20} className="text-[#F5F0E8]" />
               </div>
-              <div>
-                <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold">
+              <div className="min-w-0">
+                <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold truncate">
                   Chef Ramos Booking Assistant
                 </p>
                 <p className="text-[#C8922A] text-xs flex items-center gap-1">
@@ -667,15 +734,31 @@ export function ChatBot() {
                 </p>
               </div>
             </div>
-            {wizard.step !== "IDLE" && (
+            <div className="flex items-center gap-1 shrink-0">
+              {wizard.step !== "IDLE" && (
+                <button
+                  onClick={() => setWizard(initialWizardState)}
+                  title="Restart Wizard"
+                  className="text-[#F5F0E8]/60 hover:text-[#C8922A] transition-colors p-1.5 rounded-lg hover:bg-white/5"
+                >
+                  <RotateCcw size={15} />
+                </button>
+              )}
               <button
-                onClick={() => setWizard(initialWizardState)}
-                title="Restart Wizard"
-                className="text-[#F5F0E8]/60 hover:text-[#C8922A] transition-colors p-1"
+                onClick={toggleFloatingMode}
+                title={isFloating ? "Dock to Sidebar" : "Pop Out to Center"}
+                className="text-[#F5F0E8]/60 hover:text-[#C8922A] transition-colors p-1.5 rounded-lg hover:bg-white/5"
               >
-                <RotateCcw size={16} />
+                {isFloating ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               </button>
-            )}
+              <button
+                onClick={handleClose}
+                title="Close"
+                className="text-[#F5F0E8]/60 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Messages & Interactive Wizard Container */}
@@ -748,9 +831,18 @@ export function ChatBot() {
                 </div>
                 <div className="max-w-[75%] rounded-2xl px-3 py-3 bg-white shadow-sm border border-[#C8922A]/10">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 rounded-full bg-[#C8922A] animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    />
                   </div>
                 </div>
               </div>
@@ -778,8 +870,12 @@ export function ChatBot() {
                       }`}
                     >
                       <span>{type}</span>
-                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${wizard.eventType === type ? "border-[#C8922A] bg-[#C8922A]" : "border-[#2C1810]/30"}`}>
-                        {wizard.eventType === type && <Check size={10} className="text-white" />}
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${wizard.eventType === type ? "border-[#C8922A] bg-[#C8922A]" : "border-[#2C1810]/30"}`}
+                      >
+                        {wizard.eventType === type && (
+                          <Check size={10} className="text-white" />
+                        )}
                       </span>
                     </button>
                   ))}
@@ -799,12 +895,16 @@ export function ChatBot() {
                     placeholder="e.g. Baby Shower, Reunion"
                     className="flex-1 text-xs p-2.5 rounded-xl border border-[#C8922A]/30 outline-none focus:border-[#C8922A]"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") handleCustomEventTypeSubmit((e.target as HTMLInputElement).value);
+                      if (e.key === "Enter")
+                        handleCustomEventTypeSubmit(
+                          (e.target as HTMLInputElement).value,
+                        );
                     }}
                   />
                   <button
                     onClick={(e) => {
-                      const inputEl = (e.currentTarget.previousElementSibling as HTMLInputElement);
+                      const inputEl = e.currentTarget
+                        .previousElementSibling as HTMLInputElement;
                       handleCustomEventTypeSubmit(inputEl.value);
                     }}
                     className="px-4 py-2 bg-[#C8922A] text-white text-xs rounded-xl font-semibold hover:opacity-90 cursor-pointer"
@@ -900,25 +1000,33 @@ export function ChatBot() {
                   min={(() => {
                     const minDate = new Date();
                     minDate.setDate(minDate.getDate() + 14);
-                    return minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                    return minDate.toLocaleDateString("sv-SE", {
+                      timeZone: "Asia/Manila",
+                    });
                   })()}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (!val) return;
-                    
+
                     const minDate = new Date();
                     minDate.setDate(minDate.getDate() + 14);
-                    const minStr = minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
-                    
+                    const minStr = minDate.toLocaleDateString("sv-SE", {
+                      timeZone: "Asia/Manila",
+                    });
+
                     if (val < minStr) {
-                      alert("Events must be booked at least 14 days (two weeks) in advance.");
+                      alert(
+                        "Events must be booked at least 14 days (two weeks) in advance.",
+                      );
                       e.target.value = "";
                       return;
                     }
 
                     const dateObj = new Date(val);
                     if (dateObj.getDay() === 1) {
-                      alert("Chef Ramos is closed on Mondays. Please select another day!");
+                      alert(
+                        "Chef Ramos is closed on Mondays. Please select another day!",
+                      );
                       e.target.value = "";
                       return;
                     }
@@ -964,9 +1072,18 @@ export function ChatBot() {
                   {(dbVenueSetups.length > 0
                     ? dbVenueSetups
                     : [
-                        { setup_name: "Standard Setup", description: "Clean dining table setup" },
-                        { setup_name: "Floral Arrangements", description: "Floral centerpieces" },
-                        { setup_name: "Candle Lighting", description: "Warm candle ambiance" },
+                        {
+                          setup_name: "Standard Setup",
+                          description: "Clean dining table setup",
+                        },
+                        {
+                          setup_name: "Floral Arrangements",
+                          description: "Floral centerpieces",
+                        },
+                        {
+                          setup_name: "Candle Lighting",
+                          description: "Warm candle ambiance",
+                        },
                       ]
                   ).map((setup) => (
                     <button
@@ -999,7 +1116,8 @@ export function ChatBot() {
                       Select Menu Items:
                     </p>
                     <p className="text-[10px] text-[#C8922A] font-semibold">
-                      ({Object.keys(wizard.selectedMenuItems).length} of {dbCategories.length} categories chosen)
+                      ({Object.keys(wizard.selectedMenuItems).length} of{" "}
+                      {dbCategories.length} categories chosen)
                     </p>
                   </div>
                   <button
@@ -1021,7 +1139,10 @@ export function ChatBot() {
                       wizard.selectedMenuItems[category.category_id];
 
                     return (
-                      <div key={category.category_id} className="space-y-1.5 bg-[#F5F0E8]/40 p-2 rounded-xl border border-[#C8922A]/10">
+                      <div
+                        key={category.category_id}
+                        className="space-y-1.5 bg-[#F5F0E8]/40 p-2 rounded-xl border border-[#C8922A]/10"
+                      >
                         <div className="flex justify-between items-center">
                           <p className="text-[11px] font-bold text-[#C8922A] uppercase">
                             • {category.category_name}
@@ -1051,8 +1172,15 @@ export function ChatBot() {
                                 }`}
                               >
                                 <span>{item.item_name}</span>
-                                <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? "border-white bg-white" : "border-[#2C1810]/20"}`}>
-                                  {isSelected && <Check size={10} className="text-[#C8922A]" />}
+                                <span
+                                  className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? "border-white bg-white" : "border-[#2C1810]/20"}`}
+                                >
+                                  {isSelected && (
+                                    <Check
+                                      size={10}
+                                      className="text-[#C8922A]"
+                                    />
+                                  )}
                                 </span>
                               </button>
                             );
@@ -1266,7 +1394,9 @@ export function ChatBot() {
 
                 <div className="flex gap-2 pt-2">
                   <button
-                    onClick={() => setWizard((prev) => ({ ...prev, step: "EVENT_TYPE" }))}
+                    onClick={() =>
+                      setWizard((prev) => ({ ...prev, step: "EVENT_TYPE" }))
+                    }
                     className="flex-1 py-2 bg-gray-100 text-[#2C1810]/70 text-xs rounded-xl font-bold hover:bg-gray-200 cursor-pointer"
                   >
                     Edit Booking
@@ -1327,30 +1457,31 @@ export function ChatBot() {
 
           {/* Quick Replies (when idle) */}
           {wizard.step === "IDLE" && (
-            <div className="px-3 pb-2 flex gap-1.5 flex-wrap bg-[#F5F0E8]">
+            <div className="px-3 pb-2 flex gap-1.5 flex-wrap bg-[#F5F0E8] shrink-0">
               <button
                 onClick={startWizard}
                 className="text-[11px] px-3 py-1.5 rounded-full bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white font-bold shadow-sm hover:opacity-90 transition-all cursor-pointer flex items-center gap-1"
               >
                 <Sparkles size={12} /> Book an Event Wizard
               </button>
-              {["What packages do you offer?", "What's your booking process?"].map(
-                (qr) => (
-                  <button
-                    key={qr}
-                    onClick={() => sendMessage(qr)}
-                    disabled={isLoading}
-                    className="text-[10px] px-2.5 py-1 rounded-full border border-[#C8922A]/50 text-[#C8922A] bg-white hover:bg-[#C8922A]/10 transition-colors font-['Lato'] cursor-pointer"
-                  >
-                    {qr}
-                  </button>
-                ),
-              )}
+              {[
+                "What packages do you offer?",
+                "What's your booking process?",
+              ].map((qr) => (
+                <button
+                  key={qr}
+                  onClick={() => sendMessage(qr)}
+                  disabled={isLoading}
+                  className="text-[10px] px-2.5 py-1 rounded-full border border-[#C8922A]/50 text-[#C8922A] bg-white hover:bg-[#C8922A]/10 transition-colors font-['Lato'] cursor-pointer"
+                >
+                  {qr}
+                </button>
+              ))}
             </div>
           )}
 
           {/* Standard Chat Text Input */}
-          <div className="border-t border-[#C8922A]/20 px-3 py-2 flex gap-2 bg-white">
+          <div className="border-t border-[#C8922A]/20 px-3 py-2 flex gap-2 bg-white shrink-0">
             <input
               type="text"
               value={input}
