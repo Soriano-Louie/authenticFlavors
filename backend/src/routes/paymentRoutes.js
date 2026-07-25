@@ -1,8 +1,10 @@
 import express from "express";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { upload } from "../middleware/upload.js";
 import {
   getPaymentInstructions,
   uploadReceipt,
+  uploadReceiptFile,
   verifyReceipt,
   getPaymentStatus,
   getBookingPayments,
@@ -15,8 +17,16 @@ const router = express.Router();
 // Customer: Get payment instructions for a booking
 router.get("/instructions/:bookingId", requireAuth, getPaymentInstructions);
 
-// Customer: Upload payment receipt
+// Customer: Upload payment receipt (direct URL — for frontend Cloudinary upload)
 router.post("/upload-receipt", requireAuth, uploadReceipt);
+
+// Customer: Upload payment receipt file (multer + server-side Cloudinary upload)
+router.post(
+  "/upload-receipt-file",
+  requireAuth,
+  upload.single("receipt"),
+  uploadReceiptFile,
+);
 
 // Customer: Get payment status
 router.get("/status/:paymentId", requireAuth, getPaymentStatus);

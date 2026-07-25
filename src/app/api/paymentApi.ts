@@ -82,7 +82,7 @@ export function getPaymentInstructions(
   );
 }
 
-// Upload payment receipt
+// Upload payment receipt (direct URL — for frontend Cloudinary upload)
 export function uploadReceipt(
   accessToken: string,
   paymentId: number,
@@ -103,6 +103,40 @@ export function uploadReceipt(
       }),
     },
   );
+}
+
+// Upload payment receipt file (multer + server-side Cloudinary upload)
+export function uploadReceiptFile(
+  accessToken: string,
+  paymentId: number,
+  file: File,
+): Promise<{
+  message: string;
+  payment_status: string;
+  receipt_url: string;
+  receipt_public_id: string;
+}> {
+  const formData = new FormData();
+  formData.append("receipt", file);
+  formData.append("payment_id", String(paymentId));
+
+  const API_BASE_URL =
+    (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
+    "https://authenticflavors.onrender.com";
+
+  return fetch(`${API_BASE_URL}/api/payments/upload-receipt-file`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error?.message ?? "Failed to upload receipt.");
+    }
+    return payload;
+  });
 }
 
 // Get payment status

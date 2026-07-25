@@ -5,7 +5,7 @@ import { getCustomerBookings, type Booking } from "../api/bookingApi";
 import {
   getBookingPayments,
   getPaymentInstructions,
-  uploadReceipt,
+  uploadReceiptFile,
   type Payment,
   type PaymentInstruction,
 } from "../api/paymentApi";
@@ -23,6 +23,7 @@ import {
   Plus,
   User,
   Loader2,
+  X,
 } from "lucide-react";
 
 const TABS = [
@@ -72,6 +73,39 @@ function parseBookingSummary(booking: Booking): {
     return {};
   }
 }
+
+const MOCK_PAYMENT_INSTRUCTIONS: PaymentInstruction[] = [
+  {
+    instruction_id: 0,
+    payment_type: "Reservation",
+    instruction_text: "Send via GCash",
+    account_details:
+      "GCash Number: 0917-123-4567\nAccount Name: Authentic Flavors Catering",
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  },
+  {
+    instruction_id: 0,
+    payment_type: "Reservation",
+    instruction_text: "Send via BDO",
+    account_details:
+      "BDO Account Number: 1234-5678-901\nAccount Name: Authentic Flavors Catering",
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  },
+  {
+    instruction_id: 0,
+    payment_type: "Reservation",
+    instruction_text: "Send via BPI",
+    account_details:
+      "BPI Account Number: 9876-5432-109\nAccount Name: Authentic Flavors Catering",
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  },
+];
 
 export function CustomerDashboard() {
   const { user, accessToken, updateProfile } = useAuth();
@@ -316,6 +350,7 @@ export function CustomerDashboard() {
   const [uploadingPaymentId, setUploadingPaymentId] = useState<number | null>(
     null,
   );
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [paymentInstructions, setPaymentInstructions] = useState<
     PaymentInstruction[]
   >([]);
@@ -339,27 +374,8 @@ export function CustomerDashboard() {
   const handleReceiptUpload = async (paymentId: number, file: File) => {
     setUploadingPaymentId(paymentId);
     try {
-      // Upload to Cloudinary first
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "authentic_flavors_receipts");
-
-      const cloudRes = await fetch(
-        "https://api.cloudinary.com/v1_1/your-cloud-name/image/upload",
-        { method: "POST", body: formData },
-      );
-      const cloudData = await cloudRes.json();
-
-      if (!cloudRes.ok)
-        throw new Error(cloudData.error?.message || "Cloudinary upload failed");
-
-      // Store receipt URL in database
-      await uploadReceipt(
-        accessToken!,
-        paymentId,
-        cloudData.secure_url,
-        cloudData.public_id,
-      );
+      // Upload file to backend (which uploads to Cloudinary server-side)
+      await uploadReceiptFile(accessToken!, paymentId, file);
 
       setShowInstructions(null);
       toast.success(
@@ -1251,6 +1267,107 @@ export function CustomerDashboard() {
           </div>
         )}
       </div>
+
+      {showInstructions !== null && (() => {
+        const currentPayment = bookings
+          .flatMap((b) => paymentsByBooking[b.booking_id] || [])
+          .find((p) => p.payment_id === showInstructions);
+        const paymentAmount = currentPayment?.amount ?? 0;
+        const paymentType = currentPayment?.payment_type ?? "";
+        const instructionsToShow =
+          paymentInstructions.length > 0
+            ? paymentInstructions
+            : MOCK_PAYMENT_INSTRUCTIONS;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
+              <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                  Payment Instructions
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowInstructions(null);
+                    setSelectedFile(null);
+                  }}
+                  className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-5 bg-[#F5F0E8]">
+                <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider">
+                  Amount to Pay
+                </p>
+                <p className="text-2xl font-bold text-[#2C1810] font-['Playfair_Display'] mt-1">
+                  ₱{Number(paymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">{paymentType}</p>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {instructionsToShow.map((instruction) => (
+                  <div
+                    key={instruction.instruction_id || instruction.payment_type + instruction.instruction_text}
+                    className="border border-[#C8922A]/10 rounded-xl p-4 bg-white"
+                  >
+                    <h4 className="font-semibold text-sm text-[#2C1810] font-['Lato']">
+                      {instruction.instruction_text}
+                    </h4>
+                    <pre className="text-xs text-[#2C1810]/70 whitespace-pre-wrap mt-2 font-['Lato'] leading-relaxed">
+                      {instruction.account_details}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-5 border-t border-[#C8922A]/10">
+                <label className="block text-sm font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                  Upload Receipt
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setSelectedFile(file);
+                  }}
+                  className="w-full text-sm text-[#2C1810]/70 font-['Lato'] file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-['Lato'] file:bg-[#C8922A]/10 file:text-[#C8922A] hover:file:bg-[#C8922A]/20 cursor-pointer"
+                />
+                {selectedFile && (
+                  <p className="text-xs text-[#7A8C5C] mt-2 font-['Lato']">
+                    Selected: {selectedFile.name} (
+                    {(selectedFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+                <button
+                  onClick={() => {
+                    if (selectedFile) {
+                      handleReceiptUpload(showInstructions, selectedFile);
+                      setSelectedFile(null);
+                    }
+                  }}
+                  disabled={!selectedFile || uploadingPaymentId === showInstructions}
+                  className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {uploadingPaymentId === showInstructions ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" /> Uploading...
+                    </>
+                  ) : (
+                    "Upload Receipt"
+                  )}
+                </button>
+                <p className="text-[10px] text-[#2C1810]/40 text-center mt-2 font-['Lato']">
+                  Accepted formats: JPEG, PNG, GIF, WebP (max 5MB)
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

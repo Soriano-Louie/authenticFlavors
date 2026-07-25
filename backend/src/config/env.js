@@ -10,8 +10,6 @@ const required = [
   "DB_NAME",
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
-  "PAYMONGO_PUBLIC_KEY",
-  "PAYMONGO_SECRET_KEY",
   "GEMINI_API_KEY",
 ];
 
@@ -42,6 +40,9 @@ export const env = {
   refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? "af_refresh",
   paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY,
   paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiBaseUrl:
     process.env.GEMINI_BASE_URL ??

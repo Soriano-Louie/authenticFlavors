@@ -1,4 +1,8 @@
 import { pool } from "../db/pool.js";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinaryService.js";
 
 // ──────────────────────────────────────────
 // Get payment instructions for a booking
@@ -47,7 +51,107 @@ export async function getPaymentInstructions(req, res) {
 }
 
 // ──────────────────────────────────────────
-// Upload receipt (customer)
+// Upload receipt file (customer) — multer + Cloudinary
+// ──────────────────────────────────────────
+export async function uploadReceiptFile(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const { payment_id } = req.body;
+    const userId = Number(req.auth.sub);
+
+    if (!payment_id) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Payment ID is required." },
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Receipt image file is required.",
+        },
+      });
+    }
+
+    // Verify payment belongs to user
+    const [payments] = await connection.query(
+      `SELECT p.*, b.user_id 
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       WHERE p.payment_id = ?`,
+      [payment_id],
+    );
+
+    if (payments.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Payment not found." },
+      });
+    }
+
+    const payment = payments[0];
+
+    if (payment.user_id !== userId) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "You can only upload receipts for your own payments.",
+        },
+      });
+    }
+
+    // Only allow upload when status is Pending or Rejected
+    if (
+      payment.payment_status !== "Pending" &&
+      payment.payment_status !== "Rejected"
+    ) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Receipt can only be uploaded for pending or rejected payments.",
+        },
+      });
+    }
+
+    // Delete old receipt from Cloudinary if re-uploading
+    if (payment.receipt_public_id) {
+      await deleteFromCloudinary(payment.receipt_public_id);
+    }
+
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, "receipts");
+
+    await connection.query(
+      `UPDATE payments 
+       SET receipt_url = ?, 
+           receipt_public_id = ?, 
+           receipt_uploaded_at = CURRENT_TIMESTAMP,
+           payment_status = 'For_Verification',
+           payment_reference = NULL,
+           payment_method = 'Receipt'
+       WHERE payment_id = ?`,
+      [result.secure_url, result.public_id, payment_id],
+    );
+
+    res.status(200).json({
+      message: "Receipt uploaded successfully. Awaiting admin verification.",
+      payment_status: "For_Verification",
+      receipt_url: result.secure_url,
+      receipt_public_id: result.public_id,
+    });
+  } catch (error) {
+    console.error("Upload receipt file failed:", error);
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Failed to upload receipt." },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// ──────────────────────────────────────────
+// Upload receipt URL (customer) — for frontend direct Cloudinary upload
 // ──────────────────────────────────────────
 export async function uploadReceipt(req, res) {
   const connection = await pool.getConnection();
