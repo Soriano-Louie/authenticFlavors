@@ -54,14 +54,63 @@ export async function seedDatabaseIfEmpty() {
         paymongo_payment_id VARCHAR(255) NULL,
         payment_reference VARCHAR(255) NULL,
         payment_method VARCHAR(255) NULL,
-        payment_status ENUM('Pending', 'Paid', 'Failed') DEFAULT 'Pending',
+        payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending',
         paid_at DATETIME NULL,
+        receipt_url TEXT NULL,
+        receipt_public_id VARCHAR(255) NULL,
+        receipt_uploaded_at DATETIME NULL,
+        verified_by INT NULL,
+        verified_at DATETIME NULL,
+        admin_remarks TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE
       )
     `);
     console.log("[MIGRATION] payments table ensured.");
+
+    // Ensure extra columns exist even on older tables
+    const [paymentColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments'",
+      [connection.config.database],
+    );
+    const paymentColumnNames = paymentColumns.map((c) => c.COLUMN_NAME);
+    const paymentAlterations: string[] = [];
+    if (!paymentColumnNames.includes("receipt_url")) {
+      paymentAlterations.push("ADD COLUMN receipt_url TEXT NULL");
+    }
+    if (!paymentColumnNames.includes("receipt_public_id")) {
+      paymentAlterations.push("ADD COLUMN receipt_public_id VARCHAR(255) NULL");
+    }
+    if (!paymentColumnNames.includes("receipt_uploaded_at")) {
+      paymentAlterations.push("ADD COLUMN receipt_uploaded_at DATETIME NULL");
+    }
+    if (!paymentColumnNames.includes("verified_by")) {
+      paymentAlterations.push("ADD COLUMN verified_by INT NULL");
+    }
+    if (!paymentColumnNames.includes("verified_at")) {
+      paymentAlterations.push("ADD COLUMN verified_at DATETIME NULL");
+    }
+    if (!paymentColumnNames.includes("admin_remarks")) {
+      paymentAlterations.push("ADD COLUMN admin_remarks TEXT NULL");
+    }
+    if (paymentAlterations.length > 0) {
+      const alterSql = `ALTER TABLE payments ${paymentAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log("[MIGRATION] Added missing payments columns:", paymentAlterations.join(", "));
+    }
+
+    const [paymentStatusCheck] = await connection.query(
+      `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'payment_status'`,
+      [connection.config.database],
+    );
+    const currentPaymentEnum = paymentStatusCheck[0]?.COLUMN_TYPE || "";
+    if (!currentPaymentEnum.includes("For_Verification") || !currentPaymentEnum.includes("Rejected")) {
+      await connection.query(
+        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending'`
+      );
+      console.log("[MIGRATION] Updated payments.payment_status ENUM.");
+    }
 
     // 1. Seed event_types
     const [eventTypes] = await connection.query(

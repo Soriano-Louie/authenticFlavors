@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
-import { getAdminBookings, completeBooking, type Booking } from "../api/bookingApi";
-import { getBookingPayments, type Payment } from "../api/paymentApi";
+import { getAdminBookings, completeBooking, verifyBooking, rejectBooking, type Booking } from "../api/bookingApi";
+import { getBookingPayments, verifyReceipt, type Payment } from "../api/paymentApi";
 import { toast } from "sonner";
 import {
   BarChart2, Users, Calendar, Star, TrendingUp, TrendingDown, AlertCircle,
@@ -596,6 +596,62 @@ function BookingsSection() {
     }
   };
 
+  const handleVerify = async (bookingId: number) => {
+    if (!accessToken) return;
+    const remarks = window.prompt("Optional verification remarks:");
+    if (remarks === null) return;
+    setActioningId(bookingId);
+    try {
+      const res = await verifyBooking(accessToken, bookingId, remarks || undefined);
+      toast.success(res.message || "Booking verified.");
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to verify booking.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReject = async (bookingId: number) => {
+    if (!accessToken) return;
+    const remarks = window.prompt("Rejection reason (required):");
+    if (remarks === null) return;
+    if (!remarks.trim()) {
+      toast.error("Please provide a rejection reason.");
+      return;
+    }
+    setActioningId(bookingId);
+    try {
+      const res = await rejectBooking(accessToken, bookingId, remarks.trim());
+      toast.success(res.message || "Booking rejected.");
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reject booking.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleVerifyPayment = async (bookingId: number, paymentId: number, action: "approve" | "reject") => {
+    if (!accessToken) return;
+    const remarks = window.prompt(action === "reject" ? "Rejection reason (required):" : "Optional remarks:");
+    if (remarks === null) return;
+    if (action === "reject" && !remarks.trim()) {
+      toast.error("Please provide a rejection reason.");
+      return;
+    }
+    setActioningId(paymentId);
+    try {
+      const res = await verifyReceipt(accessToken, paymentId, action, remarks || undefined);
+      toast.success(res.message || `Payment ${action}d successfully.`);
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to ${action} payment.`);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const formatDate = (d: string) => {
     if (!d) return "—";
     try { return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); } catch { return d; }
@@ -695,6 +751,24 @@ function BookingsSection() {
                       <span className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}>
                         {booking.booking_status}
                       </span>
+                      {booking.booking_status === "Pending" && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleVerify(booking.booking_id); }}
+                            disabled={isPendingAction}
+                            className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                          >
+                            {isPendingAction && actioningId === booking.booking_id ? "Saving..." : "Verify"}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleReject(booking.booking_id); }}
+                            disabled={isPendingAction}
+                            className="px-3 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                       {canComplete && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleComplete(booking.booking_id); }}
@@ -740,11 +814,13 @@ function BookingsSection() {
                             {[reservation, downPayment, finalPayment].filter(Boolean).map((payment) => {
                               if (!payment) return null;
                               const isPaid = payment.payment_status === "Paid";
+                              const isPendingVerification = payment.payment_status === "For_Verification";
+                              const isActioning = isPendingAction && actioningId === payment.payment_id;
                               return (
                                 <div key={payment.payment_id} className="flex gap-4 items-start relative">
                                   {/* Timeline dot */}
                                   <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 relative z-10 ${
-                                    isPaid ? "bg-[#7A8C5C] border-[#7A8C5C]" : "bg-white border-[#C8922A]/40"
+                                    isPaid ? "bg-[#7A8C5C] border-[#7A8C5C]" : isPendingVerification ? "bg-[#C8922A] border-[#C8922A]" : "bg-white border-[#C8922A]/40"
                                   }`} />
                                   <div className="flex-1 border border-[#C8922A]/10 rounded-xl p-3 bg-[#F5F0E8]/30">
                                     <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -767,7 +843,40 @@ function BookingsSection() {
                                       {payment.payment_reference && (
                                         <span className="col-span-2">Ref: {payment.payment_reference}</span>
                                       )}
+                                      {payment.receipt_url && (
+                                        <span className="col-span-2 flex items-center gap-2">
+                                          <button
+                                            onClick={() => window.open(payment.receipt_url as string, "_blank")}
+                                            className="inline-flex items-center gap-1 text-[#C8922A] hover:underline"
+                                          >
+                                            <Eye size={12} /> View Receipt
+                                          </button>
+                                          {payment.receipt_uploaded_at && (
+                                            <span className="text-[10px] text-[#2C1810]/40">
+                                              Uploaded: {formatDate(payment.receipt_uploaded_at)}
+                                            </span>
+                                          )}
+                                        </span>
+                                      )}
                                     </div>
+                                    {isPendingVerification && (
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <button
+                                          onClick={() => handleVerifyPayment(booking.booking_id, payment.payment_id, "approve")}
+                                          disabled={isActioning}
+                                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                        >
+                                          {isActioning ? "Saving..." : "Approve"}
+                                        </button>
+                                        <button
+                                          onClick={() => handleVerifyPayment(booking.booking_id, payment.payment_id, "reject")}
+                                          disabled={isActioning}
+                                          className="px-3 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                        >
+                                          Reject
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );

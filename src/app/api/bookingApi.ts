@@ -113,3 +113,44 @@ export function completeBooking(accessToken: string, bookingId: number): Promise
     },
   });
 }
+
+export function verifyBooking(
+  accessToken: string,
+  bookingId: number,
+  adminRemarks?: string,
+): Promise<{
+  message: string;
+  booking_status: string;
+  amount_paid?: number;
+  remaining_balance?: number;
+}> {
+  return request<{
+    message: string;
+    booking_status: string;
+    amount_paid?: number;
+    remaining_balance?: number;
+  }>(`/api/admin/bookings/${bookingId}/verify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ admin_remarks: adminRemarks }),
+  });
+}
+
+export function rejectBooking(
+  accessToken: string,
+  bookingId: number,
+  adminRemarks?: string,
+): Promise<{ message: string; booking_status: string }> {
+  return request<{ message: string; booking_status: string }>(
+    `/api/admin/bookings/${bookingId}/reject`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ admin_remarks: adminRemarks }),
+    },
+  );
+}

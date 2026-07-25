@@ -453,3 +453,126 @@ export async function completeBooking(req, res) {
     });
   }
 }
+
+// Admin verify booking (Pending -> Confirmed)
+export async function verifyBooking(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const bookingId = Number(req.params.id);
+    const { admin_remarks } = req.body;
+
+    const [bookings] = await connection.query(
+      "SELECT booking_id, booking_status, amount_paid, remaining_balance, total_price FROM bookings WHERE booking_id = ? LIMIT 1",
+      [bookingId],
+    );
+
+    if (bookings.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookings[0];
+
+    if (booking.booking_status !== "Pending") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: `Only pending bookings can be verified. Current status: ${booking.booking_status}`,
+        },
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const amountPaid = parseFloat(booking.amount_paid || 0);
+    const remainingBalance = parseFloat(booking.remaining_balance ?? booking.total_price);
+    const newRemainingBalance = Math.max(remainingBalance, 0);
+    const newBookingStatus = newRemainingBalance <= 0 ? "Confirmed" : "Reserved";
+
+    await connection.query(
+      `UPDATE bookings 
+       SET booking_status = ?, amount_paid = ?, remaining_balance = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [newBookingStatus, amountPaid, newRemainingBalance, bookingId],
+    );
+
+    await connection.commit();
+
+    res.status(200).json({
+      message: "Booking verified successfully.",
+      booking_status: newBookingStatus,
+      amount_paid: amountPaid,
+      remaining_balance: newRemainingBalance,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Verify booking failed:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to verify booking.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// Admin reject booking (Pending -> Cancelled)
+export async function rejectBooking(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const bookingId = Number(req.params.id);
+    const { admin_remarks } = req.body;
+
+    const [bookings] = await connection.query(
+      "SELECT booking_id, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
+      [bookingId],
+    );
+
+    if (bookings.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookings[0];
+
+    if (booking.booking_status !== "Pending") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: `Only pending bookings can be rejected. Current status: ${booking.booking_status}`,
+        },
+      });
+    }
+
+    await connection.beginTransaction();
+
+    await connection.query(
+      `UPDATE bookings 
+       SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [bookingId],
+    );
+
+    await connection.commit();
+
+    res.status(200).json({
+      message: "Booking rejected successfully.",
+      booking_status: "Cancelled",
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Reject booking failed:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to reject booking.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
