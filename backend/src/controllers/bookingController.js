@@ -21,6 +21,7 @@ export async function createBooking(req, res) {
       dietary_notes,
       menu_selections, // String array of selected item names
       total_price, // Frontend submitted price
+      is_ai_booking,
     } = req.body;
 
     // 1. Basic validation
@@ -181,8 +182,9 @@ export async function createBooking(req, res) {
       });
     }
 
-    // Generate unique 6-digit ref
-    const ai_booking_reference = Math.floor(100000 + Math.random() * 900000);
+    // Generate unique 6-digit ref only for AI/chatbot bookings
+    const ai_booking_reference = is_ai_booking ? Math.floor(100000 + Math.random() * 900000) : null;
+    const booking_reference = !is_ai_booking ? `BK-${Math.floor(100000 + Math.random() * 900000)}` : null;
 
     // Setup booking summary JSON
     const summaryData = JSON.stringify({
@@ -197,8 +199,8 @@ export async function createBooking(req, res) {
         user_id, package_id, event_type_id, venue_setup_id, number_of_pax,
         contact_name, contact_email, contact_phone, event_date, start_time,
         allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
-        ai_booking_reference, amount_paid, remaining_balance
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, 0.00, ?)`,
+        ai_booking_reference, booking_reference, amount_paid, remaining_balance
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
       [
         userId,
         package_id,
@@ -215,6 +217,7 @@ export async function createBooking(req, res) {
         summaryData,
         calculatedTotal,
         ai_booking_reference,
+        booking_reference,
         calculatedTotal,
       ],
     );
@@ -273,7 +276,8 @@ export async function createBooking(req, res) {
       message: "Booking submitted successfully.",
       booking_id,
       total_price: calculatedTotal,
-      ai_booking_reference,
+      ...(ai_booking_reference ? { ai_booking_reference } : {}),
+      ...(booking_reference ? { booking_reference } : {}),
     });
   } catch (error) {
     await connection.rollback();

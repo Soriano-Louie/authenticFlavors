@@ -62,6 +62,12 @@ function formatDate(dateStr: string) {
   }
 }
 
+function getBookingReference(booking: Booking): string {
+  if (booking.booking_reference) return booking.booking_reference;
+  if (booking.ai_booking_reference) return `#AF-${booking.ai_booking_reference}`;
+  return `#BK${String(booking.booking_id).padStart(4, "0")}`;
+}
+
 function parseBookingSummary(booking: Booking): {
   rejection_reason?: string;
   receipt_path?: string;
@@ -771,7 +777,7 @@ export function CustomerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                              {ev.package_name || `Booking #${ev.booking_id}`}
+                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {formatDate(ev.event_date)} · {ev.start_time} ·{" "}
@@ -820,7 +826,7 @@ export function CustomerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                              {ev.package_name || `Booking #${ev.booking_id}`}
+                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {formatDate(ev.event_date)} at {ev.start_time}
@@ -837,7 +843,7 @@ export function CustomerDashboard() {
                               {ev.booking_status}
                             </span>
                             <span className="text-xs text-[#2C1810]/40 font-['Lato']">
-                              #BK{String(ev.booking_id).padStart(4, "0")}
+                              {getBookingReference(ev)}
                             </span>
                           </div>
                         </div>

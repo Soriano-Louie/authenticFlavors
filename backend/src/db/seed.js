@@ -22,6 +22,30 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added remaining_balance to bookings table.");
     }
 
+    const [aiRefColumn] = await connection.query(
+      `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'ai_booking_reference'`,
+      [connection.config.database],
+    );
+    if (aiRefColumn.length > 0 && aiRefColumn[0].IS_NULLABLE === "NO") {
+      await connection.query(
+        "ALTER TABLE bookings MODIFY COLUMN ai_booking_reference INT DEFAULT NULL",
+      );
+      console.log("[MIGRATION] Made ai_booking_reference nullable.");
+    }
+
+    const [manualRefColumn] = await connection.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'booking_reference'`,
+      [connection.config.database],
+    );
+    if (manualRefColumn.length === 0) {
+      await connection.query(
+        "ALTER TABLE bookings ADD COLUMN booking_reference VARCHAR(20) NULL",
+      );
+      console.log("[MIGRATION] Added booking_reference column.");
+    }
+
     // 0.1 Create feedback table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS feedback (

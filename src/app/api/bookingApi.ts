@@ -13,6 +13,7 @@ export interface BookingPayload {
   dietary_notes?: string;
   menu_selections: string[];
   total_price?: number;
+  is_ai_booking?: boolean;
 }
 
 export interface BookingMenuSelection {
@@ -40,6 +41,7 @@ export interface Booking {
   amount_paid: number;
   remaining_balance: number;
   ai_booking_reference: number | null;
+  booking_reference: string | null;
   created_at: string;
   updated_at: string;
   package_name?: string;
@@ -77,8 +79,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export function createBooking(accessToken: string, payload: BookingPayload): Promise<{ booking_id: number; total_price: number }> {
-  return request<{ booking_id: number; total_price: number }>("/api/bookings", {
+export function createBooking(accessToken: string, payload: BookingPayload): Promise<{ booking_id: number; total_price: number; ai_booking_reference?: number; booking_reference?: string }> {
+  return request<{ booking_id: number; total_price: number; ai_booking_reference?: number; booking_reference?: string }>("/api/bookings", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,

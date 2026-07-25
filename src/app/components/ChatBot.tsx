@@ -535,6 +535,7 @@ export function ChatBot() {
         menu_selections:
           menuChoices.length > 0 ? menuChoices : ["Filipino Feast Buffet"],
         total_price: wizard.totalPrice || undefined,
+        is_ai_booking: true,
       });
 
       const refId = (res as any).ai_booking_reference || res.booking_id;

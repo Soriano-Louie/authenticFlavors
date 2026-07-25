@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
-import { getAdminBookings, completeBooking, verifyBooking, rejectBooking, type Booking } from "../api/bookingApi";
+import { getAdminBookings, completeBooking, type Booking } from "../api/bookingApi";
 import { getBookingPayments, verifyReceipt, type Payment } from "../api/paymentApi";
 import { toast } from "sonner";
 import {
@@ -596,42 +596,6 @@ function BookingsSection() {
     }
   };
 
-  const handleVerify = async (bookingId: number) => {
-    if (!accessToken) return;
-    const remarks = window.prompt("Optional verification remarks:");
-    if (remarks === null) return;
-    setActioningId(bookingId);
-    try {
-      const res = await verifyBooking(accessToken, bookingId, remarks || undefined);
-      toast.success(res.message || "Booking verified.");
-      fetchBookings();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to verify booking.");
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const handleReject = async (bookingId: number) => {
-    if (!accessToken) return;
-    const remarks = window.prompt("Rejection reason (required):");
-    if (remarks === null) return;
-    if (!remarks.trim()) {
-      toast.error("Please provide a rejection reason.");
-      return;
-    }
-    setActioningId(bookingId);
-    try {
-      const res = await rejectBooking(accessToken, bookingId, remarks.trim());
-      toast.success(res.message || "Booking rejected.");
-      fetchBookings();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reject booking.");
-    } finally {
-      setActioningId(null);
-    }
-  };
-
   const handleVerifyPayment = async (bookingId: number, paymentId: number, action: "approve" | "reject") => {
     if (!accessToken) return;
     const remarks = window.prompt(action === "reject" ? "Rejection reason (required):" : "Optional remarks:");
@@ -671,13 +635,23 @@ function BookingsSection() {
       ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
       : s === "Failed"
       ? "bg-[#C4541A]/15 text-[#C4541A]"
-      : "bg-[#C8922A]/15 text-[#C8922A]";
+      : s === "Rejected"
+      ? "bg-[#C4541A]/15 text-[#C4541A]"
+      : s === "For_Verification"
+      ? "bg-[#C8922A]/15 text-[#C8922A]"
+      : "bg-gray-100 text-gray-600";
 
   // Is event date in the past?
   const isEventPast = (eventDate: string) => {
     const today = new Date().toISOString().split("T")[0];
     const eDate = new Date(eventDate).toISOString().split("T")[0];
     return eDate <= today;
+  };
+
+  const getBookingReference = (booking: Booking) => {
+    if (booking.booking_reference) return booking.booking_reference;
+    if (booking.ai_booking_reference) return `#AF-${booking.ai_booking_reference}`;
+    return `#${String(booking.booking_id).padStart(4, "0")}`;
   };
 
   return (
@@ -730,7 +704,7 @@ function BookingsSection() {
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
-                        #{String(booking.booking_id).padStart(4, "0")}
+                        {getBookingReference(booking)}
                       </span>
                       <div>
                         <p className="text-sm font-medium font-['Lato'] text-[#2C1810]">
@@ -751,24 +725,6 @@ function BookingsSection() {
                       <span className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}>
                         {booking.booking_status}
                       </span>
-                      {booking.booking_status === "Pending" && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleVerify(booking.booking_id); }}
-                            disabled={isPendingAction}
-                            className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
-                          >
-                            {isPendingAction && actioningId === booking.booking_id ? "Saving..." : "Verify"}
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleReject(booking.booking_id); }}
-                            disabled={isPendingAction}
-                            className="px-3 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      )}
                       {canComplete && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleComplete(booking.booking_id); }}
