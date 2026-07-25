@@ -75,7 +75,7 @@ export async function seedDatabaseIfEmpty() {
       [connection.config.database],
     );
     const paymentColumnNames = paymentColumns.map((c) => c.COLUMN_NAME);
-    const paymentAlterations: string[] = [];
+    const paymentAlterations = [];
     if (!paymentColumnNames.includes("receipt_url")) {
       paymentAlterations.push("ADD COLUMN receipt_url TEXT NULL");
     }
