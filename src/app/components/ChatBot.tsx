@@ -28,7 +28,7 @@ import {
   completeBookingSession,
 } from "../api/chatApi";
 import { createBooking } from "../api/bookingApi";
-import { getBookingPayments, createCheckoutSession } from "../api/paymentApi";
+import { getBookingPayments } from "../api/paymentApi";
 import {
   getPackages,
   getMenuCategories,
@@ -537,36 +537,12 @@ export function ChatBot() {
         total_price: wizard.totalPrice || undefined,
       });
 
-      let checkoutUrl: string | undefined = undefined;
-
-      // Automatically fetch PayMongo Checkout URL if possible
-      try {
-        const paymentsRes = await getBookingPayments(
-          accessToken,
-          res.booking_id,
-        );
-        const reservationPayment = paymentsRes.payments.find(
-          (p) => p.payment_type === "Reservation",
-        );
-        if (reservationPayment) {
-          const checkoutRes = await createCheckoutSession(
-            accessToken,
-            reservationPayment.payment_id,
-          );
-          if (checkoutRes.checkout_url) {
-            checkoutUrl = checkoutRes.checkout_url;
-          }
-        }
-      } catch (payErr) {
-        console.error("Auto checkout creation notice:", payErr);
-      }
-
       const refId = (res as any).ai_booking_reference || res.booking_id;
       setCreatedBookingInfo({
         bookingId: res.booking_id,
         referenceId: refId,
         totalPrice: res.total_price || wizard.totalPrice,
-        checkoutUrl,
+        checkoutUrl: undefined,
       });
 
       // Complete the AI booking session
@@ -583,15 +559,8 @@ export function ChatBot() {
       setWizard((prev) => ({ ...prev, step: "SUCCESS" }));
 
       addBotMessage(
-        `🎉 **Booking Created Successfully!**\n\nYour Booking Reference Number is **#AF-${refId}**.\n\nPlease proceed to payment below to secure your event date!`,
+        `🎉 **Booking Created Successfully!**\n\nYour Booking Reference Number is **#AF-${refId}**.\n\nPlease proceed to payment via your Dashboard to upload your payment receipt for verification.`,
       );
-
-      // Auto redirect to PayMongo if available
-      if (checkoutUrl) {
-        setTimeout(() => {
-          window.location.href = checkoutUrl!;
-        }, 3000);
-      }
     } catch (err: any) {
       addBotMessage(
         `⚠️ **Booking Failed**: ${err.message || "Something went wrong."} Please check your inputs or try again.`,

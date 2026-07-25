@@ -4,8 +4,10 @@ import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
 import {
   getBookingPayments,
-  createCheckoutSession,
+  getPaymentInstructions,
+  uploadReceipt,
   type Payment,
+  type PaymentInstruction,
 } from "../api/paymentApi";
 import { checkFeedbackExists } from "../api/feedbackApi";
 import { toast } from "sonner";
@@ -232,7 +234,8 @@ export function CustomerDashboard() {
 
   // Handle saving dietary preferences
   const handleDietarySave = async (overrideValue?: string) => {
-    const textToSave = overrideValue !== undefined ? overrideValue : dietaryText;
+    const textToSave =
+      overrideValue !== undefined ? overrideValue : dietaryText;
     setDietarySaving(true);
     setDietaryError(null);
     setDietarySaved(false);
@@ -250,7 +253,9 @@ export function CustomerDashboard() {
       setTimeout(() => setDietarySaved(false), 3000);
     } catch (err) {
       setDietaryError(
-        err instanceof Error ? err.message : "Failed to save dietary preferences.",
+        err instanceof Error
+          ? err.message
+          : "Failed to save dietary preferences.",
       );
     } finally {
       setDietarySaving(false);
@@ -308,30 +313,83 @@ export function CustomerDashboard() {
     }
   };
 
-  const handlePayNow = async (paymentId: number) => {
+  const [uploadingPaymentId, setUploadingPaymentId] = useState<number | null>(
+    null,
+  );
+  const [paymentInstructions, setPaymentInstructions] = useState<
+    PaymentInstruction[]
+  >([]);
+  const [showInstructions, setShowInstructions] = useState<number | null>(null);
+
+  const handlePayNow = async (paymentId: number, bookingId: number) => {
     try {
-      const res = await createCheckoutSession(accessToken!, paymentId);
-      if (res.checkout_url) {
-        // Store checkout info for the success page
-        sessionStorage.setItem(
-          "pending_payment",
-          JSON.stringify({
-            paymentId,
-            checkoutId: res.checkout_id,
-          }),
-        );
-        window.location.href = res.checkout_url;
-      }
+      // Fetch payment instructions
+      const res = await getPaymentInstructions(accessToken!, bookingId);
+      setPaymentInstructions(res.instructions);
+      setShowInstructions(paymentId);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to initiate payment.",
+        err instanceof Error
+          ? err.message
+          : "Failed to load payment instructions.",
       );
     }
   };
 
+  const handleReceiptUpload = async (paymentId: number, file: File) => {
+    setUploadingPaymentId(paymentId);
+    try {
+      // Upload to Cloudinary first
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "authentic_flavors_receipts");
 
+      const cloudRes = await fetch(
+        "https://api.cloudinary.com/v1_1/your-cloud-name/image/upload",
+        { method: "POST", body: formData },
+      );
+      const cloudData = await cloudRes.json();
 
+      if (!cloudRes.ok)
+        throw new Error(cloudData.error?.message || "Cloudinary upload failed");
 
+      // Store receipt URL in database
+      await uploadReceipt(
+        accessToken!,
+        paymentId,
+        cloudData.secure_url,
+        cloudData.public_id,
+      );
+
+      setShowInstructions(null);
+      toast.success(
+        "Receipt uploaded successfully! Awaiting admin verification.",
+      );
+
+      // Refresh payments
+      const booking = bookings.find((b) =>
+        paymentsByBooking[b.booking_id]?.some(
+          (p) => p.payment_id === paymentId,
+        ),
+      );
+      if (booking) {
+        const paymentsRes = await getBookingPayments(
+          accessToken!,
+          booking.booking_id,
+        );
+        setPaymentsByBooking((prev) => ({
+          ...prev,
+          [booking.booking_id]: paymentsRes.payments,
+        }));
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upload receipt.",
+      );
+    } finally {
+      setUploadingPaymentId(null);
+    }
+  };
   const renderPaymentSchedule = (booking: Booking) => {
     const payments = paymentsByBooking[booking.booking_id] || [];
     if (payments.length === 0) {
@@ -418,7 +476,9 @@ export function CustomerDashboard() {
                 </span>
                 {reservation.payment_status !== "Paid" && (
                   <button
-                    onClick={() => handlePayNow(reservation.payment_id)}
+                    onClick={() =>
+                      handlePayNow(reservation.payment_id, booking.booking_id)
+                    }
                     className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
                   >
                     Pay Now
@@ -458,7 +518,9 @@ export function CustomerDashboard() {
                 {downPayment.payment_status !== "Paid" && (
                   <button
                     disabled={!reservationPaid}
-                    onClick={() => handlePayNow(downPayment.payment_id)}
+                    onClick={() =>
+                      handlePayNow(downPayment.payment_id, booking.booking_id)
+                    }
                     className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                   >
                     Pay Now
@@ -498,7 +560,9 @@ export function CustomerDashboard() {
                 {finalPayment.payment_status !== "Paid" && (
                   <button
                     disabled={!downPaymentPaid}
-                    onClick={() => handlePayNow(finalPayment.payment_id)}
+                    onClick={() =>
+                      handlePayNow(finalPayment.payment_id, booking.booking_id)
+                    }
                     className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                   >
                     Pay Now
@@ -814,7 +878,8 @@ export function CustomerDashboard() {
               Dietary Preferences
             </h3>
             <p className="text-[#2C1810]/55 text-sm font-['Lato'] mb-6">
-              Save your dietary preferences, restrictions, or allergies. They will automatically pre-fill for all future bookings.
+              Save your dietary preferences, restrictions, or allergies. They
+              will automatically pre-fill for all future bookings.
             </p>
 
             {dietarySaved && (
@@ -852,7 +917,9 @@ export function CustomerDashboard() {
                   "Kosher",
                   "Pork-Free",
                 ].map((tag) => {
-                  const isIncluded = dietaryText.toLowerCase().includes(tag.toLowerCase());
+                  const isIncluded = dietaryText
+                    .toLowerCase()
+                    .includes(tag.toLowerCase());
                   return (
                     <button
                       key={tag}
@@ -860,7 +927,10 @@ export function CustomerDashboard() {
                       onClick={() => {
                         if (isIncluded) {
                           const regex = new RegExp(`(?:,\\s*)?${tag}`, "gi");
-                          const updated = dietaryText.replace(regex, "").replace(/^,\s*/, "").trim();
+                          const updated = dietaryText
+                            .replace(regex, "")
+                            .replace(/^,\s*/, "")
+                            .trim();
                           setDietaryText(updated);
                         } else {
                           const updated = dietaryText.trim()
