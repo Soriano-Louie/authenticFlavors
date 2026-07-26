@@ -9,10 +9,17 @@ const transporter = nodemailer.createTransport({
     user: env.smtpUser,
     pass: env.smtpPass,
   },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
 });
 
-const FROM_ADDRESS =
-  '"Authentic Flavors by Chef Ramos" <noreply@authenticflavors.ph>';
+// Use the SMTP user as the sender email since Brevo requires a verified sender
+const SENDER_EMAIL = env.smtpUser.includes("@")
+  ? env.smtpUser
+  : "noreply@authenticflavors.ph";
+
+const FROM_ADDRESS = `"Authentic Flavors by Chef Ramos" <${SENDER_EMAIL}>`;
 
 /**
  * Send a 6-digit email verification code.

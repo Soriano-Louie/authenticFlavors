@@ -1,4 +1,4 @@
-limport { useState } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Lock, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { isApiError } from "../auth/AuthContext";
