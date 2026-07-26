@@ -8,10 +8,10 @@ const SENDER_EMAIL =
 
 /**
  * Helper to send email via Brevo REST API (HTTPS port 443, avoids SMTP timeout blocks).
- * Uses the SMTP key as the Brevo API key.
+ * Uses BREVO_API_KEY if set, otherwise falls back to SMTP_PASS.
  */
 async function sendBrevoEmail({ to, subject, html }) {
-  const apiKey = env.smtpPass;
+  const apiKey = env.brevoApiKey || env.smtpPass;
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
