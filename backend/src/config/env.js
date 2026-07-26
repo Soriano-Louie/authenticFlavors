@@ -11,6 +11,10 @@ const required = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "GEMINI_API_KEY",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_USER",
+  "SMTP_PASS",
 ];
 
 for (const key of required) {
@@ -48,6 +52,11 @@ export const env = {
     process.env.GEMINI_BASE_URL ??
     "https://generativelanguage.googleapis.com/v1beta",
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite",
+  smtpHost: process.env.SMTP_HOST,
+  smtpPort: Number(process.env.SMTP_PORT),
+  smtpUser: process.env.SMTP_USER,
+  smtpPass: process.env.SMTP_PASS,
+  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
 };
 
 export const isProduction = env.nodeEnv === "production";

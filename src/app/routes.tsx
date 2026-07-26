@@ -13,6 +13,9 @@ import { FeedbackPage } from "./pages/FeedbackPage";
 import { PublicFeedbackPage } from "./pages/PublicFeedbackPage";
 import { SuccessPage } from "./pages/SuccessPage";
 import { CancelPage } from "./pages/CancelPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import {
   RedirectIfAuthenticated,
   RequireAdmin,
@@ -64,6 +67,9 @@ export const router = createBrowserRouter([
           </RedirectIfAuthenticated>
         ),
       },
+      { path: "verify-email", Component: VerifyEmailPage },
+      { path: "forgot-password", Component: ForgotPasswordPage },
+      { path: "reset-password", Component: ResetPasswordPage },
       {
         path: "dashboard",
         Component: () => (

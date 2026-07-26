@@ -66,10 +66,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
-    const result = await apiRegister(payload);
-    setAccessToken(result.accessToken);
-    setUser(result.user);
-    return result.user;
+    await apiRegister(payload);
+    // Registration now returns { message, email } — user must verify email first
+    // Do NOT set tokens or user — they are not returned
+    // Return a dummy user to satisfy the interface; the caller redirects to verify-email
+    return { user_id: 0, email: payload.email } as unknown as AuthUser;
   }, []);
 
   const logout = useCallback(async () => {
@@ -81,18 +82,39 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
-  const updateProfile = useCallback(async (payload: UpdateProfilePayload) => {
-    if (!accessToken) {
-      throw new Error("No access token available");
-    }
-    const result = await apiUpdateProfile(accessToken, payload);
-    setUser(result.user);
-    return result.user;
-  }, [accessToken]);
+  const updateProfile = useCallback(
+    async (payload: UpdateProfilePayload) => {
+      if (!accessToken) {
+        throw new Error("No access token available");
+      }
+      const result = await apiUpdateProfile(accessToken, payload);
+      setUser(result.user);
+      return result.user;
+    },
+    [accessToken],
+  );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, accessToken, isBootstrapping, login, register, logout, refreshUser, updateProfile }),
-    [user, accessToken, isBootstrapping, login, register, logout, refreshUser, updateProfile],
+    () => ({
+      user,
+      accessToken,
+      isBootstrapping,
+      login,
+      register,
+      logout,
+      refreshUser,
+      updateProfile,
+    }),
+    [
+      user,
+      accessToken,
+      isBootstrapping,
+      login,
+      register,
+      logout,
+      refreshUser,
+      updateProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

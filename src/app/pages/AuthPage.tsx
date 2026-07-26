@@ -10,7 +10,7 @@ export function AuthPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<"login" | "register">(
-    searchParams.get("tab") === "register" ? "register" : "login"
+    searchParams.get("tab") === "register" ? "register" : "login",
   );
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,6 +73,14 @@ export function AuthPage() {
       navigate(routeAfterAuth(user.role), { replace: true });
     } catch (error) {
       if (isApiError(error)) {
+        // If email is not verified, redirect to verification page
+        if (error.code === "EMAIL_NOT_VERIFIED" && (error as any).email) {
+          navigate(
+            `/verify-email?email=${encodeURIComponent((error as any).email)}`,
+            { replace: true },
+          );
+          return;
+        }
         setErrorMessage(error.message);
         setFieldErrors(error.fieldErrors ?? {});
       } else {
@@ -89,10 +97,13 @@ export function AuthPage() {
 
     const nextErrors: Record<string, string> = {};
 
-    if (!registerForm.first_name.trim()) nextErrors.first_name = "First name is required.";
-    if (!registerForm.last_name.trim()) nextErrors.last_name = "Last name is required.";
+    if (!registerForm.first_name.trim())
+      nextErrors.first_name = "First name is required.";
+    if (!registerForm.last_name.trim())
+      nextErrors.last_name = "Last name is required.";
     if (!registerForm.email.trim()) nextErrors.email = "Email is required.";
-    if (!registerForm.phone_number.trim()) nextErrors.phone_number = "Phone number is required.";
+    if (!registerForm.phone_number.trim())
+      nextErrors.phone_number = "Phone number is required.";
     if (!registerForm.password) {
       nextErrors.password = "Password is required.";
     } else if (registerForm.password.length < 8) {
@@ -106,7 +117,7 @@ export function AuthPage() {
 
     setIsSubmitting(true);
     try {
-      const user = await register({
+      await register({
         first_name: registerForm.first_name,
         middle_name: registerForm.middle_name,
         last_name: registerForm.last_name,
@@ -115,13 +126,19 @@ export function AuthPage() {
         password: registerForm.password,
       });
 
-      navigate(routeAfterAuth(user.role), { replace: true });
+      // Redirect to email verification page
+      navigate(
+        `/verify-email?email=${encodeURIComponent(registerForm.email)}`,
+        { replace: true },
+      );
     } catch (error) {
       if (isApiError(error)) {
         setErrorMessage(error.message);
         setFieldErrors(error.fieldErrors ?? {});
       } else {
-        setErrorMessage("Unable to create account right now. Please try again.");
+        setErrorMessage(
+          "Unable to create account right now. Please try again.",
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -132,21 +149,39 @@ export function AuthPage() {
     <div className="h-screen flex overflow-hidden">
       {/* Left — Image Panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        <img src={IMAGES.ambiance} alt="Venue" className="w-full h-full object-cover" />
+        <img
+          src={IMAGES.ambiance}
+          alt="Venue"
+          className="w-full h-full object-cover"
+        />
         <div className="absolute inset-0 bg-gradient-to-br from-[#1A0E08]/90 via-[#1A0E08]/70 to-[#C8922A]/30" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-10 text-center">
           <div className="w-16 h-16 rounded-full overflow-hidden shadow-2xl mb-4">
-            <img src="/authentic_flavor_logo.png" alt="Authentic Flavors" className="w-full h-full object-cover" />
+            <img
+              src="/authentic_flavor_logo.png"
+              alt="Authentic Flavors"
+              className="w-full h-full object-cover"
+            />
           </div>
           <h2 className="font-['Playfair_Display'] text-[#F5F0E8] text-3xl mb-2">
-            Authentic Flavors<br />by Chef Ramos
+            Authentic Flavors
+            <br />
+            by Chef Ramos
           </h2>
           <p className="text-[#F5F0E8]/65 font-['Lato'] leading-relaxed max-w-sm text-sm">
-            Sign in to manage your bookings, track events, and access exclusive culinary experiences crafted just for you.
+            Sign in to manage your bookings, track events, and access exclusive
+            culinary experiences crafted just for you.
           </p>
           <div className="flex gap-2 mt-6">
-            {["Personalized Events", "Dietary Management", "AI-Powered Support"].map((tag) => (
-              <span key={tag} className="px-2.5 py-1 rounded-full bg-[#C8922A]/20 border border-[#C8922A]/30 text-[#C8922A] text-xs font-['Lato']">
+            {[
+              "Personalized Events",
+              "Dietary Management",
+              "AI-Powered Support",
+            ].map((tag) => (
+              <span
+                key={tag}
+                className="px-2.5 py-1 rounded-full bg-[#C8922A]/20 border border-[#C8922A]/30 text-[#C8922A] text-xs font-['Lato']"
+              >
                 {tag}
               </span>
             ))}
@@ -167,8 +202,12 @@ export function AuthPage() {
               />
             </div>
             <div>
-              <p className="text-[#2C1810] text-sm font-['Playfair_Display']">Authentic Flavors</p>
-              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">by Chef Ramos</p>
+              <p className="text-[#2C1810] text-sm font-['Playfair_Display']">
+                Authentic Flavors
+              </p>
+              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">
+                by Chef Ramos
+              </p>
             </div>
           </div>
 
@@ -182,7 +221,9 @@ export function AuthPage() {
                   setTab(t);
                 }}
                 className={`flex-1 py-2 rounded-lg text-sm font-['Lato'] transition-all capitalize ${
-                  tab === t ? "bg-white text-[#2C1810] shadow-sm" : "text-[#2C1810]/50 hover:text-[#2C1810]"
+                  tab === t
+                    ? "bg-white text-[#2C1810] shadow-sm"
+                    : "text-[#2C1810]/50 hover:text-[#2C1810]"
                 }`}
               >
                 {t === "login" ? "Sign In" : "Create Account"}
@@ -200,86 +241,153 @@ export function AuthPage() {
                 : "Create your account to start booking exclusive events."}
             </p>
 
-            <form className="space-y-3" onSubmit={tab === "login" ? handleLogin : handleRegister}>
+            <form
+              className="space-y-3"
+              onSubmit={tab === "login" ? handleLogin : handleRegister}
+            >
               {tab === "register" && (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">First Name</label>
+                      <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                        First Name
+                      </label>
                       <input
                         type="text"
                         value={registerForm.first_name}
-                        onChange={(e) => setRegisterForm((prev) => ({ ...prev, first_name: e.target.value }))}
+                        onChange={(e) =>
+                          setRegisterForm((prev) => ({
+                            ...prev,
+                            first_name: e.target.value,
+                          }))
+                        }
                         placeholder="Juan"
                         className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
                       />
-                      {fieldErrors.first_name && <p className="text-xs text-[#C4541A] mt-1">{fieldErrors.first_name}</p>}
+                      {fieldErrors.first_name && (
+                        <p className="text-xs text-[#C4541A] mt-1">
+                          {fieldErrors.first_name}
+                        </p>
+                      )}
                     </div>
 
                     <div>
-                      <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">Last Name</label>
+                      <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                        Last Name
+                      </label>
                       <input
                         type="text"
                         value={registerForm.last_name}
-                        onChange={(e) => setRegisterForm((prev) => ({ ...prev, last_name: e.target.value }))}
+                        onChange={(e) =>
+                          setRegisterForm((prev) => ({
+                            ...prev,
+                            last_name: e.target.value,
+                          }))
+                        }
                         placeholder="Dela Cruz"
                         className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
                       />
-                      {fieldErrors.last_name && <p className="text-xs text-[#C4541A] mt-1">{fieldErrors.last_name}</p>}
+                      {fieldErrors.last_name && (
+                        <p className="text-xs text-[#C4541A] mt-1">
+                          {fieldErrors.last_name}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">Middle Name (optional)</label>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                      Middle Name (optional)
+                    </label>
                     <input
                       type="text"
                       value={registerForm.middle_name}
-                      onChange={(e) => setRegisterForm((prev) => ({ ...prev, middle_name: e.target.value }))}
+                      onChange={(e) =>
+                        setRegisterForm((prev) => ({
+                          ...prev,
+                          middle_name: e.target.value,
+                        }))
+                      }
                       placeholder="Santos"
                       className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">Phone Number</label>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                      Phone Number
+                    </label>
                     <input
                       type="tel"
                       value={registerForm.phone_number}
-                      onChange={(e) => setRegisterForm((prev) => ({ ...prev, phone_number: e.target.value }))}
+                      onChange={(e) =>
+                        setRegisterForm((prev) => ({
+                          ...prev,
+                          phone_number: e.target.value,
+                        }))
+                      }
                       placeholder="09171234567"
                       className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
                     />
-                    {fieldErrors.phone_number && <p className="text-xs text-[#C4541A] mt-1">{fieldErrors.phone_number}</p>}
+                    {fieldErrors.phone_number && (
+                      <p className="text-xs text-[#C4541A] mt-1">
+                        {fieldErrors.phone_number}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
 
               <div>
-                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">Email Address</label>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                  Email Address
+                </label>
                 <input
                   type="email"
                   value={tab === "login" ? loginForm.email : registerForm.email}
                   onChange={(e) =>
                     tab === "login"
-                      ? setLoginForm((prev) => ({ ...prev, email: e.target.value }))
-                      : setRegisterForm((prev) => ({ ...prev, email: e.target.value }))
+                      ? setLoginForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      : setRegisterForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
                   }
                   placeholder="you@email.com"
                   className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
                 />
-                {fieldErrors.email && <p className="text-xs text-[#C4541A] mt-1">{fieldErrors.email}</p>}
+                {fieldErrors.email && (
+                  <p className="text-xs text-[#C4541A] mt-1">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">Password</label>
+                <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                  Password
+                </label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
-                    value={tab === "login" ? loginForm.password : registerForm.password}
+                    value={
+                      tab === "login"
+                        ? loginForm.password
+                        : registerForm.password
+                    }
                     onChange={(e) =>
                       tab === "login"
-                        ? setLoginForm((prev) => ({ ...prev, password: e.target.value }))
-                        : setRegisterForm((prev) => ({ ...prev, password: e.target.value }))
+                        ? setLoginForm((prev) => ({
+                            ...prev,
+                            password: e.target.value,
+                          }))
+                        : setRegisterForm((prev) => ({
+                            ...prev,
+                            password: e.target.value,
+                          }))
                     }
                     placeholder="••••••••"
                     className="w-full px-4 py-2.5 pr-12 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
@@ -292,18 +400,30 @@ export function AuthPage() {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                {fieldErrors.password && <p className="text-xs text-[#C4541A] mt-1">{fieldErrors.password}</p>}
+                {fieldErrors.password && (
+                  <p className="text-xs text-[#C4541A] mt-1">
+                    {fieldErrors.password}
+                  </p>
+                )}
               </div>
 
               {tab === "login" && (
                 <div className="text-right">
-                  <a href="#" className="text-[#C8922A] text-sm font-['Lato'] hover:underline">Forgot password?</a>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/forgot-password")}
+                    className="text-[#C8922A] text-sm font-['Lato'] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
                 </div>
               )}
 
               {errorMessage && (
                 <div className="rounded-xl bg-[#C4541A]/10 border border-[#C4541A]/20 px-3 py-2">
-                  <p className="text-sm text-[#C4541A] font-['Lato']">{errorMessage}</p>
+                  <p className="text-sm text-[#C4541A] font-['Lato']">
+                    {errorMessage}
+                  </p>
                 </div>
               )}
 
@@ -323,7 +443,9 @@ export function AuthPage() {
             </form>
 
             <p className="text-center text-[#2C1810]/50 text-sm font-['Lato'] mt-4">
-              {tab === "login" ? "Don't have an account? " : "Already have an account? "}
+              {tab === "login"
+                ? "Don't have an account? "
+                : "Already have an account? "}
               <button
                 onClick={() => setTab(tab === "login" ? "register" : "login")}
                 className="text-[#C8922A] hover:underline"

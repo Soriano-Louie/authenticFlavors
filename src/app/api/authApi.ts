@@ -49,31 +49,49 @@ export interface ApiErrorShape {
     code?: string;
     message?: string;
     fieldErrors?: Record<string, string>;
+    email?: string;
   };
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authenticflavors.onrender.com";
+const API_BASE_URL =
+  (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
+  "https://authenticflavors.onrender.com";
 
 export class ApiError extends Error {
   status: number;
   code?: string;
   fieldErrors?: Record<string, string>;
+  email?: string;
 
-  constructor(status: number, message: string, code?: string, fieldErrors?: Record<string, string>) {
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    fieldErrors?: Record<string, string>,
+    email?: string,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.fieldErrors = fieldErrors;
+    this.email = email;
   }
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as T & ApiErrorShape;
+  const payload = (await response.json().catch(() => ({}))) as T &
+    ApiErrorShape;
 
   if (!response.ok) {
     const message = payload.error?.message ?? "Request failed.";
-    throw new ApiError(response.status, message, payload.error?.code, payload.error?.fieldErrors);
+    throw new ApiError(
+      response.status,
+      message,
+      payload.error?.code,
+      payload.error?.fieldErrors,
+      payload.error?.email,
+    );
   }
 
   return payload;
@@ -92,8 +110,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export function register(payload: RegisterPayload): Promise<AuthSuccessResponse> {
-  return request<AuthSuccessResponse>("/api/auth/register", {
+export interface RegisterResponse {
+  message: string;
+  email: string;
+}
+
+export function register(payload: RegisterPayload): Promise<RegisterResponse> {
+  return request<RegisterResponse>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -136,6 +159,67 @@ export function updateProfile(
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Email Verification ────────────────────────────────────────────
+
+export interface SendVerificationPayload {
+  email: string;
+}
+
+export interface VerifyEmailPayload {
+  email: string;
+  code: string;
+}
+
+export function sendVerificationCode(
+  payload: SendVerificationPayload,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/send-verification", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function verifyEmail(
+  payload: VerifyEmailPayload,
+): Promise<AuthSuccessResponse & { message: string }> {
+  return request<AuthSuccessResponse & { message: string }>(
+    "/api/auth/verify-email",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+// ─── Password Reset ────────────────────────────────────────────────
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  password: string;
+}
+
+export function forgotPassword(
+  payload: ForgotPasswordPayload,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetPassword(
+  payload: ResetPasswordPayload,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/reset-password", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

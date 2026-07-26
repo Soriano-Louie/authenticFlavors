@@ -121,7 +121,10 @@ export async function seedDatabaseIfEmpty() {
     if (paymentAlterations.length > 0) {
       const alterSql = `ALTER TABLE payments ${paymentAlterations.join(", ")}`;
       await connection.query(alterSql);
-      console.log("[MIGRATION] Added missing payments columns:", paymentAlterations.join(", "));
+      console.log(
+        "[MIGRATION] Added missing payments columns:",
+        paymentAlterations.join(", "),
+      );
     }
 
     const [paymentStatusCheck] = await connection.query(
@@ -129,12 +132,48 @@ export async function seedDatabaseIfEmpty() {
       [connection.config.database],
     );
     const currentPaymentEnum = paymentStatusCheck[0]?.COLUMN_TYPE || "";
-    if (!currentPaymentEnum.includes("For_Verification") || !currentPaymentEnum.includes("Rejected")) {
+    if (
+      !currentPaymentEnum.includes("For_Verification") ||
+      !currentPaymentEnum.includes("Rejected")
+    ) {
       await connection.query(
-        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending'`
+        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending'`,
       );
       console.log("[MIGRATION] Updated payments.payment_status ENUM.");
     }
+
+    // 0.3 Create email_verifications table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS email_verifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        code VARCHAR(6) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        is_used BOOLEAN DEFAULT FALSE,
+        attempt_count INT DEFAULT 0,
+        resend_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email (email),
+        INDEX idx_email_code (email, code)
+      )
+    `);
+    console.log("[MIGRATION] email_verifications table ensured.");
+
+    // 0.4 Create password_reset_tokens table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        token_hash VARCHAR(255) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        is_used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id),
+        INDEX idx_token_hash (token_hash)
+      )
+    `);
+    console.log("[MIGRATION] password_reset_tokens table ensured.");
 
     // 1. Seed event_types
     const [eventTypes] = await connection.query(
