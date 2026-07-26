@@ -728,7 +728,7 @@ export async function refresh(req, res) {
   }
 }
 
-export function logout(_req, res) {
+export function logout(req, res) {
   res.clearCookie(env.refreshCookieName, cookieConfig(req));
   return res.status(200).json({ message: "Logged out successfully." });
 }
