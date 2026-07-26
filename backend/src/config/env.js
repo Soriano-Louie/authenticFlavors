@@ -11,10 +11,9 @@ const required = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "GEMINI_API_KEY",
-  "SMTP_HOST",
-  "SMTP_PORT",
-  "SMTP_USER",
-  "SMTP_PASS",
+  "BREVO_API_KEY",
+  "BREVO_SENDER_EMAIL",
+  "BREVO_SENDER_NAME",
 ];
 
 for (const key of required) {
@@ -52,12 +51,9 @@ export const env = {
     process.env.GEMINI_BASE_URL ??
     "https://generativelanguage.googleapis.com/v1beta",
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite",
-  smtpHost: process.env.SMTP_HOST,
-  smtpPort: Number(process.env.SMTP_PORT),
-  smtpUser: process.env.SMTP_USER,
-  smtpPass: process.env.SMTP_PASS,
-  brevoApiKey: process.env.BREVO_API_KEY ?? "",
-  brevoSenderEmail: process.env.BREVO_SENDER_EMAIL ?? "",
+  brevoApiKey: process.env.BREVO_API_KEY,
+  senderEmail: process.env.BREVO_SENDER_EMAIL,
+  senderName: process.env.BREVO_SENDER_NAME,
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
 };
 
