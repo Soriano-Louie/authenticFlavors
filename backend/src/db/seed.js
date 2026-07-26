@@ -175,10 +175,23 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] password_reset_tokens table ensured.");
 
-    // 1. Seed event_types
-    const [eventTypes] = await connection.query(
-      "SELECT COUNT(*) as count FROM event_types",
-    );
+     // 0.5 Ensure account_status ENUM includes 'Pending'
+     const [accountStatusCol] = await connection.query(
+       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",
+       [connection.config.database],
+     );
+     const currentAccountStatusEnum = accountStatusCol[0]?.COLUMN_TYPE || "";
+     if (!currentAccountStatusEnum.includes("Pending")) {
+       await connection.query(
+         "ALTER TABLE users MODIFY COLUMN account_status ENUM('Active','Inactive','Suspended','Pending') NOT NULL DEFAULT 'Active'",
+       );
+       console.log("[MIGRATION] Added 'Pending' to users.account_status ENUM.");
+     }
+
+     // 1. Seed event_types
+     const [eventTypes] = await connection.query(
+       "SELECT COUNT(*) as count FROM event_types",
+     );
     if (eventTypes[0].count === 0) {
       const defaultEventTypes = [
         "Birthday",
