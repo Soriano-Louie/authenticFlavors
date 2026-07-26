@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Mail, ArrowLeft } from "lucide-react";
-import { isApiError } from "../auth/AuthContext";
+import { isApiError, useAuth } from "../auth/AuthContext";
 import { sendVerificationCode, verifyEmail } from "../api/authApi";
 
 export function VerifyEmailPage() {
   const navigate = useNavigate();
+  const { setAuth } = useAuth();
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const [code, setCode] = useState(["", "", "", "", "", ""]);
@@ -89,13 +90,13 @@ export function VerifyEmailPage() {
 
     try {
       const result = await verifyEmail({ email, code: fullCode });
-      // Verification succeeded — redirect to login; the refresh cookie is set
+      setAuth(result.accessToken, result.user);
       setSuccessMessage(
-        result.message || "Email verified successfully! You can now sign in.",
+        result.message || "Email verified successfully! Redirecting to dashboard...",
       );
       setTimeout(() => {
-        navigate("/auth", { replace: true });
-      }, 2000);
+        navigate("/dashboard", { replace: true });
+      }, 1500);
     } catch (error) {
       if (isApiError(error)) {
         setErrorMessage(error.message);

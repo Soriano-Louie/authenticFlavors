@@ -30,6 +30,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
+  setAuth: (accessToken: string, user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -73,6 +74,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { user_id: 0, email: payload.email } as unknown as AuthUser;
   }, []);
 
+  const setAuth = useCallback((token: string, user: AuthUser) => {
+    setAccessToken(token);
+    setUser(user);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await apiLogout();
@@ -104,6 +110,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refreshUser,
       updateProfile,
+      setAuth,
     }),
     [
       user,
@@ -114,6 +121,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refreshUser,
       updateProfile,
+      setAuth,
     ],
   );
 
