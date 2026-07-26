@@ -1,32 +1,51 @@
-import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 
-const transporter = nodemailer.createTransport({
-  host: env.smtpHost,
-  port: env.smtpPort,
-  secure: env.smtpPort === 465,
-  auth: {
-    user: env.smtpUser,
-    pass: env.smtpPass,
-  },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-});
+// Sender email must be verified in Brevo dashboard (Settings → Senders)
+// Defaults to SMTP_USER, but you can override with BREVO_SENDER_EMAIL env var
+const SENDER_EMAIL =
+  env.brevoSenderEmail ||
+  (env.smtpUser.includes("@") ? env.smtpUser : "noreply@authenticflavors.ph");
 
-// Use the SMTP user as the sender email since Brevo requires a verified sender
-const SENDER_EMAIL = env.smtpUser.includes("@")
-  ? env.smtpUser
-  : "noreply@authenticflavors.ph";
+/**
+ * Helper to send email via Brevo REST API (HTTPS port 443, avoids SMTP timeout blocks).
+ * Uses the SMTP key as the Brevo API key.
+ */
+async function sendBrevoEmail({ to, subject, html }) {
+  const apiKey = env.smtpPass;
 
-const FROM_ADDRESS = `"Authentic Flavors by Chef Ramos" <${SENDER_EMAIL}>`;
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "api-key": apiKey,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      sender: {
+        name: "Authentic Flavors by Chef Ramos",
+        email: SENDER_EMAIL,
+      },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Brevo API Error (${response.status}): ${errorData.message || response.statusText}`,
+    );
+  }
+
+  return response.json();
+}
 
 /**
  * Send a 6-digit email verification code.
  */
 export async function sendVerificationCode(email, code) {
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
+  await sendBrevoEmail({
     to: email,
     subject: "Verify Your Email – Authentic Flavors by Chef Ramos",
     html: `
@@ -66,8 +85,7 @@ export async function sendVerificationCode(email, code) {
 export async function sendPasswordResetEmail(email, firstName, resetToken) {
   const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
 
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
+  await sendBrevoEmail({
     to: email,
     subject: "Reset Your Password – Authentic Flavors by Chef Ramos",
     html: `

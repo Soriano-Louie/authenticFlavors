@@ -56,6 +56,7 @@ export const env = {
   smtpPort: Number(process.env.SMTP_PORT),
   smtpUser: process.env.SMTP_USER,
   smtpPass: process.env.SMTP_PASS,
+  brevoSenderEmail: process.env.BREVO_SENDER_EMAIL ?? "",
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
 };
 
