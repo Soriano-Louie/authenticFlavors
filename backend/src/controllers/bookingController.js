@@ -1,5 +1,8 @@
 import { pool } from "../db/pool.js";
-import { getPhilippineDateString, toPhilippineDateString } from "../utils/timezone.js";
+import {
+  getPhilippineDateString,
+  toPhilippineDateString,
+} from "../utils/timezone.js";
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
@@ -66,12 +69,15 @@ export async function createBooking(req, res) {
     const minLeadTimeDate = new Date();
     minLeadTimeDate.setDate(minLeadTimeDate.getDate() + 14);
     // Format to local date string (YYYY-MM-DD) matching Philippine time
-    const minLeadTimeStr = minLeadTimeDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+    const minLeadTimeStr = minLeadTimeDate.toLocaleDateString("sv-SE", {
+      timeZone: "Asia/Manila",
+    });
     if (event_date < minLeadTimeStr) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
-          message: "Event booking must be scheduled at least 14 days (two weeks) in advance to allow time for the down payment.",
+          message:
+            "Event booking must be scheduled at least 14 days (two weeks) in advance to allow time for the down payment.",
         },
       });
     }
@@ -83,7 +89,8 @@ export async function createBooking(req, res) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
-          message: "The store is closed on Mondays. Please choose another date.",
+          message:
+            "The store is closed on Mondays. Please choose another date.",
         },
       });
     }
@@ -183,8 +190,12 @@ export async function createBooking(req, res) {
     }
 
     // Generate unique 6-digit ref only for AI/chatbot bookings
-    const ai_booking_reference = is_ai_booking ? Math.floor(100000 + Math.random() * 900000) : null;
-    const booking_reference = !is_ai_booking ? `BK-${Math.floor(100000 + Math.random() * 900000)}` : null;
+    const ai_booking_reference = is_ai_booking
+      ? Math.floor(100000 + Math.random() * 900000)
+      : null;
+    const booking_reference = !is_ai_booking
+      ? `BK-${Math.floor(100000 + Math.random() * 900000)}`
+      : null;
 
     // Setup booking summary JSON
     const summaryData = JSON.stringify({
@@ -490,9 +501,12 @@ export async function verifyBooking(req, res) {
     await connection.beginTransaction();
 
     const amountPaid = parseFloat(booking.amount_paid || 0);
-    const remainingBalance = parseFloat(booking.remaining_balance ?? booking.total_price);
+    const remainingBalance = parseFloat(
+      booking.remaining_balance ?? booking.total_price,
+    );
     const newRemainingBalance = Math.max(remainingBalance, 0);
-    const newBookingStatus = newRemainingBalance <= 0 ? "Confirmed" : "Reserved";
+    const newBookingStatus =
+      newRemainingBalance <= 0 ? "Confirmed" : "Reserved";
 
     await connection.query(
       `UPDATE bookings 
@@ -520,6 +534,188 @@ export async function verifyBooking(req, res) {
     });
   } finally {
     connection.release();
+  }
+}
+
+// Admin dashboard stats (Total Users, Total Feedback, Total Revenue, Sentiment Breakdown)
+export async function getAdminStats(req, res) {
+  try {
+    const [[{ total: totalUsers }]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM users WHERE role = 'Customer'",
+    );
+    const [[{ total: totalFeedback }]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM feedback",
+    );
+    const [[{ total: totalRevenue }]] = await pool.query(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_status = 'Paid'",
+    );
+
+    // Sentiment breakdown from analyzed feedback
+    const [sentimentRows] = await pool.query(
+      `SELECT 
+        sentiment_status AS sentiment,
+        COUNT(*) AS count
+       FROM feedback 
+       WHERE sentiment_status IN ('Positive', 'Neutral', 'Negative')
+       GROUP BY sentiment_status`,
+    );
+
+    // Total analyzed feedback for percentage calculation
+    const totalAnalyzed = sentimentRows.reduce((sum, r) => sum + r.count, 0);
+    const sentimentBreakdown = sentimentRows.map((r) => ({
+      sentiment: r.sentiment,
+      count: r.count,
+      percentage:
+        totalAnalyzed > 0 ? Math.round((r.count / totalAnalyzed) * 100) : 0,
+    }));
+
+    // If no analyzed feedback exists, provide zeros
+    if (sentimentBreakdown.length === 0) {
+      sentimentBreakdown.push(
+        { sentiment: "Positive", count: 0, percentage: 0 },
+        { sentiment: "Neutral", count: 0, percentage: 0 },
+        { sentiment: "Negative", count: 0, percentage: 0 },
+      );
+    }
+
+    res.status(200).json({
+      totalUsers,
+      totalFeedback,
+      totalRevenue: parseFloat(totalRevenue),
+      sentimentBreakdown,
+    });
+  } catch (error) {
+    console.error("Error fetching admin stats:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to fetch admin stats.",
+      },
+    });
+  }
+}
+
+// Admin recent activity feed
+export async function getAdminActivity(req, res) {
+  try {
+    // New bookings
+    const [newBookings] = await pool.query(
+      `SELECT CONCAT('act-', 'booking-', b.booking_id) AS id,
+              'booking' AS type,
+              CONCAT(u.first_name, ' ', u.last_name) AS user,
+              'Created new booking' AS action,
+              CONCAT(p.package_name, ' - ', DATE_FORMAT(b.event_date, '%M %e, %Y')) AS details,
+              CONCAT('Calendar') AS icon,
+              b.created_at AS ts
+       FROM bookings b
+       JOIN users u ON b.user_id = u.user_id
+       JOIN packages p ON b.package_id = p.package_id
+       ORDER BY b.created_at DESC
+       LIMIT 10`,
+    );
+
+    // Feedback submissions
+    const [newFeedback] = await pool.query(
+      `SELECT CONCAT('act-', 'feedback-', f.feedback_id) AS id,
+              'feedback' AS type,
+              CONCAT(u.first_name, ' ', u.last_name) AS user,
+              'Submitted feedback' AS action,
+              CONCAT(f.rating, '-star review') AS details,
+              CONCAT('MessageSquare') AS icon,
+              f.submitted_at AS ts
+       FROM feedback f
+       JOIN users u ON f.user_id = u.user_id
+       ORDER BY f.submitted_at DESC
+       LIMIT 10`,
+    );
+
+    // New user registrations
+    const [newUsers] = await pool.query(
+      `SELECT CONCAT('act-', 'user-', u.user_id) AS id,
+              'user' AS type,
+              CONCAT(u.first_name, ' ', u.last_name) AS user,
+              'New user registered' AS action,
+              'Customer account created' AS details,
+              CONCAT('Users') AS icon,
+              u.created_at AS ts
+       FROM users u
+       WHERE u.role = 'Customer'
+       ORDER BY u.created_at DESC
+       LIMIT 10`,
+    );
+
+    // Payment verifications (recently paid)
+    const [newPayments] = await pool.query(
+      `SELECT CONCAT('act-', 'payment-', p.payment_id) AS id,
+              'payment' AS type,
+              CONCAT(u.first_name, ' ', u.last_name) AS user,
+              'Payment submitted' AS action,
+              CONCAT(p.payment_type, ' - ₱', FORMAT(p.amount, 2)) AS details,
+              CONCAT('DollarSign') AS icon,
+              p.paid_at AS ts
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_status = 'Paid'
+       ORDER BY p.paid_at DESC
+       LIMIT 10`,
+    );
+
+    // Combine all activities, sort by timestamp descending, limit to 20
+    const allActivities = [
+      ...newBookings,
+      ...newFeedback,
+      ...newUsers,
+      ...newPayments,
+    ]
+      .sort((a, b) => {
+        const dateA = new Date(a.ts || 0).getTime();
+        const dateB = new Date(b.ts || 0).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 20)
+      .map((act) => {
+        const now = new Date();
+        const actDate = new Date(act.ts);
+        const diffMs = now.getTime() - actDate.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        let timestamp;
+        if (diffMins < 1) timestamp = "Just now";
+        else if (diffMins < 60)
+          timestamp = `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+        else if (diffHours < 24)
+          timestamp = `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+        else if (diffDays < 7)
+          timestamp = `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+        else
+          timestamp = actDate.toLocaleDateString("en-PH", {
+            month: "short",
+            day: "numeric",
+          });
+
+        return {
+          id: act.id,
+          type: act.type,
+          user: act.user,
+          action: act.action,
+          details: act.details,
+          icon: act.icon,
+          timestamp,
+        };
+      });
+
+    res.status(200).json({ activities: allActivities });
+  } catch (error) {
+    console.error("Error fetching admin activity:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to fetch admin activity.",
+      },
+    });
   }
 }
 

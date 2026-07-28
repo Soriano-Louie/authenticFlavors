@@ -1,22 +1,62 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../auth/AuthContext";
-import { getAdminBookings, completeBooking, type Booking } from "../api/bookingApi";
-import { getBookingPayments, verifyReceipt, type Payment } from "../api/paymentApi";
+import {
+  getAdminBookings,
+  completeBooking,
+  type Booking,
+} from "../api/bookingApi";
+import {
+  getBookingPayments,
+  verifyReceipt,
+  type Payment,
+} from "../api/paymentApi";
+import {
+  getAdminStats,
+  getAdminActivity,
+  type AdminStats,
+  type AdminActivity,
+} from "../api/adminApi";
 import { toast } from "sonner";
 import {
-  BarChart2, Users, Calendar, Star, TrendingUp, TrendingDown, AlertCircle,
-  CheckCircle, XCircle, Clock, Menu, X, ChefHat, MessageSquare, Package,
-  FileText, DollarSign, Activity, Sparkles, Download, ArrowUp, ArrowDown,
-  Info, Loader2, Eye
+  BarChart2,
+  Users,
+  Calendar,
+  Star,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Menu,
+  X,
+  ChefHat,
+  MessageSquare,
+  Package,
+  FileText,
+  DollarSign,
+  Activity,
+  Sparkles,
+  Download,
+  ArrowUp,
+  ArrowDown,
+  Info,
+  Loader2,
+  Eye,
 } from "lucide-react";
 import {
-  BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
-import {
-  ADMIN_BOOKINGS, AI_FEEDBACK_ANALYSIS, RECENT_ACTIVITIES, ADMIN_STATS
-} from "../data/mockData";
 
 const SIDEBAR_LINKS = [
   { key: "overview", label: "Overview", icon: BarChart2 },
@@ -143,33 +183,8 @@ export function AdminDashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#C8922A]/10 border border-[#C8922A]/20 rounded-full">
-                <Info size={14} className="text-[#C8922A]" />
-                <span className="text-xs font-['Lato'] text-[#2C1810]">
-                  Demo Account
-                </span>
-              </div>
-            </div>
           </div>
         </header>
-
-        {/* Demo Banner */}
-        <div className="mx-6 mt-6 mb-4 bg-gradient-to-r from-[#C8922A]/10 to-[#C4541A]/5 border border-[#C8922A]/20 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#C8922A]/20 flex items-center justify-center shrink-0">
-              <Info size={20} className="text-[#C8922A]" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1">
-                Demo Admin Dashboard
-              </h3>
-              <p className="text-xs font-['Lato'] text-[#2C1810]/60 leading-relaxed">
-                You're viewing the admin panel with pre-populated demo data. All metrics, feedback analysis, and activity logs are simulated for demonstration purposes.
-              </p>
-            </div>
-          </div>
-        </div>
 
         {/* Content Sections */}
         <div className="p-6">
@@ -191,37 +206,41 @@ export function AdminDashboard() {
 
 // Overview Section
 function OverviewSection() {
-  const stats = [
+  const { accessToken } = useAuth();
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    setLoading(true);
+    getAdminStats(accessToken)
+      .then(setStats)
+      .catch((err) => {
+        console.error("Failed to fetch admin stats:", err);
+        toast.error("Failed to load dashboard stats.");
+      })
+      .finally(() => setLoading(false));
+  }, [accessToken]);
+
+  const statCards = [
     {
       icon: Users,
       label: "Total Users",
-      value: ADMIN_STATS.totalUsers.value,
-      change: ADMIN_STATS.totalUsers.change,
-      trend: ADMIN_STATS.totalUsers.trend,
+      value: stats ? String(stats.totalUsers) : "—",
       color: "#C8922A",
-    },
-    {
-      icon: Activity,
-      label: "Active Sessions",
-      value: ADMIN_STATS.activeSessions.value,
-      change: ADMIN_STATS.activeSessions.change,
-      trend: ADMIN_STATS.activeSessions.trend,
-      color: "#C4541A",
     },
     {
       icon: MessageSquare,
       label: "Feedback Count",
-      value: ADMIN_STATS.feedbackCount.value,
-      change: ADMIN_STATS.feedbackCount.change,
-      trend: ADMIN_STATS.feedbackCount.trend,
+      value: stats ? String(stats.totalFeedback) : "—",
       color: "#7A8C5C",
     },
     {
       icon: DollarSign,
       label: "Total Revenue",
-      value: ADMIN_STATS.totalRevenue.value,
-      change: ADMIN_STATS.totalRevenue.change,
-      trend: ADMIN_STATS.totalRevenue.trend,
+      value: stats
+        ? `₱${stats.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+        : "—",
       color: "#7A8C5C",
     },
   ];
@@ -229,42 +248,38 @@ function OverviewSection() {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {stats.map((stat, idx) => {
-          const Icon = stat.icon;
-          const TrendIcon = stat.trend === "up" ? ArrowUp : ArrowDown;
-          const trendColor = stat.trend === "up" ? "#7A8C5C" : "#C4541A";
-
-          return (
-            <div
-              key={idx}
-              className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: `${stat.color}15` }}
-                >
-                  <Icon size={20} style={{ color: stat.color }} />
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {statCards.map((stat, idx) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={idx}
+                className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: `${stat.color}15` }}
+                  >
+                    <Icon size={20} style={{ color: stat.color }} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-xs font-['Lato']">
-                  <TrendIcon size={14} style={{ color: trendColor }} />
-                  <span style={{ color: trendColor }}>
-                    {stat.change > 0 ? "+" : ""}
-                    {stat.change}%
-                  </span>
-                </div>
+                <p className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-1">
+                  {stat.value}
+                </p>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                  {stat.label}
+                </p>
               </div>
-              <p className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-1">
-                {stat.value}
-              </p>
-              <p className="text-xs font-['Lato'] text-[#2C1810]/50">
-                {stat.label}
-              </p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Quick Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -272,64 +287,115 @@ function OverviewSection() {
           <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
             Sentiment Overview
           </h3>
-          <div className="space-y-3">
-            {AI_FEEDBACK_ANALYSIS.sentimentBreakdown.map((item) => (
-              <div key={item.sentiment}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-['Lato'] text-[#2C1810]">
-                    {item.sentiment}
-                  </span>
-                  <span className="text-sm font-['Lato'] text-[#2C1810]/60">
-                    {item.count} ({item.percentage}%)
-                  </span>
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+            </div>
+          ) : stats && stats.sentimentBreakdown.length > 0 ? (
+            <div className="space-y-3">
+              {stats.sentimentBreakdown.map((item) => (
+                <div key={item.sentiment}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-['Lato'] text-[#2C1810]">
+                      {item.sentiment}
+                    </span>
+                    <span className="text-sm font-['Lato'] text-[#2C1810]/60">
+                      {item.count} ({item.percentage}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-[#EDE8DF] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${item.percentage}%`,
+                        backgroundColor: SENTIMENT_COLORS[item.sentiment],
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-[#EDE8DF] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${item.percentage}%`,
-                      backgroundColor: SENTIMENT_COLORS[item.sentiment],
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+              No feedback data available yet.
+            </p>
+          )}
         </div>
 
         <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
           <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
             Recent Activity
           </h3>
-          <div className="space-y-3">
-            {RECENT_ACTIVITIES.slice(0, 5).map((activity) => {
-              const IconComponent = getIconComponent(activity.icon);
-              return (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 pb-3 border-b border-[#C8922A]/5 last:border-0 last:pb-0"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-[#C8922A]/10 flex items-center justify-center shrink-0">
-                    <IconComponent size={14} className="text-[#C8922A]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-['Lato'] text-[#2C1810]">
-                      <span className="font-semibold">{activity.user}</span>{" "}
-                      {activity.action}
-                    </p>
-                    <p className="text-xs font-['Lato'] text-[#2C1810]/50 truncate">
-                      {activity.details}
-                    </p>
-                    <p className="text-xs font-['Lato'] text-[#C8922A] mt-0.5">
-                      {activity.timestamp}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <RecentActivityList limit={5} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Recent Activity List (reusable for both overview and full activity page)
+function RecentActivityList({ limit }: { limit?: number }) {
+  const { accessToken } = useAuth();
+  const [activities, setActivities] = useState<AdminActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    setLoading(true);
+    getAdminActivity(accessToken)
+      .then((res) => setActivities(res.activities))
+      .catch((err) => {
+        console.error("Failed to fetch admin activity:", err);
+        toast.error("Failed to load recent activity.");
+      })
+      .finally(() => setLoading(false));
+  }, [accessToken]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+      </div>
+    );
+  }
+
+  if (activities.length === 0) {
+    return (
+      <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+        No recent activity found.
+      </p>
+    );
+  }
+
+  const displayActivities = limit ? activities.slice(0, limit) : activities;
+
+  return (
+    <div className="space-y-3">
+      {displayActivities.map((activity) => {
+        const IconComponent = getIconComponent(activity.icon);
+        return (
+          <div
+            key={activity.id}
+            className="flex items-start gap-3 pb-3 border-b border-[#C8922A]/5 last:border-0 last:pb-0"
+          >
+            <div className="w-8 h-8 rounded-lg bg-[#C8922A]/10 flex items-center justify-center shrink-0">
+              <IconComponent size={14} className="text-[#C8922A]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-['Lato'] text-[#2C1810]">
+                <span className="font-semibold">{activity.user}</span>{" "}
+                {activity.action}
+              </p>
+              <p className="text-xs font-['Lato'] text-[#2C1810]/50 truncate">
+                {activity.details}
+              </p>
+              <p className="text-xs font-['Lato'] text-[#C8922A] mt-0.5">
+                {activity.timestamp}
+              </p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -342,6 +408,18 @@ function FeedbackSection({
   onGenerateReport: () => void;
   isGenerating: boolean;
 }) {
+  const { accessToken } = useAuth();
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    getAdminStats(accessToken)
+      .then(setStats)
+      .catch((err) => console.error("Failed to fetch stats:", err))
+      .finally(() => setLoading(false));
+  }, [accessToken]);
+
   return (
     <div className="space-y-6">
       {/* Header with Generate Report Button */}
@@ -351,7 +429,8 @@ function FeedbackSection({
             AI-Powered Feedback Analysis
           </h2>
           <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1">
-            Automated insights from customer feedback using AI sentiment analysis
+            Automated insights from customer feedback using AI sentiment
+            analysis
           </p>
         </div>
         <button
@@ -370,42 +449,52 @@ function FeedbackSection({
           <Sparkles size={20} className="text-[#C8922A]" />
           Sentiment Breakdown
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {AI_FEEDBACK_ANALYSIS.sentimentBreakdown.map((item) => (
-            <div
-              key={item.sentiment}
-              className="p-4 rounded-xl border-2"
-              style={{
-                borderColor: `${SENTIMENT_COLORS[item.sentiment]}30`,
-                backgroundColor: `${SENTIMENT_COLORS[item.sentiment]}08`,
-              }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span
-                  className="text-sm font-['Lato'] font-semibold"
-                  style={{ color: SENTIMENT_COLORS[item.sentiment] }}
-                >
-                  {item.sentiment}
-                </span>
-                <span
-                  className="text-xs font-['Lato']"
-                  style={{ color: SENTIMENT_COLORS[item.sentiment] }}
-                >
-                  {item.percentage}%
-                </span>
-              </div>
-              <p
-                className="text-3xl font-['Playfair_Display']"
-                style={{ color: SENTIMENT_COLORS[item.sentiment] }}
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+          </div>
+        ) : stats && stats.sentimentBreakdown.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {stats.sentimentBreakdown.map((item) => (
+              <div
+                key={item.sentiment}
+                className="p-4 rounded-xl border-2"
+                style={{
+                  borderColor: `${SENTIMENT_COLORS[item.sentiment]}30`,
+                  backgroundColor: `${SENTIMENT_COLORS[item.sentiment]}08`,
+                }}
               >
-                {item.count}
-              </p>
-              <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
-                feedback entries
-              </p>
-            </div>
-          ))}
-        </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="text-sm font-['Lato'] font-semibold"
+                    style={{ color: SENTIMENT_COLORS[item.sentiment] }}
+                  >
+                    {item.sentiment}
+                  </span>
+                  <span
+                    className="text-xs font-['Lato']"
+                    style={{ color: SENTIMENT_COLORS[item.sentiment] }}
+                  >
+                    {item.percentage}%
+                  </span>
+                </div>
+                <p
+                  className="text-3xl font-['Playfair_Display']"
+                  style={{ color: SENTIMENT_COLORS[item.sentiment] }}
+                >
+                  {item.count}
+                </p>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
+                  feedback entries
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+            No analyzed feedback data available yet.
+          </p>
+        )}
       </div>
 
       {/* AI Suggestions */}
@@ -414,38 +503,10 @@ function FeedbackSection({
           <TrendingUp size={20} className="text-[#C8922A]" />
           AI-Generated Recommendations
         </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {AI_FEEDBACK_ANALYSIS.aiSuggestions.map((suggestion) => (
-            <div
-              key={suggestion.id}
-              className="p-4 rounded-xl bg-[#F5F0E8] border border-[#C8922A]/10"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <h4 className="text-sm font-['Lato'] font-semibold text-[#2C1810] flex-1">
-                  {suggestion.title}
-                </h4>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] border ${
-                    PRIORITY_STYLES[suggestion.impact]
-                  }`}
-                >
-                  {suggestion.impact}
-                </span>
-              </div>
-              <p className="text-xs font-['Lato'] text-[#2C1810]/60 mb-3">
-                {suggestion.description}
-              </p>
-              <div className="bg-white rounded-lg p-3 border border-[#C8922A]/10">
-                <p className="text-xs font-['Lato'] text-[#2C1810]/50 mb-1">
-                  Actionable Step:
-                </p>
-                <p className="text-xs font-['Lato'] text-[#C8922A]">
-                  {suggestion.actionable}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+          AI recommendations will appear once sufficient feedback data has been
+          collected and analyzed.
+        </p>
       </div>
 
       {/* Categorized Feedback */}
@@ -453,51 +514,9 @@ function FeedbackSection({
         <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
           Feedback by Category
         </h3>
-        <div className="space-y-4">
-          {AI_FEEDBACK_ANALYSIS.categorizedFeedback.map((category) => (
-            <div
-              key={category.id}
-              className="border border-[#C8922A]/10 rounded-xl p-4 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <h4 className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                    {category.category}
-                  </h4>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] border ${
-                      PRIORITY_STYLES[category.priority]
-                    }`}
-                  >
-                    {category.priority}
-                  </span>
-                  <span
-                    className="px-2 py-0.5 rounded-full text-xs font-['Lato']"
-                    style={{
-                      backgroundColor: `${SENTIMENT_COLORS[category.sentiment]}15`,
-                      color: SENTIMENT_COLORS[category.sentiment],
-                    }}
-                  >
-                    {category.sentiment}
-                  </span>
-                </div>
-                <span className="text-sm font-['Lato'] text-[#2C1810]/60">
-                  {category.count} mentions
-                </span>
-              </div>
-              <div className="space-y-2">
-                {category.samples.slice(0, 2).map((sample, idx) => (
-                  <p
-                    key={idx}
-                    className="text-xs font-['Lato'] text-[#2C1810]/60 pl-4 border-l-2 border-[#C8922A]/20"
-                  >
-                    "{sample}"
-                  </p>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+          Categorized feedback will appear once feedback data has been analyzed.
+        </p>
       </div>
     </div>
   );
@@ -510,45 +529,23 @@ function ActivitySection() {
       <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-4">
         Recent Activity Feed
       </h2>
-      <div className="space-y-4">
-        {RECENT_ACTIVITIES.map((activity) => {
-          const IconComponent = getIconComponent(activity.icon);
-          return (
-            <div
-              key={activity.id}
-              className="flex items-start gap-4 p-4 rounded-xl bg-[#F5F0E8] border border-[#C8922A]/10 hover:shadow-md transition-shadow"
-            >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A]/20 to-[#C4541A]/10 flex items-center justify-center shrink-0">
-                <IconComponent size={18} className="text-[#C8922A]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4 mb-1">
-                  <p className="text-sm font-['Lato'] text-[#2C1810]">
-                    <span className="font-semibold">{activity.user}</span>{" "}
-                    <span className="text-[#2C1810]/60">{activity.action}</span>
-                  </p>
-                  <span className="text-xs font-['Lato'] text-[#C8922A] whitespace-nowrap">
-                    {activity.timestamp}
-                  </span>
-                </div>
-                <p className="text-sm font-['Lato'] text-[#2C1810]/70">
-                  {activity.details}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <RecentActivityList />
     </div>
   );
-}// Bookings Section — PayMongo payment timeline with admin complete action
+}
+
+// Bookings Section — PayMongo payment timeline with admin complete action
 function BookingsSection() {
   const { accessToken } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [paymentsByBooking, setPaymentsByBooking] = useState<Record<number, Payment[]>>({});
+  const [paymentsByBooking, setPaymentsByBooking] = useState<
+    Record<number, Payment[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<number | null>(null);
-  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null);
+  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(
+    null,
+  );
 
   const fetchBookings = async () => {
     if (!accessToken) return;
@@ -566,7 +563,7 @@ function BookingsSection() {
           } catch {
             map[b.booking_id] = [];
           }
-        })
+        }),
       );
       setPaymentsByBooking(map);
     } catch (err) {
@@ -583,22 +580,37 @@ function BookingsSection() {
 
   const handleComplete = async (bookingId: number) => {
     if (!accessToken) return;
-    if (!window.confirm("Mark this booking as Completed? This action cannot be undone.")) return;
+    if (
+      !window.confirm(
+        "Mark this booking as Completed? This action cannot be undone.",
+      )
+    )
+      return;
     setActioningId(bookingId);
     try {
       await completeBooking(accessToken, bookingId);
       toast.success("Booking marked as Completed.");
       fetchBookings();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to complete booking.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to complete booking.",
+      );
     } finally {
       setActioningId(null);
     }
   };
 
-  const handleVerifyPayment = async (bookingId: number, paymentId: number, action: "approve" | "reject") => {
+  const handleVerifyPayment = async (
+    bookingId: number,
+    paymentId: number,
+    action: "approve" | "reject",
+  ) => {
     if (!accessToken) return;
-    const remarks = window.prompt(action === "reject" ? "Rejection reason (required):" : "Optional remarks:");
+    const remarks = window.prompt(
+      action === "reject"
+        ? "Rejection reason (required):"
+        : "Optional remarks:",
+    );
     if (remarks === null) return;
     if (action === "reject" && !remarks.trim()) {
       toast.error("Please provide a rejection reason.");
@@ -606,11 +618,18 @@ function BookingsSection() {
     }
     setActioningId(paymentId);
     try {
-      const res = await verifyReceipt(accessToken, paymentId, action, remarks || undefined);
+      const res = await verifyReceipt(
+        accessToken,
+        paymentId,
+        action,
+        remarks || undefined,
+      );
       toast.success(res.message || `Payment ${action}d successfully.`);
       fetchBookings();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Failed to ${action} payment.`);
+      toast.error(
+        err instanceof Error ? err.message : `Failed to ${action} payment.`,
+      );
     } finally {
       setActioningId(null);
     }
@@ -618,7 +637,15 @@ function BookingsSection() {
 
   const formatDate = (d: string) => {
     if (!d) return "—";
-    try { return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); } catch { return d; }
+    try {
+      return new Date(d).toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return d;
+    }
   };
 
   const formatAmount = (n: number) =>
@@ -634,12 +661,12 @@ function BookingsSection() {
     s === "Paid"
       ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
       : s === "Failed"
-      ? "bg-[#C4541A]/15 text-[#C4541A]"
-      : s === "Rejected"
-      ? "bg-[#C4541A]/15 text-[#C4541A]"
-      : s === "For_Verification"
-      ? "bg-[#C8922A]/15 text-[#C8922A]"
-      : "bg-gray-100 text-gray-600";
+        ? "bg-[#C4541A]/15 text-[#C4541A]"
+        : s === "Rejected"
+          ? "bg-[#C4541A]/15 text-[#C4541A]"
+          : s === "For_Verification"
+            ? "bg-[#C8922A]/15 text-[#C8922A]"
+            : "bg-gray-100 text-gray-600";
 
   // Is event date in the past?
   const isEventPast = (eventDate: string) => {
@@ -650,7 +677,8 @@ function BookingsSection() {
 
   const getBookingReference = (booking: Booking) => {
     if (booking.booking_reference) return booking.booking_reference;
-    if (booking.ai_booking_reference) return `#AF-${booking.ai_booking_reference}`;
+    if (booking.ai_booking_reference)
+      return `#AF-${booking.ai_booking_reference}`;
     return `#${String(booking.booking_id).padStart(4, "0")}`;
   };
 
@@ -685,12 +713,19 @@ function BookingsSection() {
               const isExpanded = expandedBookingId === booking.booking_id;
               const isPendingAction = actioningId === booking.booking_id;
               const canComplete =
-                (booking.booking_status === "Confirmed" || booking.booking_status === "Reserved") &&
+                (booking.booking_status === "Confirmed" ||
+                  booking.booking_status === "Reserved") &&
                 isEventPast(booking.event_date);
 
-              const reservation = payments.find((p) => p.payment_type === "Reservation");
-              const downPayment = payments.find((p) => p.payment_type === "DownPayment");
-              const finalPayment = payments.find((p) => p.payment_type === "FinalPayment");
+              const reservation = payments.find(
+                (p) => p.payment_type === "Reservation",
+              );
+              const downPayment = payments.find(
+                (p) => p.payment_type === "DownPayment",
+              );
+              const finalPayment = payments.find(
+                (p) => p.payment_type === "FinalPayment",
+              );
 
               return (
                 <div
@@ -700,7 +735,11 @@ function BookingsSection() {
                   {/* Booking header row */}
                   <div
                     className="flex flex-wrap items-center justify-between gap-3 p-4 bg-[#F5F0E8]/50 cursor-pointer hover:bg-[#F5F0E8] transition-colors"
-                    onClick={() => setExpandedBookingId(isExpanded ? null : booking.booking_id)}
+                    onClick={() =>
+                      setExpandedBookingId(
+                        isExpanded ? null : booking.booking_id,
+                      )
+                    }
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
@@ -711,23 +750,31 @@ function BookingsSection() {
                           {booking.first_name} {booking.last_name}
                         </p>
                         <p className="text-xs text-[#2C1810]/50 font-['Lato']">
-                          {booking.package_name} · {formatDate(booking.event_date)}
+                          {booking.package_name} ·{" "}
+                          {formatDate(booking.event_date)}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">Total</p>
+                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                          Total
+                        </p>
                         <p className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
                           {formatAmount(booking.total_price)}
                         </p>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}
+                      >
                         {booking.booking_status}
                       </span>
                       {canComplete && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleComplete(booking.booking_id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleComplete(booking.booking_id);
+                          }}
                           disabled={isPendingAction}
                           className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
                         >
@@ -743,16 +790,30 @@ function BookingsSection() {
                       {/* Financial Summary */}
                       <div className="grid grid-cols-3 gap-3 bg-[#F5F0E8] rounded-xl p-4 mb-5 border border-[#C8922A]/10">
                         <div>
-                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Total Price</p>
-                          <p className="text-base font-semibold font-['Lato'] text-[#2C1810]">{formatAmount(booking.total_price)}</p>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                            Total Price
+                          </p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#2C1810]">
+                            {formatAmount(booking.total_price)}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Amount Paid</p>
-                          <p className="text-base font-semibold font-['Lato'] text-[#7A8C5C]">{formatAmount(booking.amount_paid || 0)}</p>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                            Amount Paid
+                          </p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#7A8C5C]">
+                            {formatAmount(booking.amount_paid || 0)}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">Remaining</p>
-                          <p className="text-base font-semibold font-['Lato'] text-[#C4541A]">{formatAmount(booking.remaining_balance ?? booking.total_price)}</p>
+                          <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                            Remaining
+                          </p>
+                          <p className="text-base font-semibold font-['Lato'] text-[#C4541A]">
+                            {formatAmount(
+                              booking.remaining_balance ?? booking.total_price,
+                            )}
+                          </p>
                         </div>
                       </div>
 
@@ -761,92 +822,171 @@ function BookingsSection() {
                         Payment Timeline
                       </h4>
                       {payments.length === 0 ? (
-                        <p className="text-xs text-[#2C1810]/40 font-['Lato']">No payment records found.</p>
+                        <p className="text-xs text-[#2C1810]/40 font-['Lato']">
+                          No payment records found.
+                        </p>
                       ) : (
                         <div className="relative pl-4">
                           {/* Vertical line */}
                           <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-[#C8922A]/20 rounded" />
                           <div className="space-y-4">
-                            {[reservation, downPayment, finalPayment].filter(Boolean).map((payment) => {
-                              if (!payment) return null;
-                              const isPaid = payment.payment_status === "Paid";
-                              const isPendingVerification = payment.payment_status === "For_Verification";
-                              const isActioning = isPendingAction && actioningId === payment.payment_id;
-                              return (
-                                <div key={payment.payment_id} className="flex gap-4 items-start relative">
-                                  {/* Timeline dot */}
-                                  <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 relative z-10 ${
-                                    isPaid ? "bg-[#7A8C5C] border-[#7A8C5C]" : isPendingVerification ? "bg-[#C8922A] border-[#C8922A]" : "bg-white border-[#C8922A]/40"
-                                  }`} />
-                                  <div className="flex-1 border border-[#C8922A]/10 rounded-xl p-3 bg-[#F5F0E8]/30">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                                      <span className="text-xs font-semibold text-[#2C1810] font-['Lato']">
-                                        {paymentTypeLabel[payment.payment_type] || payment.payment_type}
-                                      </span>
-                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-['Lato'] ${paymentStatusStyle(payment.payment_status)}`}>
-                                        {payment.payment_status}
-                                      </span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-['Lato'] text-[#2C1810]/60">
-                                      <span>Amount: <span className="text-[#C8922A] font-semibold">{formatAmount(payment.amount)}</span></span>
-                                      <span>Due: {formatDate(payment.due_date)}</span>
-                                      {payment.paid_at && (
-                                        <span>Paid: {formatDate(payment.paid_at)}</span>
-                                      )}
-                                      {payment.payment_method && (
-                                        <span>Method: <span className="capitalize">{payment.payment_method}</span></span>
-                                      )}
-                                      {payment.payment_reference && (
-                                        <span className="col-span-2">Ref: {payment.payment_reference}</span>
-                                      )}
-                                      {payment.receipt_url && (
-                                        <span className="col-span-2 flex items-center gap-2">
-                                          <button
-                                            onClick={() => window.open(payment.receipt_url as string, "_blank")}
-                                            className="inline-flex items-center gap-1 text-[#C8922A] hover:underline"
-                                          >
-                                            <Eye size={12} /> View Receipt
-                                          </button>
-                                          {payment.receipt_uploaded_at && (
-                                            <span className="text-[10px] text-[#2C1810]/40">
-                                              Uploaded: {formatDate(payment.receipt_uploaded_at)}
-                                            </span>
-                                          )}
+                            {[reservation, downPayment, finalPayment]
+                              .filter(Boolean)
+                              .map((payment) => {
+                                if (!payment) return null;
+                                const isPaid =
+                                  payment.payment_status === "Paid";
+                                const isPendingVerification =
+                                  payment.payment_status === "For_Verification";
+                                const isActioning =
+                                  isPendingAction &&
+                                  actioningId === payment.payment_id;
+                                return (
+                                  <div
+                                    key={payment.payment_id}
+                                    className="flex gap-4 items-start relative"
+                                  >
+                                    {/* Timeline dot */}
+                                    <div
+                                      className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 relative z-10 ${
+                                        isPaid
+                                          ? "bg-[#7A8C5C] border-[#7A8C5C]"
+                                          : isPendingVerification
+                                            ? "bg-[#C8922A] border-[#C8922A]"
+                                            : "bg-white border-[#C8922A]/40"
+                                      }`}
+                                    />
+                                    <div className="flex-1 border border-[#C8922A]/10 rounded-xl p-3 bg-[#F5F0E8]/30">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                        <span className="text-xs font-semibold text-[#2C1810] font-['Lato']">
+                                          {paymentTypeLabel[
+                                            payment.payment_type
+                                          ] || payment.payment_type}
                                         </span>
+                                        <span
+                                          className={`px-2 py-0.5 rounded-full text-[10px] font-['Lato'] ${paymentStatusStyle(payment.payment_status)}`}
+                                        >
+                                          {payment.payment_status}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-['Lato'] text-[#2C1810]/60">
+                                        <span>
+                                          Amount:{" "}
+                                          <span className="text-[#C8922A] font-semibold">
+                                            {formatAmount(payment.amount)}
+                                          </span>
+                                        </span>
+                                        <span>
+                                          Due: {formatDate(payment.due_date)}
+                                        </span>
+                                        {payment.paid_at && (
+                                          <span>
+                                            Paid: {formatDate(payment.paid_at)}
+                                          </span>
+                                        )}
+                                        {payment.payment_method && (
+                                          <span>
+                                            Method:{" "}
+                                            <span className="capitalize">
+                                              {payment.payment_method}
+                                            </span>
+                                          </span>
+                                        )}
+                                        {payment.payment_reference && (
+                                          <span className="col-span-2">
+                                            Ref: {payment.payment_reference}
+                                          </span>
+                                        )}
+                                        {payment.receipt_url && (
+                                          <span className="col-span-2 flex items-center gap-2">
+                                            <button
+                                              onClick={() =>
+                                                window.open(
+                                                  payment.receipt_url as string,
+                                                  "_blank",
+                                                )
+                                              }
+                                              className="inline-flex items-center gap-1 text-[#C8922A] hover:underline"
+                                            >
+                                              <Eye size={12} /> View Receipt
+                                            </button>
+                                            {payment.receipt_uploaded_at && (
+                                              <span className="text-[10px] text-[#2C1810]/40">
+                                                Uploaded:{" "}
+                                                {formatDate(
+                                                  payment.receipt_uploaded_at,
+                                                )}
+                                              </span>
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {isPendingVerification && (
+                                        <div className="flex items-center gap-2 mt-2">
+                                          <button
+                                            onClick={() =>
+                                              handleVerifyPayment(
+                                                booking.booking_id,
+                                                payment.payment_id,
+                                                "approve",
+                                              )
+                                            }
+                                            disabled={isActioning}
+                                            className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                          >
+                                            {isActioning
+                                              ? "Saving..."
+                                              : "Approve"}
+                                          </button>
+                                          <button
+                                            onClick={() =>
+                                              handleVerifyPayment(
+                                                booking.booking_id,
+                                                payment.payment_id,
+                                                "reject",
+                                              )
+                                            }
+                                            disabled={isActioning}
+                                            className="px-3 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                          >
+                                            Reject
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
-                                    {isPendingVerification && (
-                                      <div className="flex items-center gap-2 mt-2">
-                                        <button
-                                          onClick={() => handleVerifyPayment(booking.booking_id, payment.payment_id, "approve")}
-                                          disabled={isActioning}
-                                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
-                                        >
-                                          {isActioning ? "Saving..." : "Approve"}
-                                        </button>
-                                        <button
-                                          onClick={() => handleVerifyPayment(booking.booking_id, payment.payment_id, "reject")}
-                                          disabled={isActioning}
-                                          className="px-3 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
-                                        >
-                                          Reject
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
                           </div>
                         </div>
                       )}
 
                       {/* Customer & Event Info */}
                       <div className="mt-5 pt-4 border-t border-[#C8922A]/10 grid grid-cols-2 gap-3 text-xs font-['Lato'] text-[#2C1810]/60">
-                        <div><span className="font-semibold text-[#2C1810]">Contact: </span>{booking.contact_name}</div>
-                        <div><span className="font-semibold text-[#2C1810]">Email: </span>{booking.contact_email}</div>
-                        <div><span className="font-semibold text-[#2C1810]">Guests: </span>{booking.number_of_pax} pax</div>
-                        <div><span className="font-semibold text-[#2C1810]">Setup: </span>{booking.setup_name || "—"}</div>
+                        <div>
+                          <span className="font-semibold text-[#2C1810]">
+                            Contact:{" "}
+                          </span>
+                          {booking.contact_name}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#2C1810]">
+                            Email:{" "}
+                          </span>
+                          {booking.contact_email}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#2C1810]">
+                            Guests:{" "}
+                          </span>
+                          {booking.number_of_pax} pax
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#2C1810]">
+                            Setup:{" "}
+                          </span>
+                          {booking.setup_name || "—"}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -860,7 +1000,6 @@ function BookingsSection() {
   );
 }
 
-
 // Packages Section (Simplified)
 function PackagesSection() {
   return (
@@ -869,7 +1008,8 @@ function PackagesSection() {
         Food Packages Management
       </h2>
       <p className="text-sm font-['Lato'] text-[#2C1810]/60">
-        Package management interface coming soon. Use the main website to view packages.
+        Package management interface coming soon. Use the main website to view
+        packages.
       </p>
     </div>
   );
@@ -885,6 +1025,7 @@ function getIconComponent(iconName: string) {
     XCircle,
     BarChart2,
     AlertCircle,
+    DollarSign,
   };
   return icons[iconName] || Activity;
 }
@@ -892,8 +1033,8 @@ function getIconComponent(iconName: string) {
 function getStatusStyle(status: string): string {
   const styles: Record<string, string> = {
     Confirmed: "bg-[#7A8C5C]/15 text-[#7A8C5C]",
-    Reserved:  "bg-[#4A8C9C]/15 text-[#4A8C9C]",
-    Pending:   "bg-[#C8922A]/15 text-[#C8922A]",
+    Reserved: "bg-[#4A8C9C]/15 text-[#4A8C9C]",
+    Pending: "bg-[#C8922A]/15 text-[#C8922A]",
     Completed: "bg-[#EDE8DF] text-[#2C1810]/60",
     Cancelled: "bg-[#C4541A]/15 text-[#C4541A]",
   };
