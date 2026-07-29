@@ -236,7 +236,7 @@ function OverviewSection() {
       color: "#7A8C5C",
     },
     {
-      icon: DollarSign,
+      icon: "₱",
       label: "Total Revenue",
       value: stats
         ? `₱${stats.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
@@ -266,10 +266,19 @@ function OverviewSection() {
                     className="w-11 h-11 rounded-xl flex items-center justify-center"
                     style={{ backgroundColor: `${stat.color}15` }}
                   >
-                    <Icon size={20} style={{ color: stat.color }} />
+                    {typeof Icon === "string" ? (
+                      <span
+                        className="text-lg font-bold"
+                        style={{ color: stat.color }}
+                      >
+                        {Icon}
+                      </span>
+                    ) : (
+                      <Icon size={20} style={{ color: stat.color }} />
+                    )}
                   </div>
                 </div>
-                <p className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-1">
+                <p className="text-2xl font-['Lato'] font-semibold tracking-tight text-[#2C1810] mb-1">
                   {stat.value}
                 </p>
                 <p className="text-xs font-['Lato'] text-[#2C1810]/50">

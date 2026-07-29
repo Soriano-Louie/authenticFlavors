@@ -179,7 +179,7 @@ export function BookingPage() {
   const [dietaryNotes, setDietaryNotes] = useState("");
 
   // Step 4
-  const [venueOptions, setVenueOptions] = useState<string[]>([]);
+  const venueOptions = ["Standard Setup"];
   const [specialRequests, setSpecialRequests] = useState("");
 
   // Fetch Packages, Event Types, Venue Setups from Database
@@ -250,11 +250,6 @@ export function BookingPage() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
 
-  const toggleVenue = (key: string) =>
-    setVenueOptions((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
-
   // Selected package memo matching legacy keys to numeric database IDs
   const selectedPackage = useMemo(() => {
     if (packages.length === 0) return null;
@@ -287,15 +282,18 @@ export function BookingPage() {
 
   useEffect(() => {
     if (!selectedPackage) return;
+    // Only preserve choices that are still valid for the selected package
     setMenuChoices((prev) => {
       const next: Record<string, string> = {};
 
       selectedPackage.menuSections.forEach((section: any) => {
         const existingChoice =
           prev[section.label] || initialMenuChoices[section.label];
-        next[section.label] = section.items.includes(existingChoice)
-          ? existingChoice
-          : section.items[0];
+        // Only keep the choice if it exists in the current package's items
+        if (existingChoice && section.items.includes(existingChoice)) {
+          next[section.label] = existingChoice;
+        }
+        // Otherwise, leave it unselected so the user must pick
       });
 
       return next;
@@ -517,7 +515,10 @@ export function BookingPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
-                    Event Date * <span className="text-[10px] text-[#C4541A] italic font-semibold">(Min. 14 days lead time)</span>
+                    Event Date *{" "}
+                    <span className="text-[10px] text-[#C4541A] italic font-semibold">
+                      (Min. 14 days lead time)
+                    </span>
                   </label>
                   <input
                     type="date"
@@ -526,7 +527,9 @@ export function BookingPage() {
                       const value = e.target.value;
                       const minDate = new Date();
                       minDate.setDate(minDate.getDate() + 14);
-                      const minStr = minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                      const minStr = minDate.toLocaleDateString("sv-SE", {
+                        timeZone: "Asia/Manila",
+                      });
                       if (value < minStr) {
                         setSubmitError(
                           "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.",
@@ -546,7 +549,9 @@ export function BookingPage() {
                     min={(() => {
                       const minDate = new Date();
                       minDate.setDate(minDate.getDate() + 14);
-                      return minDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+                      return minDate.toLocaleDateString("sv-SE", {
+                        timeZone: "Asia/Manila",
+                      });
                     })()}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
@@ -650,46 +655,67 @@ export function BookingPage() {
               </div>
 
               <div className="grid gap-6">
-                {selectedPackage?.menuSections.map((section) => (
-                  <div
-                    key={section.label}
-                    className="rounded-3xl bg-white p-6 border border-[#C8922A]/10"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-semibold text-[#2C1810]">
-                        {section.label}
-                      </h4>
-                      <span className="text-sm text-[#2C1810]/60 font-['Lato']">
-                        {section.items.length} items
-                      </span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {section.items.map((item) => {
-                        const isSelected = menuChoices[section.label] === item;
-
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => selectMenuItem(section.label, item)}
-                            className={`flex items-start gap-2 rounded-2xl border px-4 py-3 text-left text-sm font-['Lato'] transition-all ${
-                              isSelected
-                                ? "border-[#C8922A] bg-[#C8922A]/10 text-[#2C1810]"
-                                : "border-[#C8922A]/10 bg-[#F5F0E8] text-[#2C1810]/75 hover:border-[#C8922A]/35"
+                {selectedPackage?.menuSections.map(
+                  (section: { label: string; items: string[] }) => {
+                    const hasSelection = !!menuChoices[section.label];
+                    return (
+                      <div
+                        key={section.label}
+                        className={`rounded-3xl p-6 border ${
+                          hasSelection
+                            ? "bg-white border-[#C8922A]/10"
+                            : "bg-[#C4541A]/5 border-[#C4541A]/30"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4
+                            className={`text-lg font-semibold ${
+                              hasSelection ? "text-[#2C1810]" : "text-[#C4541A]"
                             }`}
                           >
-                            <span
-                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${isSelected ? "border-[#C8922A] bg-[#C8922A] text-white" : "border-[#2C1810]/20 bg-white"}`}
-                            >
-                              {isSelected ? <Check size={12} /> : null}
-                            </span>
-                            <span>{item}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                            {section.label}
+                            {!hasSelection && (
+                              <span className="ml-2 text-xs font-['Lato'] font-normal italic">
+                                (Required - please select one)
+                              </span>
+                            )}
+                          </h4>
+                          <span className="text-sm text-[#2C1810]/60 font-['Lato']">
+                            {section.items.length} items
+                          </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {section.items.map((item: string) => {
+                            const isSelected =
+                              menuChoices[section.label] === item;
+
+                            return (
+                              <button
+                                key={item}
+                                type="button"
+                                onClick={() =>
+                                  selectMenuItem(section.label, item)
+                                }
+                                className={`flex items-start gap-2 rounded-2xl border px-4 py-3 text-left text-sm font-['Lato'] transition-all ${
+                                  isSelected
+                                    ? "border-[#C8922A] bg-[#C8922A]/10 text-[#2C1810]"
+                                    : "border-[#C8922A]/10 bg-[#F5F0E8] text-[#2C1810]/75 hover:border-[#C8922A]/35"
+                                }`}
+                              >
+                                <span
+                                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${isSelected ? "border-[#C8922A] bg-[#C8922A] text-white" : "border-[#2C1810]/20 bg-white"}`}
+                                >
+                                  {isSelected ? <Check size={12} /> : null}
+                                </span>
+                                <span>{item}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
               </div>
             </div>
           )}
@@ -776,25 +802,20 @@ export function BookingPage() {
               <h2 className="font-['Playfair_Display'] text-[#2C1810] text-2xl mb-2">
                 Venue Setup Preferences
               </h2>
-              <p className="text-[#2C1810]/55 text-sm font-['Lato'] mb-6">
-                Select the setup elements you'd like included for your event.
-              </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                {venueSetups.map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => toggleVenue(opt.key)}
-                    className={`py-3 px-4 rounded-xl border-2 text-sm font-['Lato'] transition-all flex items-center gap-2 ${
-                      venueOptions.includes(opt.key)
-                        ? "border-[#C8922A] bg-[#C8922A]/10 text-[#C8922A]"
-                        : "border-[#C8922A]/15 text-[#2C1810]/60 hover:border-[#C8922A]/40"
-                    }`}
-                  >
-                    {venueOptions.includes(opt.key) && <Check size={14} />}
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl p-5 mb-6">
+                <div className="flex items-start gap-3">
+                  <Check size={20} className="text-[#7A8C5C] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[#2C1810] font-semibold font-['Lato'] text-sm">
+                      Standard Venue Setup (Speakers Included)
+                    </p>
+                    <p className="text-[#2C1810]/70 text-sm font-['Lato'] mt-1 leading-relaxed">
+                      Your booking includes a standard venue setup with tables,
+                      chairs, linens, and a sound system with speakers.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div>

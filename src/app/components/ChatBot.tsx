@@ -462,8 +462,16 @@ export function ChatBot() {
   // Finish Menu Selection step manually
   const handleFinishMenu = () => {
     const selectedCount = Object.keys(wizard.selectedMenuItems).length;
-    if (selectedCount === 0) {
-      alert("Please select at least one menu item before proceeding.");
+    const totalCategories = dbCategories.filter((cat) => {
+      const categoryItems = dbMenuItems.filter(
+        (item) => item.category_id === cat.category_id,
+      );
+      return categoryItems.length > 0;
+    }).length;
+    if (selectedCount < totalCategories) {
+      alert(
+        `Please select 1 item for ALL menu categories. (${selectedCount} of ${totalCategories} selected)`,
+      );
       return;
     }
     setWizard((prev) => ({ ...prev, step: "USER_INFO" }));
@@ -1032,52 +1040,61 @@ export function ChatBot() {
               </div>
             )}
 
-            {/* STEP 6: VENUE SETUP (Radio Buttons) */}
+            {/* STEP 6: VENUE SETUP (Note only - no selection needed) */}
             {wizard.step === "VENUE" && (
-              <div className="bg-white rounded-2xl p-3.5 border border-[#C8922A]/30 shadow-md space-y-2 animate-in fade-in duration-200">
-                <p className="text-xs font-semibold text-[#2C1810] uppercase tracking-wider mb-2">
-                  Select Venue Setup:
-                </p>
-                <div className="space-y-2">
-                  {(dbVenueSetups.length > 0
-                    ? dbVenueSetups
-                    : [
-                        {
-                          setup_name: "Standard Setup",
-                          description: "Clean dining table setup",
-                        },
-                        {
-                          setup_name: "Floral Arrangements",
-                          description: "Floral centerpieces",
-                        },
-                        {
-                          setup_name: "Candle Lighting",
-                          description: "Warm candle ambiance",
-                        },
-                      ]
-                  ).map((setup) => (
-                    <button
-                      key={setup.setup_name}
-                      onClick={() => handleSelectVenue(setup.setup_name)}
-                      className={`w-full p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        wizard.venueSetup === setup.setup_name
-                          ? "border-[#C8922A] bg-[#C8922A]/15 text-[#2C1810]"
-                          : "border-[#C8922A]/20 bg-[#F5F0E8]/40 hover:border-[#C8922A]"
-                      }`}
-                    >
-                      <p className="text-xs font-bold">{setup.setup_name}</p>
-                      {setup.description && (
-                        <p className="text-[10px] text-[#2C1810]/60">
-                          {setup.description}
-                        </p>
-                      )}
-                    </button>
-                  ))}
+              <div className="bg-white rounded-2xl p-3.5 border border-[#C8922A]/30 shadow-md space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-start gap-3">
+                  <Check size={18} className="text-[#7A8C5C] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-[#2C1810] uppercase tracking-wider mb-1">
+                      Standard Venue Setup (Speakers Included)
+                    </p>
+                    <p className="text-[10px] text-[#2C1810]/70 leading-relaxed">
+                      Your booking includes a standard venue setup with tables,
+                      chairs, linens, and a sound system with speakers.
+                    </p>
+                  </div>
                 </div>
+                <div>
+                  <label className="block text-[10px] text-[#2C1810]/60 font-semibold mb-1">
+                    Special Requests / Other Notes
+                  </label>
+                  <textarea
+                    value={wizard.notes}
+                    onChange={(e) =>
+                      setWizard((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="Any other requests — music preferences, décor themes, special seating arrangements..."
+                    rows={2}
+                    className="w-full p-2 rounded-xl border border-[#C8922A]/30 text-[11px] text-[#2C1810] outline-none focus:border-[#C8922A] resize-none placeholder-[#2C1810]/30"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setWizard((prev) => ({
+                      ...prev,
+                      venueSetup: "Standard Setup",
+                      step: "MENU",
+                    }));
+                    addBotMessage(
+                      "Venue setup confirmed! 🍲 Please select 1 item for each category below, then click **Continue to Contact Details**:",
+                    );
+                    if (bookingSessionId && accessToken) {
+                      updateBookingSession(accessToken, {
+                        session_id: bookingSessionId,
+                        conversation_id: conversationId ?? undefined,
+                        current_step: "MENU",
+                      }).catch(console.error);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-xs rounded-xl font-bold cursor-pointer hover:opacity-90 shadow-md"
+                >
+                  Continue to Menu Selection →
+                </button>
               </div>
             )}
 
-            {/* STEP 7: DYNAMIC MENU SELECTION (Category Grouped Radio Buttons) */}
+            {/* STEP 7: DYNAMIC MENU SELECTION (Category Grouped Radio Buttons - ALL required) */}
             {wizard.step === "MENU" && (
               <div className="bg-white rounded-2xl p-3.5 border border-[#C8922A]/30 shadow-md space-y-3 animate-in fade-in duration-200">
                 <div className="flex justify-between items-center border-b border-[#C8922A]/15 pb-2">
@@ -1090,12 +1107,6 @@ export function ChatBot() {
                       {dbCategories.length} categories chosen)
                     </p>
                   </div>
-                  <button
-                    onClick={handleFinishMenu}
-                    className="text-[11px] font-bold text-[#C4541A] hover:underline cursor-pointer"
-                  >
-                    Done Selecting →
-                  </button>
                 </div>
 
                 <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
@@ -1111,11 +1122,24 @@ export function ChatBot() {
                     return (
                       <div
                         key={category.category_id}
-                        className="space-y-1.5 bg-[#F5F0E8]/40 p-2 rounded-xl border border-[#C8922A]/10"
+                        className={`space-y-1.5 p-2 rounded-xl border ${
+                          selectedItem
+                            ? "bg-[#F5F0E8]/40 border-[#C8922A]/10"
+                            : "bg-[#C4541A]/5 border-[#C4541A]/30"
+                        }`}
                       >
                         <div className="flex justify-between items-center">
-                          <p className="text-[11px] font-bold text-[#C8922A] uppercase">
+                          <p
+                            className={`text-[11px] font-bold uppercase ${
+                              selectedItem ? "text-[#C8922A]" : "text-[#C4541A]"
+                            }`}
+                          >
                             • {category.category_name}
+                            {!selectedItem && (
+                              <span className="ml-1 text-[9px] font-['Lato'] font-normal italic">
+                                (Required)
+                              </span>
+                            )}
                           </p>
                           {selectedItem && (
                             <span className="text-[9px] bg-[#7A8C5C]/20 text-[#7A8C5C] font-bold px-1.5 py-0.5 rounded-md">
