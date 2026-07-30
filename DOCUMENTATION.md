@@ -81,6 +81,7 @@ authenticFlavors/
 | **cors** | 2.8.5 | Cross-Origin Resource Sharing headers |
 | **dotenv** | 16.4.5 | Environment variable loading |
 | **Brevo HTTP API** | — | Transactional email delivery (replaces SMTP) |
+| **Google Gemini API** | — | AI-powered chatbot, feedback sentiment analysis, and recommendations |
 
 ---
 
@@ -129,7 +130,7 @@ The backend follows an **MVC-like structure**:
 - **Routes** (`/routes/`) — define URL patterns and map them to controller functions
 - **Controllers** (`/controllers/`) — contain business logic, query the database, return responses
 - **Middleware** (`/middleware/`) — guard routes (auth check, role check)
-- **Services** (`/services/`) — external service integrations (email delivery)
+- **Services** (`/services/`) — external service integrations (email delivery, Gemini AI)
 - **Utils** (`/utils/`) — reusable helpers (JWT signing/verifying, input validation)
 
 ### API Prefix
@@ -144,7 +145,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | `bookingController.js` | Booking creation, retrieval, and management |
 | `packageController.js` | Package and pricing CRUD |
 | `paymentController.js` | Payment receipt upload and verification |
-| `feedbackController.js` | Feedback submission and retrieval |
+| `feedbackController.js` | Feedback submission, retrieval, and admin AI analysis |
 | `chatbotController.js` | AI-powered chatbot integration |
 
 ### Routes
@@ -155,7 +156,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | `bookingRoutes.js` | `/api` | Booking CRUD |
 | `packageRoutes.js` | `/api` | Package and pricing |
 | `paymentRoutes.js` | `/api` | Payment receipt upload |
-| `feedbackRoutes.js` | `/api` | Feedback submission |
+| `feedbackRoutes.js` | `/api` | Feedback submission and admin AI analysis |
 | `chatbotRoutes.js` | `/api` | Chatbot interactions |
 
 ---
@@ -181,7 +182,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | `booking_menu_selections` | Junction table linking bookings to chosen menu items |
 | `email_verifications` | One-time verification codes for email activation |
 | `password_reset_tokens` | One-time tokens for password reset flow |
-| `feedback` | Customer feedback linked to bookings |
+| `feedback` | Customer feedback linked to bookings (with AI analysis fields) |
 | `payments` | Payment records with receipt tracking |
 
 ### Key Design Decisions
@@ -189,6 +190,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 - `booking_summary` is a `TEXT` column storing a **JSON string** containing dynamic metadata such as the `receipt_path` (uploaded payment proof) and `rejection_reason` (admin feedback). This avoids extra migration when adding optional booking metadata fields.
 - `total_price` is stored on the `bookings` record at submission time to preserve the price that was active when the booking was made.
 - `account_status` on `users` is an ENUM: `'Active'`, `'Inactive'`, `'Suspended'`, `'Pending'` (Pending = email not yet verified).
+- The `feedback` table stores AI analysis results inline: `sentiment_status` (Positive/Neutral/Negative/Pending), `sentiment_score` (0.00–1.00), `sentiment_summary` (concise AI summary), `key_topics` (JSON array of themes), `actionable_insights` (JSON array of recommendations), `is_analyzed` (boolean), and `analyzed_at` (timestamp). This avoids reprocessing the same feedback on every page load.
 
 ---
 
@@ -314,6 +316,24 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 | `POST` | `/bookings/:id/verify` | Bearer + Admin | Mark booking as Confirmed |
 | `POST` | `/bookings/:id/reject` | Bearer + Admin | Reject booking with a reason |
 
+### Feedback Endpoints (`/api`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/feedback` | Bearer | Submit feedback for a completed booking (auto-analyzed by AI) |
+| `GET` | `/feedback/:bookingId` | Bearer | Get own feedback for a booking |
+| `GET` | `/feedback/check/:bookingId` | Bearer | Check if feedback exists for a booking |
+| `GET` | `/feedbacks/public` | Public | List all public feedback entries |
+
+### Admin Feedback Analysis Endpoints (`/api/admin`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/feedback-analysis` | Bearer + Admin | Get full AI feedback analysis (sentiment breakdown, executive summary, key topics, recommendations, feedback list) |
+| `POST` | `/feedback/:id/reanalyze` | Bearer + Admin | Re-run AI analysis on a single feedback entry |
+| `POST` | `/feedback/reanalyze-all` | Bearer + Admin | Re-analyze all feedback entries in batch |
+| `DELETE` | `/feedback/:id` | Bearer + Admin | Delete a feedback entry |
+
 ---
 
 ## Environment Variables
@@ -350,6 +370,11 @@ REFRESH_COOKIE_NAME=af_refresh
 BREVO_API_KEY=your_brevo_smtp_api_key
 BREVO_SENDER_EMAIL=your_verified_sender@example.com
 BREVO_SENDER_NAME=Your Brand Name
+
+# Gemini AI
+GEMINI_API_KEY=your_google_gemini_api_key
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+GEMINI_MODEL=gemini-2.0-flash
 
 # Frontend URL
 FRONTEND_URL=http://localhost:5173
@@ -428,6 +453,9 @@ Set the following on the Render dashboard under the backend service's Environmen
 | `CORS_ORIGIN` | Comma-separated list of allowed origins |
 | `NODE_ENV` | `production` |
 | `PORT` | Server port (Render sets this automatically) |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_BASE_URL` | Gemini REST API base URL |
+| `GEMINI_MODEL` | Gemini model identifier (e.g., `gemini-2.0-flash`) |
 
 ---
 
@@ -445,6 +473,11 @@ Set the following on the Render dashboard under the backend service's Environmen
 - [x] Payment verification/rejection by admin
 - [x] Customer feedback submission
 - [x] Public feedback page
+- [x] AI Feedback Analysis for admins (Gemini-powered sentiment classification, key topics, summaries, and actionable recommendations)
+- [x] Automatic AI analysis of newly submitted feedback (stored in DB to avoid reprocessing)
+- [x] Admin re-analyze single / all feedback entries on demand
+- [x] Admin feedback deletion
+- [x] CSV export of AI feedback analysis report
 - [x] Package browsing and selection
 - [x] Booking creation with menu selection
 - [x] AI-powered chatbot integration
@@ -459,3 +492,7 @@ Set the following on the Render dashboard under the backend service's Environmen
 - Fixed `account_status` ENUM to include `'Pending'` for new user registration
 - Fixed email verification redirect to go to dashboard instead of login page
 - Added `setAuth` to AuthContext for setting auth state directly from verification response
+- Replaced placeholder AI Feedback Analysis section in the Admin Dashboard with a fully functional implementation backed by the Gemini AI service and live database feedback
+- Added `key_topics`, `actionable_insights`, and `analyzed_at` columns to the `feedback` table (with auto-migration for existing databases)
+- Added `analyzeFeedback()` and `generateOverallFeedbackAnalysis()` helpers to `geminiService.js`
+- Added admin API endpoints for feedback analysis, re-analysis, and deletion
