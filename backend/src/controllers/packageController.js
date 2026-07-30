@@ -222,6 +222,14 @@ export async function createPackage(req, res) {
         },
       });
     }
+    if (Number(max_pax) > 70) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Maximum pax cannot exceed 70 (venue capacity).",
+        },
+      });
+    }
 
     let imageUrl = null;
     let imagePublicId = null;
@@ -331,6 +339,14 @@ export async function updatePackage(req, res) {
         error: {
           code: "VALIDATION_ERROR",
           message: "Valid max pax is required.",
+        },
+      });
+    }
+    if (max_pax !== undefined && Number(max_pax) > 70) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Maximum pax cannot exceed 70 (venue capacity).",
         },
       });
     }

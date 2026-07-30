@@ -642,3 +642,200 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     };
   }
 }
+
+// ─── Feedback Analysis Helper ────────────────────────────────────────────────
+/**
+ * Analyzes a single customer feedback entry using Gemini AI.
+ * Returns structured sentiment, score, summary, topics, and insights.
+ *
+ * @param {number} rating - Customer star rating (1-5)
+ * @param {string|null} comment - Customer comment text
+ * @param {string} [packageName="General Package"] - Catering package name
+ * @returns {Promise<{
+ *   sentiment: "Positive"|"Neutral"|"Negative",
+ *   sentiment_score: number,
+ *   summary: string,
+ *   key_topics: string[],
+ *   actionable_insights: string[]
+ * }>}
+ */
+export async function analyzeFeedback(rating, comment, packageName = "Catering Event") {
+  const cleanComment = (comment || "").trim();
+
+  // If comment is empty, generate rule-based defaults instantly
+  if (!cleanComment) {
+    let sentiment = "Positive";
+    let score = 0.90;
+    if (rating <= 2) {
+      sentiment = "Negative";
+      score = 0.20;
+    } else if (rating === 3) {
+      sentiment = "Neutral";
+      score = 0.50;
+    }
+
+    return {
+      sentiment,
+      sentiment_score: score,
+      summary: `Customer rated ${rating}/5 stars for ${packageName}.`,
+      key_topics: ["Overall Satisfaction"],
+      actionable_insights: rating <= 3 
+        ? ["Follow up with customer for detailed feedback."]
+        : ["Maintain current service quality."],
+    };
+  }
+
+  const systemPrompt =
+    "You are an expert customer feedback analyzer for 'Authentic Flavors by Chef Ramos' catering service.\n" +
+    "Analyze the customer feedback and respond ONLY with a raw JSON object (no markdown code blocks, no trailing comments).\n\n" +
+    "JSON Schema:\n" +
+    "{\n" +
+    '  "sentiment": "Positive" | "Neutral" | "Negative",\n' +
+    '  "sentiment_score": number (between 0.00 and 1.00),\n' +
+    '  "summary": "1-2 sentence concise summary of feedback",\n' +
+    '  "key_topics": ["Array", "of 1-4 key themes/topics, e.g. Food Quality, Staff, Timing, Portion Size"],\n' +
+    '  "actionable_insights": ["Array of 1-2 actionable recommendations for administrators"]\n' +
+    "}\n\n" +
+    "Ensure output is valid JSON.";
+
+  const userPrompt = `Package: ${packageName}\nRating: ${rating}/5 stars\nComment: "${cleanComment}"`;
+
+  try {
+    const result = await generateContent({
+      systemPrompt,
+      userPrompt,
+      temperature: 0.2,
+      maxOutputTokens: 512,
+    });
+
+    let rawReply = result.reply.trim();
+    // Strip markdown code block wrapper if present
+    rawReply = rawReply.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+
+    const parsed = JSON.parse(rawReply);
+    const validSentiment = ["Positive", "Neutral", "Negative"].includes(parsed.sentiment)
+      ? parsed.sentiment
+      : rating >= 4 ? "Positive" : rating <= 2 ? "Negative" : "Neutral";
+
+    return {
+      sentiment: validSentiment,
+      sentiment_score: typeof parsed.sentiment_score === "number" ? Math.min(1, Math.max(0, parsed.sentiment_score)) : 0.8,
+      summary: parsed.summary || `${rating}/5 stars: ${cleanComment.slice(0, 100)}`,
+      key_topics: Array.isArray(parsed.key_topics) && parsed.key_topics.length > 0 ? parsed.key_topics.slice(0, 4) : ["Customer Feedback"],
+      actionable_insights: Array.isArray(parsed.actionable_insights) ? parsed.actionable_insights.slice(0, 3) : [],
+    };
+  } catch (err) {
+    console.error("[GeminiService] Feedback analysis failed, using fallback:", err.message);
+    // Fallback if AI call fails
+    let sentiment = rating >= 4 ? "Positive" : rating <= 2 ? "Negative" : "Neutral";
+    return {
+      sentiment,
+      sentiment_score: rating >= 4 ? 0.85 : rating <= 2 ? 0.25 : 0.55,
+      summary: `${rating}/5 stars: "${cleanComment.slice(0, 120)}"`,
+      key_topics: ["Customer Review"],
+      actionable_insights: rating <= 3 ? ["Review feedback details with catering team."] : [],
+    };
+  }
+}
+
+/**
+ * Generates executive aggregate summary and actionable insights from all feedback entries.
+ *
+ * @param {Array<{rating: number, comment: string, sentiment_status: string, key_topics: string[]|string}>} feedbacks
+ * @returns {Promise<{
+ *   overallSummary: string,
+ *   keyTopics: Array<{topic: string, count: number}>,
+ *   actionableRecommendations: string[]
+ * }>}
+ */
+export async function generateOverallFeedbackAnalysis(feedbacks = []) {
+  if (!feedbacks || feedbacks.length === 0) {
+    return {
+      overallSummary: "No feedback available for AI analysis.",
+      keyTopics: [],
+      actionableRecommendations: [],
+    };
+  }
+
+  // Pre-aggregate topics from DB records
+  const topicCountMap = {};
+  feedbacks.forEach((fb) => {
+    let topics = [];
+    if (Array.isArray(fb.key_topics)) {
+      topics = fb.key_topics;
+    } else if (typeof fb.key_topics === "string") {
+      try {
+        topics = JSON.parse(fb.key_topics);
+      } catch {
+        topics = [fb.key_topics];
+      }
+    }
+    if (Array.isArray(topics)) {
+      topics.forEach((t) => {
+        if (t && typeof t === "string") {
+          const formatted = t.trim();
+          topicCountMap[formatted] = (topicCountMap[formatted] || 0) + 1;
+        }
+      });
+    }
+  });
+
+  const sortedTopics = Object.entries(topicCountMap)
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+
+  const feedbackSamples = feedbacks
+    .slice(0, 15)
+    .map(
+      (f, idx) =>
+        `Entry #${idx + 1}: Rating ${f.rating}/5, Sentiment: ${f.sentiment_status || "Pending"}, Comment: "${(f.comment || "No comment").slice(0, 150)}"`
+    )
+    .join("\n");
+
+  const systemPrompt =
+    "You are an executive restaurant operational analyst for 'Authentic Flavors by Chef Ramos'.\n" +
+    "Synthesize customer feedback data and output ONLY a raw JSON object matching this schema:\n\n" +
+    "{\n" +
+    '  "overallSummary": "A concise executive summary paragraph (2-3 sentences) summarizing overall customer satisfaction, food quality trends, and recurring praise or complaints.",\n' +
+    '  "actionableRecommendations": ["3 to 5 prioritized, concrete actionable insights for administrators/management to improve services"]\n' +
+    "}\n\n" +
+    "No code blocks, no markdown tags.";
+
+  const userPrompt = `Total Feedbacks Analyzed: ${feedbacks.length}\nSample Feedback Entries:\n${feedbackSamples}`;
+
+  try {
+    const result = await generateContent({
+      systemPrompt,
+      userPrompt,
+      temperature: 0.3,
+      maxOutputTokens: 600,
+    });
+
+    let rawReply = result.reply.trim();
+    rawReply = rawReply.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+
+    const parsed = JSON.parse(rawReply);
+
+    return {
+      overallSummary: parsed.overallSummary || `Analysis based on ${feedbacks.length} customer feedback entries.`,
+      keyTopics: sortedTopics,
+      actionableRecommendations: Array.isArray(parsed.actionableRecommendations) ? parsed.actionableRecommendations : [],
+    };
+  } catch (err) {
+    console.error("[GeminiService] Aggregate feedback analysis failed:", err.message);
+
+    const posCount = feedbacks.filter((f) => f.sentiment_status === "Positive").length;
+    const posPercent = Math.round((posCount / feedbacks.length) * 100);
+
+    return {
+      overallSummary: `Based on ${feedbacks.length} customer feedback entries, ${posPercent}% expressed positive experiences with Authentic Flavors catering services.`,
+      keyTopics: sortedTopics,
+      actionableRecommendations: [
+        "Continue monitoring guest satisfaction across all event packages.",
+        "Address any specific concerns raised in neutral or negative customer reviews.",
+      ],
+    };
+  }
+}
+

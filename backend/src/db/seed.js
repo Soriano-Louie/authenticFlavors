@@ -76,7 +76,10 @@ export async function seedDatabaseIfEmpty() {
         sentiment_status VARCHAR(20) DEFAULT 'Pending',
         sentiment_score DECIMAL(3,2) NULL,
         sentiment_summary TEXT NULL,
+        key_topics JSON NULL,
+        actionable_insights TEXT NULL,
         is_analyzed BOOLEAN DEFAULT FALSE,
+        analyzed_at DATETIME NULL,
         submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
@@ -84,6 +87,31 @@ export async function seedDatabaseIfEmpty() {
       )
     `);
     console.log("[MIGRATION] feedback table ensured.");
+
+    // Migration for feedback table columns if table already exists
+    const [fbCols] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'feedback'",
+      [connection.config.database],
+    );
+    const fbColNames = fbCols.map((c) => c.COLUMN_NAME);
+    if (!fbColNames.includes("key_topics")) {
+      await connection.query(
+        "ALTER TABLE feedback ADD COLUMN key_topics JSON NULL AFTER sentiment_summary",
+      );
+      console.log("[MIGRATION] Added key_topics to feedback table.");
+    }
+    if (!fbColNames.includes("actionable_insights")) {
+      await connection.query(
+        "ALTER TABLE feedback ADD COLUMN actionable_insights TEXT NULL AFTER key_topics",
+      );
+      console.log("[MIGRATION] Added actionable_insights to feedback table.");
+    }
+    if (!fbColNames.includes("analyzed_at")) {
+      await connection.query(
+        "ALTER TABLE feedback ADD COLUMN analyzed_at DATETIME NULL AFTER is_analyzed",
+      );
+      console.log("[MIGRATION] Added analyzed_at to feedback table.");
+    }
 
     // 0.2 Create payments table
     await connection.query(`

@@ -21,6 +21,14 @@ import {
   type AdminStats,
   type AdminActivity,
 } from "../api/adminApi";
+import {
+  getAdminFeedbackAnalysis,
+  reanalyzeFeedback,
+  reanalyzeAllFeedbacks,
+  deleteAdminFeedback,
+  type AdminFeedbackAnalysisResponse,
+  type AdminFeedbackItem,
+} from "../api/feedbackApi";
 import type { Package as PackageType, PackagePricing } from "../api/packageApi";
 import { toast } from "sonner";
 import {
@@ -97,12 +105,47 @@ export function AdminDashboard() {
     setSidebarOpen(false);
   };
 
-  const handleGenerateReport = () => {
-    setGeneratingReport(true);
-    setTimeout(() => {
+  const { accessToken } = useAuth();
+
+  const handleGenerateReport = async () => {
+    if (!accessToken) return;
+    try {
+      setGeneratingReport(true);
+      const res = await getAdminFeedbackAnalysis(accessToken);
+      
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += "Feedback ID,Customer Name,Customer Email,Package,Rating,Sentiment,AI Summary,Topics,Submitted At\n";
+
+      res.feedbacks.forEach((fb) => {
+        const row = [
+          fb.feedback_id,
+          `"${(fb.customer_name || "").replace(/"/g, '""')}"`,
+          `"${(fb.customer_email || "").replace(/"/g, '""')}"`,
+          `"${(fb.package_name || "").replace(/"/g, '""')}"`,
+          fb.rating,
+          fb.sentiment_status,
+          `"${(fb.sentiment_summary || "").replace(/"/g, '""')}"`,
+          `"${(fb.key_topics || []).join("; ").replace(/"/g, '""')}"`,
+          `"${fb.submitted_at}"`,
+        ].join(",");
+        csvContent += row + "\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `AI_Feedback_Analysis_Report_${new Date().toISOString().split("T")[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success("AI Feedback Analysis report exported successfully!");
+    } catch (err: any) {
+      console.error("Export report failed:", err);
+      toast.error("Failed to generate feedback report.");
+    } finally {
       setGeneratingReport(false);
-      alert("AI Report Generated! Download started.");
-    }, 2000);
+    }
   };
 
   return (
@@ -427,115 +470,445 @@ function FeedbackSection({
   isGenerating: boolean;
 }) {
   const { accessToken } = useAuth();
-  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [data, setData] = useState<AdminFeedbackAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reanalyzingAll, setReanalyzingAll] = useState(false);
+  const [reanalyzingId, setReanalyzingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [filterSentiment, setFilterSentiment] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const fetchData = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminFeedbackAnalysis(accessToken);
+      setData(res);
+    } catch (err: any) {
+      console.error("Failed to fetch feedback analysis:", err);
+      toast.error(err.message || "Failed to load feedback analysis data.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!accessToken) return;
-    getAdminStats(accessToken)
-      .then(setStats)
-      .catch((err) => console.error("Failed to fetch stats:", err))
-      .finally(() => setLoading(false));
+    fetchData();
   }, [accessToken]);
+
+  const handleReanalyzeSingle = async (feedbackId: number) => {
+    if (!accessToken) return;
+    try {
+      setReanalyzingId(feedbackId);
+      await reanalyzeFeedback(accessToken, feedbackId);
+      toast.success("Feedback re-analyzed successfully!");
+      fetchData();
+    } catch (err: any) {
+      console.error("Re-analyze single failed:", err);
+      toast.error(err.message || "Failed to re-analyze feedback.");
+    } finally {
+      setReanalyzingId(null);
+    }
+  };
+
+  const handleReanalyzeAll = async () => {
+    if (!accessToken) return;
+    try {
+      setReanalyzingAll(true);
+      const res = await reanalyzeAllFeedbacks(accessToken);
+      toast.success(res.message || "All feedback re-analyzed successfully!");
+      fetchData();
+    } catch (err: any) {
+      console.error("Re-analyze all failed:", err);
+      toast.error(err.message || "Failed to re-analyze feedback data.");
+    } finally {
+      setReanalyzingAll(false);
+    }
+  };
+
+  const handleDelete = async (feedbackId: number) => {
+    if (!accessToken || !window.confirm("Are you sure you want to delete this customer feedback entry?")) return;
+    try {
+      setDeletingId(feedbackId);
+      await deleteAdminFeedback(accessToken, feedbackId);
+      toast.success("Feedback deleted successfully.");
+      fetchData();
+    } catch (err: any) {
+      console.error("Delete feedback failed:", err);
+      toast.error(err.message || "Failed to delete feedback.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const filteredFeedbacks = (data?.feedbacks || []).filter((fb) => {
+    const matchesSentiment =
+      filterSentiment === "All" || fb.sentiment_status === filterSentiment;
+    const matchesSearch =
+      !searchQuery ||
+      fb.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      fb.package_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (fb.comment && fb.comment.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (fb.key_topics && fb.key_topics.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
+    return matchesSentiment && matchesSearch;
+  });
 
   return (
     <div className="space-y-6">
-      {/* Header with Generate Report Button */}
-      <div className="flex items-center justify-between">
+      {/* Header with Refresh & Download Buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
             AI-Powered Feedback Analysis
           </h2>
           <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1">
-            Automated insights from customer feedback using AI sentiment
-            analysis
+            Real-time customer feedback insights powered by Gemini AI
           </p>
         </div>
-        <button
-          onClick={onGenerateReport}
-          disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          <Download size={16} />
-          {isGenerating ? "Generating..." : "Generate Report"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleReanalyzeAll}
+            disabled={reanalyzingAll || loading || !data || data.totalFeedback === 0}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#2C1810] border border-[#C8922A]/30 hover:border-[#C8922A] rounded-xl text-sm font-['Lato'] transition-all shadow-sm disabled:opacity-50"
+          >
+            {reanalyzingAll ? (
+              <Loader2 size={16} className="animate-spin text-[#C8922A]" />
+            ) : (
+              <Sparkles size={16} className="text-[#C8922A]" />
+            )}
+            {reanalyzingAll ? "Analyzing All..." : "Re-analyze All"}
+          </button>
+          <button
+            onClick={onGenerateReport}
+            disabled={isGenerating || loading || !data || data.totalFeedback === 0}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Download size={16} />
+            {isGenerating ? "Generating..." : "Export Report"}
+          </button>
+        </div>
       </div>
 
-      {/* Sentiment Breakdown */}
-      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
-          <Sparkles size={20} className="text-[#C8922A]" />
-          Sentiment Breakdown
-        </h3>
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+      {/* AI Service Fallback Notice if Error Occurred */}
+      {data?.ai_service_error && (
+        <div className="bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-xl p-4 flex items-start gap-3 text-sm text-[#2C1810]">
+          <AlertCircle size={20} className="text-[#C8922A] shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold font-['Lato']">AI Service Notice</p>
+            <p className="text-xs text-[#2C1810]/80 mt-0.5">
+              The AI service is currently busy or unreachable. Showing previously stored database analysis.
+            </p>
           </div>
-        ) : stats && stats.sentimentBreakdown.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {stats.sentimentBreakdown.map((item) => (
-              <div
-                key={item.sentiment}
-                className="p-4 rounded-xl border-2"
-                style={{
-                  borderColor: `${SENTIMENT_COLORS[item.sentiment]}30`,
-                  backgroundColor: `${SENTIMENT_COLORS[item.sentiment]}08`,
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span
-                    className="text-sm font-['Lato'] font-semibold"
-                    style={{ color: SENTIMENT_COLORS[item.sentiment] }}
-                  >
-                    {item.sentiment}
-                  </span>
-                  <span
-                    className="text-xs font-['Lato']"
-                    style={{ color: SENTIMENT_COLORS[item.sentiment] }}
-                  >
-                    {item.percentage}%
-                  </span>
-                </div>
-                <p
-                  className="text-3xl font-['Playfair_Display']"
-                  style={{ color: SENTIMENT_COLORS[item.sentiment] }}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="bg-white rounded-xl p-12 border border-[#C8922A]/10 flex justify-center items-center">
+          <div className="text-center">
+            <Loader2 className="animate-spin text-[#C8922A] mx-auto mb-3" size={32} />
+            <p className="text-sm text-[#2C1810]/60 font-['Lato']">Analyzing customer feedback with Gemini AI...</p>
+          </div>
+        </div>
+      ) : !data || data.totalFeedback === 0 ? (
+        /* Empty State */
+        <div className="bg-white rounded-xl p-12 border border-[#C8922A]/10 text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-[#C8922A]/10 flex items-center justify-center mx-auto text-[#C8922A]">
+            <Sparkles size={32} />
+          </div>
+          <div>
+            <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810]">
+              No feedback available for AI analysis.
+            </h3>
+            <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1 max-w-md mx-auto">
+              Once customers submit reviews for their completed catering bookings, AI-generated sentiment classification, key topics, and operational insights will automatically populate here.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Sentiment Breakdown Cards */}
+          <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+            <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
+              <Sparkles size={20} className="text-[#C8922A]" />
+              Sentiment Breakdown
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {data.sentimentBreakdown.map((item) => (
+                <div
+                  key={item.sentiment}
+                  className="p-4 rounded-xl border-2 transition-all hover:shadow-sm"
+                  style={{
+                    borderColor: `${SENTIMENT_COLORS[item.sentiment] || "#C8922A"}30`,
+                    backgroundColor: `${SENTIMENT_COLORS[item.sentiment] || "#C8922A"}08`,
+                  }}
                 >
-                  {item.count}
-                </p>
-                <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
-                  feedback entries
-                </p>
-              </div>
-            ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className="text-sm font-['Lato'] font-semibold"
+                      style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                    >
+                      {item.sentiment} Feedback
+                    </span>
+                    <span
+                      className="text-xs font-['Lato'] font-bold"
+                      style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                    >
+                      {item.percentage}%
+                    </span>
+                  </div>
+                  <p
+                    className="text-3xl font-['Playfair_Display'] font-bold"
+                    style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                  >
+                    {item.count}
+                  </p>
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
+                    out of {data.totalFeedback} total reviews
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-        ) : (
-          <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
-            No analyzed feedback data available yet.
-          </p>
-        )}
-      </div>
 
-      {/* AI Suggestions */}
-      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
-          <TrendingUp size={20} className="text-[#C8922A]" />
-          AI-Generated Recommendations
-        </h3>
-        <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
-          AI recommendations will appear once sufficient feedback data has been
-          collected and analyzed.
-        </p>
-      </div>
+          {/* AI Executive Summary & Key Topics Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Executive Summary */}
+            <div className="lg:col-span-2 bg-gradient-to-br from-[#2C1810] to-[#1A0E08] text-[#F5F0E8] rounded-xl p-6 shadow-md border border-[#C8922A]/20 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                <Sparkles size={120} />
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={20} className="text-[#C8922A]" />
+                <h3 className="text-lg font-['Playfair_Display'] text-[#F5F0E8]">
+                  AI Executive Summary
+                </h3>
+              </div>
+              <p className="text-sm font-['Lato'] leading-relaxed text-[#F5F0E8]/90">
+                {data.overallSummary}
+              </p>
+            </div>
 
-      {/* Categorized Feedback */}
-      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
-          Feedback by Category
-        </h3>
-        <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
-          Categorized feedback will appear once feedback data has been analyzed.
-        </p>
-      </div>
+            {/* Key Topics & Themes */}
+            <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
+                <TrendingUp size={20} className="text-[#C8922A]" />
+                Key Topics & Themes
+              </h3>
+              {data.keyTopics && data.keyTopics.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {data.keyTopics.map((kt) => (
+                    <span
+                      key={kt.topic}
+                      className="px-3 py-1.5 bg-[#C8922A]/10 text-[#2C1810] rounded-lg text-xs font-['Lato'] border border-[#C8922A]/20 flex items-center gap-1.5"
+                    >
+                      <span className="font-semibold">{kt.topic}</span>
+                      <span className="px-1.5 py-0.5 bg-[#C8922A] text-white rounded-full text-[10px]">
+                        {kt.count}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50 py-4 text-center">
+                  No topic themes extracted yet.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* AI Actionable Recommendations */}
+          <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+            <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
+              <TrendingUp size={20} className="text-[#C8922A]" />
+              Actionable Recommendations for Management
+            </h3>
+            {data.actionableRecommendations && data.actionableRecommendations.length > 0 ? (
+              <div className="space-y-3">
+                {data.actionableRecommendations.map((rec, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 bg-[#EDE8DF]/40 rounded-xl border border-[#C8922A]/15 flex items-start gap-3"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#C8922A]/20 flex items-center justify-center shrink-0 mt-0.5 text-[#C8922A] text-xs font-bold font-['Lato']">
+                      {idx + 1}
+                    </div>
+                    <p className="text-sm font-['Lato'] text-[#2C1810] leading-snug">
+                      {rec}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-4">
+                No specific recommendations generated yet.
+              </p>
+            )}
+          </div>
+
+          {/* Customer Feedback List with Individual AI Insights */}
+          <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810]">
+                Customer Feedback Entries ({filteredFeedbacks.length})
+              </h3>
+              
+              {/* Sentiment Filter */}
+              <div className="flex items-center gap-1.5 bg-[#EDE8DF]/60 p-1 rounded-xl text-xs font-['Lato']">
+                {["All", "Positive", "Neutral", "Negative"].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setFilterSentiment(s)}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      filterSentiment === s
+                        ? "bg-white text-[#2C1810] shadow-sm"
+                        : "text-[#2C1810]/60 hover:text-[#2C1810]"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <input
+              type="text"
+              placeholder="Search by customer, package, comment, or topic..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 bg-[#F5F0E8]/50 border border-[#C8922A]/20 rounded-xl text-sm font-['Lato'] text-[#2C1810] focus:outline-none focus:border-[#C8922A]"
+            />
+
+            {/* Feedbacks Grid */}
+            {filteredFeedbacks.length === 0 ? (
+              <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-8">
+                No matching customer feedback entries found.
+              </p>
+            ) : (
+              <div className="space-y-4 pt-2">
+                {filteredFeedbacks.map((fb) => {
+                  const isReanalyzing = reanalyzingId === fb.feedback_id;
+                  const isDeleting = deletingId === fb.feedback_id;
+                  const sentimentColor =
+                    SENTIMENT_COLORS[fb.sentiment_status] || "#C8922A";
+
+                  return (
+                    <div
+                      key={fb.feedback_id}
+                      className="p-5 rounded-xl border border-[#C8922A]/15 bg-[#F5F0E8]/30 space-y-3 transition-all hover:border-[#C8922A]/30"
+                    >
+                      {/* Top Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#C8922A]/15 flex items-center justify-center font-bold text-[#2C1810] text-sm">
+                            {fb.customer_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
+                              {fb.customer_name}
+                            </p>
+                            <p className="text-xs font-['Lato'] text-[#2C1810]/60">
+                              {fb.package_name} • {new Date(fb.submitted_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Sentiment Badge & Actions */}
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="px-3 py-1 rounded-full text-xs font-bold font-['Lato']"
+                            style={{
+                              backgroundColor: `${sentimentColor}15`,
+                              color: sentimentColor,
+                              border: `1px solid ${sentimentColor}40`,
+                            }}
+                          >
+                            {fb.sentiment_status}
+                          </span>
+
+                          <button
+                            onClick={() => handleReanalyzeSingle(fb.feedback_id)}
+                            disabled={isReanalyzing}
+                            title="Re-analyze feedback with AI"
+                            className="p-1.5 text-[#2C1810]/60 hover:text-[#C8922A] rounded-lg hover:bg-white transition-colors disabled:opacity-50"
+                          >
+                            {isReanalyzing ? (
+                              <Loader2 size={16} className="animate-spin text-[#C8922A]" />
+                            ) : (
+                              <Sparkles size={16} />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(fb.feedback_id)}
+                            disabled={isDeleting}
+                            title="Delete feedback entry"
+                            className="p-1.5 text-[#2C1810]/40 hover:text-[#C4541A] rounded-lg hover:bg-white transition-colors disabled:opacity-50"
+                          >
+                            {isDeleting ? (
+                              <Loader2 size={16} className="animate-spin text-[#C4541A]" />
+                            ) : (
+                              <Trash2 size={16} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Star Rating & Comment */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={16}
+                              className={
+                                star <= fb.rating
+                                  ? "text-[#C8922A] fill-[#C8922A]"
+                                  : "text-[#C8922A]/25"
+                              }
+                            />
+                          ))}
+                        </div>
+                        {fb.comment ? (
+                          <p className="text-sm font-['Lato'] text-[#2C1810] italic bg-white/60 p-3 rounded-lg border border-[#C8922A]/10">
+                            "{fb.comment}"
+                          </p>
+                        ) : (
+                          <p className="text-xs font-['Lato'] text-[#2C1810]/40 italic">
+                            (No comment provided by customer)
+                          </p>
+                        )}
+                      </div>
+
+                      {/* AI Sentiment Summary */}
+                      {fb.sentiment_summary && (
+                        <div className="text-xs font-['Lato'] text-[#2C1810]/80 bg-[#C8922A]/05 p-2.5 rounded-lg border border-[#C8922A]/10 flex items-start gap-2">
+                          <Sparkles size={14} className="text-[#C8922A] shrink-0 mt-0.5" />
+                          <span><strong className="font-semibold text-[#2C1810]">AI Summary:</strong> {fb.sentiment_summary}</span>
+                        </div>
+                      )}
+
+                      {/* Key Topics */}
+                      {fb.key_topics && fb.key_topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {fb.key_topics.map((topic, tidx) => (
+                            <span
+                              key={tidx}
+                              className="px-2.5 py-0.5 bg-white border border-[#C8922A]/20 text-[#2C1810]/80 rounded-md text-[11px] font-['Lato']"
+                            >
+                              #{topic}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1160,6 +1533,10 @@ function PackagesSection() {
       toast.error("Valid max pax is required.");
       return false;
     }
+    if (Number(formData.max_pax) > 70) {
+      toast.error("Maximum pax cannot exceed 70 (venue capacity).");
+      return false;
+    }
     // Validate pricing tiers that have values
     for (const tier of formData.pricing) {
       if (tier.pax_count || tier.price) {
@@ -1444,8 +1821,9 @@ function PackagesSection() {
                   type="number"
                   value={formData.max_pax}
                   onChange={(e) => handleFormChange("max_pax", e.target.value)}
-                  placeholder="e.g. 100"
+                  placeholder="e.g. 70"
                   min="1"
+                  max="70"
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
                 />
               </div>
