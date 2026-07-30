@@ -1,3 +1,5 @@
+import type { Package } from "./packageApi";
+
 export interface SentimentBreakdown {
   sentiment: string;
   count: number;
@@ -65,6 +67,81 @@ export function getAdminActivity(
 ): Promise<{ activities: AdminActivity[] }> {
   return request<{ activities: AdminActivity[] }>("/api/admin/activity", {
     method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+// ─── Admin Package Management ───────────────────────────────────────
+
+export interface AdminPackageResponse {
+  packages: Package[];
+}
+
+export interface AdminSinglePackageResponse {
+  package: Package;
+}
+
+export interface AdminDeleteResponse {
+  message: string;
+}
+
+/** Fetch all packages (including inactive) for admin view */
+export function getAdminPackages(
+  accessToken: string,
+): Promise<AdminPackageResponse> {
+  return request<AdminPackageResponse>("/api/admin/packages", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+/** Create a new package (multipart/form-data for image upload) */
+export async function createAdminPackage(
+  accessToken: string,
+  formData: FormData,
+): Promise<AdminSinglePackageResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/packages`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      // Note: No Content-Type set — browser sets multipart boundary automatically
+    },
+    body: formData,
+  });
+
+  return parseResponse<AdminSinglePackageResponse>(response);
+}
+
+/** Update an existing package (multipart/form-data for image upload) */
+export async function updateAdminPackage(
+  accessToken: string,
+  id: number,
+  formData: FormData,
+): Promise<AdminSinglePackageResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/packages/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  return parseResponse<AdminSinglePackageResponse>(response);
+}
+
+/** Delete (soft-delete) a package */
+export function deleteAdminPackage(
+  accessToken: string,
+  id: number,
+): Promise<AdminDeleteResponse> {
+  return request<AdminDeleteResponse>(`/api/admin/packages/${id}`, {
+    method: "DELETE",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },

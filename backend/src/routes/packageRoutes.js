@@ -10,14 +10,48 @@ import {
   getPackagePricing,
   getHomepageStatistics,
   getUpcomingEvents,
+  getAllPackages,
+  createPackage,
+  updatePackage,
+  deletePackage,
 } from "../controllers/packageController.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
+import { upload } from "../middleware/upload.js";
 
 export const packageRouter = Router();
 
-// Package routes
+// Public package routes
 packageRouter.get("/packages", getPackages);
 packageRouter.get("/packages/:id", getPackageById);
 packageRouter.get("/packages/:packageId/pricing", getPackagePricing);
+
+// Admin package routes (protected)
+packageRouter.get(
+  "/admin/packages",
+  requireAuth,
+  requireRole("Admin"),
+  getAllPackages,
+);
+packageRouter.post(
+  "/admin/packages",
+  requireAuth,
+  requireRole("Admin"),
+  upload.single("image"),
+  createPackage,
+);
+packageRouter.put(
+  "/admin/packages/:id",
+  requireAuth,
+  requireRole("Admin"),
+  upload.single("image"),
+  updatePackage,
+);
+packageRouter.delete(
+  "/admin/packages/:id",
+  requireAuth,
+  requireRole("Admin"),
+  deletePackage,
+);
 
 // Menu routes
 packageRouter.get("/menu/categories", getMenuCategories);

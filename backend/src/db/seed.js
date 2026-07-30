@@ -46,6 +46,25 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added booking_reference column.");
     }
 
+    // 0.0 Ensure packages table has image column
+    const [packageColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'packages'",
+      [connection.config.database],
+    );
+    const packageColumnNames = packageColumns.map((c) => c.COLUMN_NAME);
+    if (!packageColumnNames.includes("image")) {
+      await connection.query(
+        "ALTER TABLE packages ADD COLUMN image VARCHAR(500) DEFAULT NULL AFTER max_pax",
+      );
+      console.log("[MIGRATION] Added image column to packages table.");
+    }
+    if (!packageColumnNames.includes("description")) {
+      await connection.query(
+        "ALTER TABLE packages ADD COLUMN description TEXT DEFAULT NULL AFTER package_name",
+      );
+      console.log("[MIGRATION] Added description column to packages table.");
+    }
+
     // 0.1 Create feedback table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS feedback (
@@ -175,23 +194,23 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] password_reset_tokens table ensured.");
 
-     // 0.5 Ensure account_status ENUM includes 'Pending'
-     const [accountStatusCol] = await connection.query(
-       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",
-       [connection.config.database],
-     );
-     const currentAccountStatusEnum = accountStatusCol[0]?.COLUMN_TYPE || "";
-     if (!currentAccountStatusEnum.includes("Pending")) {
-       await connection.query(
-         "ALTER TABLE users MODIFY COLUMN account_status ENUM('Active','Inactive','Suspended','Pending') NOT NULL DEFAULT 'Active'",
-       );
-       console.log("[MIGRATION] Added 'Pending' to users.account_status ENUM.");
-     }
+    // 0.5 Ensure account_status ENUM includes 'Pending'
+    const [accountStatusCol] = await connection.query(
+      "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",
+      [connection.config.database],
+    );
+    const currentAccountStatusEnum = accountStatusCol[0]?.COLUMN_TYPE || "";
+    if (!currentAccountStatusEnum.includes("Pending")) {
+      await connection.query(
+        "ALTER TABLE users MODIFY COLUMN account_status ENUM('Active','Inactive','Suspended','Pending') NOT NULL DEFAULT 'Active'",
+      );
+      console.log("[MIGRATION] Added 'Pending' to users.account_status ENUM.");
+    }
 
-     // 1. Seed event_types
-     const [eventTypes] = await connection.query(
-       "SELECT COUNT(*) as count FROM event_types",
-     );
+    // 1. Seed event_types
+    const [eventTypes] = await connection.query(
+      "SELECT COUNT(*) as count FROM event_types",
+    );
     if (eventTypes[0].count === 0) {
       const defaultEventTypes = [
         "Birthday",

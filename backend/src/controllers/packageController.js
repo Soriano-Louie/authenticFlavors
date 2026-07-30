@@ -4,6 +4,10 @@ import {
   getHappyGuestsCount,
   getAverageRating,
 } from "../services/statisticsService.js";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinaryService.js";
 
 export async function getPackages(_req, res) {
   try {
@@ -163,6 +167,316 @@ export async function getVenueSetups(_req, res) {
         code: "DATABASE_ERROR",
         message: "Failed to fetch venue setups",
       },
+    });
+  }
+}
+
+// ─── Admin: Get All Packages (including inactive) ───────────────────
+export async function getAllPackages(_req, res) {
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM packages ORDER BY package_name",
+    );
+
+    const packagesWithPricing = await Promise.all(
+      rows.map(async (pkg) => {
+        const [pricingRows] = await pool.query(
+          "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
+          [pkg.package_id],
+        );
+        return {
+          ...pkg,
+          pricing: pricingRows,
+        };
+      }),
+    );
+
+    res.status(200).json({ packages: packagesWithPricing });
+  } catch (error) {
+    console.error("Error fetching all packages:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to fetch packages" },
+    });
+  }
+}
+
+// ─── Admin: Create Package ──────────────────────────────────────────
+export async function createPackage(req, res) {
+  try {
+    const { package_name, description, max_pax, pricing } = req.body;
+
+    // Validate required fields
+    if (!package_name || !package_name.trim()) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Package name is required.",
+        },
+      });
+    }
+    if (!max_pax || isNaN(Number(max_pax)) || Number(max_pax) < 1) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Valid max pax is required.",
+        },
+      });
+    }
+
+    let imageUrl = null;
+    let imagePublicId = null;
+
+    // Upload image if provided
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(
+          req.file.buffer,
+          "packages",
+        );
+        imageUrl = uploadResult.secure_url;
+        imagePublicId = uploadResult.public_id;
+      } catch (uploadError) {
+        console.error("Image upload failed:", uploadError);
+        return res.status(500).json({
+          error: { code: "UPLOAD_ERROR", message: "Failed to upload image." },
+        });
+      }
+    }
+
+    // Insert package
+    const [result] = await pool.query(
+      "INSERT INTO packages (package_name, description, max_pax, image, status) VALUES (?, ?, ?, ?, 'Active')",
+      [package_name.trim(), description || null, Number(max_pax), imageUrl],
+    );
+
+    const packageId = result.insertId;
+
+    // Insert pricing tiers if provided
+    if (pricing) {
+      let pricingArray;
+      try {
+        pricingArray =
+          typeof pricing === "string" ? JSON.parse(pricing) : pricing;
+      } catch {
+        pricingArray = [];
+      }
+
+      if (Array.isArray(pricingArray) && pricingArray.length > 0) {
+        for (const tier of pricingArray) {
+          if (tier.pax_count && tier.price) {
+            await pool.query(
+              "INSERT INTO package_pricing (package_id, pax_count, price) VALUES (?, ?, ?)",
+              [packageId, Number(tier.pax_count), Number(tier.price)],
+            );
+          }
+        }
+      }
+    }
+
+    // Fetch the created package with pricing
+    const [rows] = await pool.query(
+      "SELECT * FROM packages WHERE package_id = ?",
+      [packageId],
+    );
+    const [pricingRows] = await pool.query(
+      "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
+      [packageId],
+    );
+
+    const newPackage = rows[0];
+    newPackage.pricing = pricingRows;
+
+    res.status(201).json({ package: newPackage });
+  } catch (error) {
+    console.error("Error creating package:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to create package." },
+    });
+  }
+}
+
+// ─── Admin: Update Package ──────────────────────────────────────────
+export async function updatePackage(req, res) {
+  try {
+    const { id } = req.params;
+    const { package_name, description, max_pax, status, pricing } = req.body;
+
+    // Check package exists
+    const [existing] = await pool.query(
+      "SELECT * FROM packages WHERE package_id = ?",
+      [id],
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Package not found." },
+      });
+    }
+
+    const currentPackage = existing[0];
+
+    // Validate required fields
+    if (package_name !== undefined && !package_name.trim()) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Package name cannot be empty.",
+        },
+      });
+    }
+    if (
+      max_pax !== undefined &&
+      (isNaN(Number(max_pax)) || Number(max_pax) < 1)
+    ) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Valid max pax is required.",
+        },
+      });
+    }
+
+    let imageUrl = currentPackage.image;
+    let imagePublicId = null;
+
+    // Handle image upload/replacement
+    if (req.file) {
+      try {
+        // Delete old image from Cloudinary if it exists and is a Cloudinary URL
+        if (
+          currentPackage.image &&
+          currentPackage.image.includes("cloudinary")
+        ) {
+          // Extract public_id from URL (last part before extension)
+          const urlParts = currentPackage.image.split("/");
+          const filename = urlParts[urlParts.length - 1]?.split(".")[0];
+          if (filename) {
+            const oldPublicId = `authentic_flavors/packages/${filename}`;
+            await deleteFromCloudinary(oldPublicId).catch(() => {});
+          }
+        }
+
+        const uploadResult = await uploadToCloudinary(
+          req.file.buffer,
+          "packages",
+        );
+        imageUrl = uploadResult.secure_url;
+        imagePublicId = uploadResult.public_id;
+      } catch (uploadError) {
+        console.error("Image upload failed:", uploadError);
+        return res.status(500).json({
+          error: { code: "UPLOAD_ERROR", message: "Failed to upload image." },
+        });
+      }
+    }
+
+    // Update package fields
+    const updateFields = [];
+    const updateValues = [];
+
+    if (package_name !== undefined) {
+      updateFields.push("package_name = ?");
+      updateValues.push(package_name.trim());
+    }
+    if (description !== undefined) {
+      updateFields.push("description = ?");
+      updateValues.push(description || null);
+    }
+    if (max_pax !== undefined) {
+      updateFields.push("max_pax = ?");
+      updateValues.push(Number(max_pax));
+    }
+    if (status !== undefined) {
+      updateFields.push("status = ?");
+      updateValues.push(status);
+    }
+    if (req.file) {
+      updateFields.push("image = ?");
+      updateValues.push(imageUrl);
+    }
+
+    if (updateFields.length > 0) {
+      updateValues.push(id);
+      await pool.query(
+        `UPDATE packages SET ${updateFields.join(", ")} WHERE package_id = ?`,
+        updateValues,
+      );
+    }
+
+    // Update pricing tiers if provided
+    if (pricing) {
+      let pricingArray;
+      try {
+        pricingArray =
+          typeof pricing === "string" ? JSON.parse(pricing) : pricing;
+      } catch {
+        pricingArray = [];
+      }
+
+      if (Array.isArray(pricingArray)) {
+        // Delete existing pricing and re-insert
+        await pool.query("DELETE FROM package_pricing WHERE package_id = ?", [
+          id,
+        ]);
+
+        for (const tier of pricingArray) {
+          if (tier.pax_count && tier.price) {
+            await pool.query(
+              "INSERT INTO package_pricing (package_id, pax_count, price) VALUES (?, ?, ?)",
+              [Number(id), Number(tier.pax_count), Number(tier.price)],
+            );
+          }
+        }
+      }
+    }
+
+    // Fetch updated package with pricing
+    const [rows] = await pool.query(
+      "SELECT * FROM packages WHERE package_id = ?",
+      [id],
+    );
+    const [pricingRows] = await pool.query(
+      "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
+      [id],
+    );
+
+    const updatedPackage = rows[0];
+    updatedPackage.pricing = pricingRows;
+
+    res.status(200).json({ package: updatedPackage });
+  } catch (error) {
+    console.error("Error updating package:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to update package." },
+    });
+  }
+}
+
+// ─── Admin: Delete Package (soft delete) ────────────────────────────
+export async function deletePackage(req, res) {
+  try {
+    const { id } = req.params;
+
+    const [existing] = await pool.query(
+      "SELECT * FROM packages WHERE package_id = ?",
+      [id],
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Package not found." },
+      });
+    }
+
+    // Soft delete: set status to 'Inactive'
+    await pool.query(
+      "UPDATE packages SET status = 'Inactive' WHERE package_id = ?",
+      [id],
+    );
+
+    res.status(200).json({ message: "Package deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting package:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to delete package." },
     });
   }
 }

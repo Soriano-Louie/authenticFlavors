@@ -14,9 +14,14 @@ import {
 import {
   getAdminStats,
   getAdminActivity,
+  getAdminPackages,
+  createAdminPackage,
+  updateAdminPackage,
+  deleteAdminPackage,
   type AdminStats,
   type AdminActivity,
 } from "../api/adminApi";
+import type { Package as PackageType, PackagePricing } from "../api/packageApi";
 import { toast } from "sonner";
 import {
   BarChart2,
@@ -44,6 +49,10 @@ import {
   Info,
   Loader2,
   Eye,
+  Plus,
+  Edit3,
+  Trash2,
+  ImagePlus,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -1009,17 +1018,607 @@ function BookingsSection() {
   );
 }
 
-// Packages Section (Simplified)
+// ─── Packages Section — Full CRUD Management ────────────────────────
+interface PackageFormData {
+  package_name: string;
+  description: string;
+  max_pax: string;
+  pricing: { pax_count: string; price: string }[];
+}
+
+const emptyFormData: PackageFormData = {
+  package_name: "",
+  description: "",
+  max_pax: "",
+  pricing: [{ pax_count: "", price: "" }],
+};
+
 function PackagesSection() {
+  const { accessToken } = useAuth();
+  const [packages, setPackages] = useState<PackageType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingPkg, setEditingPkg] = useState<PackageType | null>(null);
+  const [deletingPkg, setDeletingPkg] = useState<PackageType | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState<PackageFormData>(emptyFormData);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const fetchPackages = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminPackages(accessToken);
+      setPackages(res.packages);
+    } catch (err) {
+      console.error("Failed to fetch packages:", err);
+      toast.error("Failed to load packages.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPackages();
+  }, [accessToken]);
+
+  // Open modal for adding
+  const handleAdd = () => {
+    setEditingPkg(null);
+    setFormData(emptyFormData);
+    setImageFile(null);
+    setImagePreview(null);
+    setShowModal(true);
+  };
+
+  // Open modal for editing
+  const handleEdit = (pkg: PackageType) => {
+    setEditingPkg(pkg);
+    setFormData({
+      package_name: pkg.package_name,
+      description: pkg.description || "",
+      max_pax: String(pkg.max_pax),
+      pricing:
+        pkg.pricing && pkg.pricing.length > 0
+          ? pkg.pricing.map((p) => ({
+              pax_count: String(p.pax_count),
+              price: String(p.price),
+            }))
+          : [{ pax_count: "", price: "" }],
+    });
+    setImageFile(null);
+    setImagePreview(pkg.image || null);
+    setShowModal(true);
+  };
+
+  // Close modal
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingPkg(null);
+    setFormData(emptyFormData);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  // Handle form field changes
+  const handleFormChange = (field: keyof PackageFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Handle pricing tier changes
+  const handlePricingChange = (
+    index: number,
+    field: "pax_count" | "price",
+    value: string,
+  ) => {
+    setFormData((prev) => {
+      const newPricing = [...prev.pricing];
+      newPricing[index] = { ...newPricing[index], [field]: value };
+      return { ...prev, pricing: newPricing };
+    });
+  };
+
+  // Add pricing row
+  const addPricingRow = () => {
+    setFormData((prev) => ({
+      ...prev,
+      pricing: [...prev.pricing, { pax_count: "", price: "" }],
+    }));
+  };
+
+  // Remove pricing row
+  const removePricingRow = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      pricing: prev.pricing.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Handle image selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Validate form
+  const validateForm = (): boolean => {
+    if (!formData.package_name.trim()) {
+      toast.error("Package name is required.");
+      return false;
+    }
+    if (
+      !formData.max_pax ||
+      isNaN(Number(formData.max_pax)) ||
+      Number(formData.max_pax) < 1
+    ) {
+      toast.error("Valid max pax is required.");
+      return false;
+    }
+    // Validate pricing tiers that have values
+    for (const tier of formData.pricing) {
+      if (tier.pax_count || tier.price) {
+        if (
+          !tier.pax_count ||
+          isNaN(Number(tier.pax_count)) ||
+          Number(tier.pax_count) < 1
+        ) {
+          toast.error("Each pricing tier needs a valid pax count.");
+          return false;
+        }
+        if (
+          !tier.price ||
+          isNaN(Number(tier.price)) ||
+          Number(tier.price) < 0
+        ) {
+          toast.error("Each pricing tier needs a valid price.");
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  // Submit form (create or update)
+  const handleSubmit = async () => {
+    if (!accessToken) return;
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    try {
+      const formPayload = new FormData();
+      formPayload.append("package_name", formData.package_name.trim());
+      formPayload.append("description", formData.description.trim());
+      formPayload.append("max_pax", formData.max_pax);
+
+      // Filter out empty pricing rows and send as JSON string
+      const validPricing = formData.pricing.filter(
+        (t) => t.pax_count && t.price,
+      );
+      if (validPricing.length > 0) {
+        formPayload.append(
+          "pricing",
+          JSON.stringify(
+            validPricing.map((t) => ({
+              pax_count: Number(t.pax_count),
+              price: Number(t.price),
+            })),
+          ),
+        );
+      }
+
+      if (imageFile) {
+        formPayload.append("image", imageFile);
+      }
+
+      if (editingPkg) {
+        await updateAdminPackage(
+          accessToken,
+          editingPkg.package_id,
+          formPayload,
+        );
+        toast.success("Package updated successfully.");
+      } else {
+        await createAdminPackage(accessToken, formPayload);
+        toast.success("Package created successfully.");
+      }
+
+      closeModal();
+      fetchPackages();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save package.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Delete package
+  const handleDelete = async () => {
+    if (!accessToken || !deletingPkg) return;
+    setSubmitting(true);
+    try {
+      await deleteAdminPackage(accessToken, deletingPkg.package_id);
+      toast.success("Package deleted successfully.");
+      setDeletingPkg(null);
+      fetchPackages();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete package.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatPrice = (price: number) =>
+    `₱${Number(price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
   return (
-    <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-      <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-4">
-        Food Packages Management
-      </h2>
-      <p className="text-sm font-['Lato'] text-[#2C1810]/60">
-        Package management interface coming soon. Use the main website to view
-        packages.
-      </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
+              Food Packages Management
+            </h2>
+            <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1">
+              Create, edit, and manage catering packages
+            </p>
+          </div>
+          <button
+            onClick={handleAdd}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} />
+            Add Package
+          </button>
+        </div>
+
+        {/* Package List */}
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+          </div>
+        ) : packages.length === 0 ? (
+          <div className="text-center py-10">
+            <Package size={48} className="mx-auto text-[#C8922A]/30 mb-3" />
+            <p className="text-sm font-['Lato'] text-[#2C1810]/50">
+              No packages found. Click "Add Package" to create one.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm font-['Lato']">
+              <thead>
+                <tr className="border-b border-[#C8922A]/10">
+                  <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                    Name
+                  </th>
+                  <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                    Max Pax
+                  </th>
+                  <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                    Starting Price
+                  </th>
+                  <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                    Status
+                  </th>
+                  <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {packages.map((pkg) => {
+                  const startingPrice =
+                    pkg.pricing && pkg.pricing.length > 0
+                      ? pkg.pricing[0].price
+                      : 0;
+                  return (
+                    <tr
+                      key={pkg.package_id}
+                      className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
+                    >
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-3">
+                          {pkg.image && (
+                            <img
+                              src={pkg.image}
+                              alt={pkg.package_name}
+                              className="w-10 h-10 rounded-lg object-cover"
+                            />
+                          )}
+                          <span className="text-[#2C1810] font-medium">
+                            {pkg.package_name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-[#2C1810]/70">
+                        {pkg.max_pax} guests
+                      </td>
+                      <td className="py-3 px-2 text-[#2C1810]/70">
+                        {formatPrice(startingPrice)}
+                      </td>
+                      <td className="py-3 px-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
+                            pkg.status === "Active"
+                              ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                              : "bg-[#C4541A]/15 text-[#C4541A]"
+                          }`}
+                        >
+                          {pkg.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(pkg)}
+                            className="p-1.5 rounded-lg hover:bg-[#C8922A]/10 text-[#C8922A] transition-colors"
+                            title="Edit package"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingPkg(pkg)}
+                            className="p-1.5 rounded-lg hover:bg-[#C4541A]/10 text-[#C4541A] transition-colors"
+                            title="Delete package"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeModal} />
+          <div className="relative bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl border border-[#C8922A]/20">
+            <div className="sticky top-0 bg-white border-b border-[#C8922A]/10 px-6 py-4 flex items-center justify-between z-10">
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810]">
+                {editingPkg ? "Edit Package" : "Add Package"}
+              </h3>
+              <button
+                onClick={closeModal}
+                className="p-1 rounded-lg hover:bg-[#C8922A]/10 text-[#2C1810]/50 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Package Name */}
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Package Name <span className="text-[#C4541A]">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.package_name}
+                  onChange={(e) =>
+                    handleFormChange("package_name", e.target.value)
+                  }
+                  placeholder="e.g. Birthday Bliss 3-Course"
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    handleFormChange("description", e.target.value)
+                  }
+                  placeholder="Describe the package..."
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
+                />
+              </div>
+
+              {/* Max Pax */}
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Maximum Pax <span className="text-[#C4541A]">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={formData.max_pax}
+                  onChange={(e) => handleFormChange("max_pax", e.target.value)}
+                  placeholder="e.g. 100"
+                  min="1"
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                />
+              </div>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Package Image
+                </label>
+                <div className="flex items-center gap-4">
+                  {imagePreview ? (
+                    <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-[#C8922A]/20">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        onClick={() => {
+                          setImageFile(null);
+                          setImagePreview(null);
+                        }}
+                        className="absolute top-1 right-1 p-0.5 rounded-full bg-[#C4541A]/80 text-white"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-24 h-24 rounded-xl border-2 border-dashed border-[#C8922A]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#C8922A] transition-colors">
+                      <ImagePlus size={20} className="text-[#C8922A]/50" />
+                      <span className="text-[10px] font-['Lato'] text-[#C8922A]/50 mt-1">
+                        Upload
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">
+                    JPEG, PNG, GIF, or WebP. Max 5MB.
+                  </span>
+                </div>
+              </div>
+
+              {/* Pricing Tiers */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                    Pricing Tiers
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addPricingRow}
+                    className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Add Tier
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {formData.pricing.map((tier, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={tier.pax_count}
+                        onChange={(e) =>
+                          handlePricingChange(
+                            index,
+                            "pax_count",
+                            e.target.value,
+                          )
+                        }
+                        placeholder="Pax"
+                        min="1"
+                        className="w-24 px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                      />
+                      <input
+                        type="number"
+                        value={tier.price}
+                        onChange={(e) =>
+                          handlePricingChange(index, "price", e.target.value)
+                        }
+                        placeholder="Price"
+                        min="0"
+                        step="0.01"
+                        className="flex-1 px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                      />
+                      {formData.pricing.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePricingRow(index)}
+                          className="p-2 rounded-lg hover:bg-[#C4541A]/10 text-[#C4541A] transition-colors"
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-[#C8922A]/10 px-6 py-4 flex items-center justify-end gap-3">
+              <button
+                onClick={closeModal}
+                disabled={submitting}
+                className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting
+                  ? "Saving..."
+                  : editingPkg
+                    ? "Update Package"
+                    : "Create Package"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deletingPkg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !submitting && setDeletingPkg(null)}
+          />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={24} className="text-[#C4541A]" />
+              </div>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
+                Delete Package
+              </h3>
+              <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-[#2C1810]">
+                  {deletingPkg.package_name}
+                </span>
+                ? This action will deactivate the package.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setDeletingPkg(null)}
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {submitting && <Loader2 size={14} className="animate-spin" />}
+                  {submitting ? "Deleting..." : "Delete Package"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
