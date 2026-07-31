@@ -8,6 +8,8 @@ import {
   completeBooking,
   verifyBooking,
   rejectBooking,
+  requestCancellation,
+  getCancellationDetails,
 } from "../controllers/bookingController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -16,6 +18,14 @@ export const bookingRouter = Router();
 // Customer booking endpoints
 bookingRouter.post("/bookings", requireAuth, createBooking);
 bookingRouter.get("/bookings", requireAuth, getBookings);
+
+// Customer cancellation endpoints
+bookingRouter.post("/bookings/:id/cancel", requireAuth, requestCancellation);
+bookingRouter.get(
+  "/bookings/:id/cancellation-details",
+  requireAuth,
+  getCancellationDetails,
+);
 
 // Admin booking endpoints
 bookingRouter.get(

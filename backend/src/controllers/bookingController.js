@@ -776,3 +776,288 @@ export async function rejectBooking(req, res) {
     connection.release();
   }
 }
+
+// ──────────────────────────────────────────
+// Customer: Request booking cancellation
+// ──────────────────────────────────────────
+export async function requestCancellation(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const bookingId = Number(req.params.id);
+    const userId = Number(req.auth.sub);
+    const { cancellation_reason } = req.body;
+
+    // Get booking details
+    const [bookings] = await connection.query(
+      `SELECT b.*, p.package_name 
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       WHERE b.booking_id = ? LIMIT 1`,
+      [bookingId],
+    );
+
+    if (bookings.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookings[0];
+
+    // Verify user owns this booking
+    if (booking.user_id !== userId) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "You can only cancel your own bookings.",
+        },
+      });
+    }
+
+    // Check if booking is already cancelled or completed
+    if (booking.booking_status === "Cancelled") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "This booking has already been cancelled.",
+        },
+      });
+    }
+
+    if (booking.booking_status === "Completed") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Cannot cancel a completed booking.",
+        },
+      });
+    }
+
+    // Calculate days before event
+    const eventDate = new Date(booking.event_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    eventDate.setHours(0, 0, 0, 0);
+    const daysBeforeEvent = Math.floor(
+      (eventDate - today) / (1000 * 60 * 60 * 24),
+    );
+
+    // Determine cancellation policy and calculate amount due
+    let policyApplied = "";
+    let amountDue = 0;
+    let additionalAmountDue = 0;
+
+    if (daysBeforeEvent >= 5) {
+      // ≥5 days: Only reservation fee forfeited (already paid)
+      policyApplied = "standard";
+      amountDue = 0; // Reservation fee already paid, no additional charge
+    } else if (daysBeforeEvent >= 1) {
+      // <5 days: 50% of total package price
+      policyApplied = "5_days_penalty";
+      amountDue = booking.total_price * 0.5;
+    } else {
+      // 1 day or less (including event day): 100% of total package price
+      policyApplied = "1_day_penalty";
+      amountDue = booking.total_price;
+    }
+
+    // Calculate additional amount due (what they still need to pay)
+    const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
+    additionalAmountDue = Math.max(0, amountDue - amountAlreadyPaid);
+
+    await connection.beginTransaction();
+
+    // Update booking with cancellation details
+    await connection.query(
+      `UPDATE bookings 
+       SET booking_status = 'Cancelled',
+           cancellation_requested_at = CURRENT_TIMESTAMP,
+           cancellation_processed_at = CURRENT_TIMESTAMP,
+           cancellation_policy_applied = ?,
+           amount_due_on_cancellation = ?,
+           cancellation_notes = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [policyApplied, amountDue, cancellation_reason || null, bookingId],
+    );
+
+    // Cancel any existing pending payments for this booking FIRST
+    // (before inserting new cancellation charge, to avoid cancelling it)
+    await connection.query(
+      `UPDATE payments 
+       SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+      [bookingId],
+    );
+
+    // If additional amount is due, create a cancellation charge payment record
+    if (additionalAmountDue > 0) {
+      // Due date: 7 days from today (Philippine time)
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 7);
+      const dueDateStr = dueDate.toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Manila",
+      });
+
+      await connection.query(
+        `INSERT INTO payments 
+         (booking_id, payment_type, amount, due_date, payment_status, is_cancellation_charge, admin_remarks)
+         VALUES (?, 'CancellationCharge', ?, ?, 'Pending', TRUE, ?)`,
+        [
+          bookingId,
+          additionalAmountDue,
+          dueDateStr,
+          `Cancellation charge - ${policyApplied}. Event: ${booking.event_date}. Days before event: ${daysBeforeEvent}`,
+        ],
+      );
+    }
+
+    await connection.commit();
+
+    // Prepare response
+    const responseData = {
+      message: "Booking cancelled successfully.",
+      booking_status: "Cancelled",
+      booking_id: bookingId,
+      booking_reference: booking.booking_reference,
+      package_name: booking.package_name,
+      event_date: booking.event_date,
+      days_before_event: daysBeforeEvent,
+      policy_applied: policyApplied,
+      total_price: booking.total_price,
+      amount_already_paid: amountAlreadyPaid,
+      amount_due_on_cancellation: amountDue,
+      additional_amount_due: additionalAmountDue,
+      cancellation_charge_created: additionalAmountDue > 0,
+    };
+
+    res.status(200).json(responseData);
+  } catch (error) {
+    await connection.rollback();
+    console.error("Request cancellation failed:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to process cancellation request.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// ──────────────────────────────────────────
+// Get cancellation details for a booking
+// ──────────────────────────────────────────
+export async function getCancellationDetails(req, res) {
+  try {
+    const bookingId = Number(req.params.id);
+    const userId = Number(req.auth.sub);
+
+    const [bookings] = await pool.query(
+      `SELECT b.*, p.package_name 
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       WHERE b.booking_id = ?`,
+      [bookingId],
+    );
+
+    if (bookings.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookings[0];
+
+    // Verify user owns this booking (or is admin)
+    const isAdmin = req.auth.role === "Admin";
+    if (booking.user_id !== userId && !isAdmin) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "You can only view your own booking details.",
+        },
+      });
+    }
+
+    // Calculate days before event
+    const eventDate = new Date(booking.event_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    eventDate.setHours(0, 0, 0, 0);
+    const daysBeforeEvent = Math.floor(
+      (eventDate - today) / (1000 * 60 * 60 * 24),
+    );
+
+    // Determine what policy would apply
+    let estimatedPolicy = "";
+    let estimatedAmountDue = 0;
+    let estimatedAdditionalDue = 0;
+
+    if (daysBeforeEvent >= 5) {
+      estimatedPolicy = "standard";
+      estimatedAmountDue = 0;
+    } else if (daysBeforeEvent >= 1) {
+      estimatedPolicy = "5_days_penalty";
+      estimatedAmountDue = booking.total_price * 0.5;
+    } else {
+      estimatedPolicy = "1_day_penalty";
+      estimatedAmountDue = booking.total_price;
+    }
+
+    const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
+    estimatedAdditionalDue = Math.max(
+      0,
+      estimatedAmountDue - amountAlreadyPaid,
+    );
+
+    // Get cancellation charge payments if any
+    const [cancellationPayments] = await pool.query(
+      `SELECT * FROM payments 
+       WHERE booking_id = ? AND payment_type = 'CancellationCharge'
+       ORDER BY created_at DESC`,
+      [bookingId],
+    );
+
+    res.status(200).json({
+      booking_id: bookingId,
+      booking_reference: booking.booking_reference,
+      package_name: booking.package_name,
+      event_date: booking.event_date,
+      booking_status: booking.booking_status,
+      total_price: booking.total_price,
+      amount_already_paid: amountAlreadyPaid,
+      days_before_event: daysBeforeEvent,
+      is_cancelled: booking.booking_status === "Cancelled",
+      cancellation_details:
+        booking.booking_status === "Cancelled"
+          ? {
+              policy_applied: booking.cancellation_policy_applied,
+              amount_due_on_cancellation: booking.amount_due_on_cancellation,
+              cancellation_requested_at: booking.cancellation_requested_at,
+              cancellation_processed_at: booking.cancellation_processed_at,
+              cancellation_notes: booking.cancellation_notes,
+            }
+          : null,
+      estimated_cancellation:
+        booking.booking_status !== "Cancelled"
+          ? {
+              policy_would_apply: estimatedPolicy,
+              estimated_amount_due: estimatedAmountDue,
+              estimated_additional_due: estimatedAdditionalDue,
+              cancellation_charge_would_be_created: estimatedAdditionalDue > 0,
+            }
+          : null,
+      cancellation_payments: cancellationPayments,
+    });
+  } catch (error) {
+    console.error("Get cancellation details failed:", error);
+    res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to get cancellation details.",
+      },
+    });
+  }
+}

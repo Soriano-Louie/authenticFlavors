@@ -22,6 +22,47 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added remaining_balance to bookings table.");
     }
 
+    // 0.6 Add cancellation tracking columns to bookings table
+    const [cancellationColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings'",
+      [connection.config.database],
+    );
+    const cancellationColumnNames = cancellationColumns.map(
+      (c) => c.COLUMN_NAME,
+    );
+    const cancellationAlterations = [];
+    if (!cancellationColumnNames.includes("cancellation_requested_at")) {
+      cancellationAlterations.push(
+        "ADD COLUMN cancellation_requested_at DATETIME NULL",
+      );
+    }
+    if (!cancellationColumnNames.includes("cancellation_processed_at")) {
+      cancellationAlterations.push(
+        "ADD COLUMN cancellation_processed_at DATETIME NULL",
+      );
+    }
+    if (!cancellationColumnNames.includes("cancellation_policy_applied")) {
+      cancellationAlterations.push(
+        "ADD COLUMN cancellation_policy_applied VARCHAR(50) NULL",
+      );
+    }
+    if (!cancellationColumnNames.includes("amount_due_on_cancellation")) {
+      cancellationAlterations.push(
+        "ADD COLUMN amount_due_on_cancellation DECIMAL(10,2) DEFAULT 0.00",
+      );
+    }
+    if (!cancellationColumnNames.includes("cancellation_notes")) {
+      cancellationAlterations.push("ADD COLUMN cancellation_notes TEXT NULL");
+    }
+    if (cancellationAlterations.length > 0) {
+      const alterSql = `ALTER TABLE bookings ${cancellationAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log(
+        "[MIGRATION] Added cancellation tracking columns to bookings table:",
+        cancellationAlterations.join(", "),
+      );
+    }
+
     const [aiRefColumn] = await connection.query(
       `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS 
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'ai_booking_reference'`,
@@ -118,14 +159,14 @@ export async function seedDatabaseIfEmpty() {
       CREATE TABLE IF NOT EXISTS payments (
         payment_id INT AUTO_INCREMENT PRIMARY KEY,
         booking_id INT NOT NULL,
-        payment_type ENUM('Reservation', 'DownPayment', 'FinalPayment') NOT NULL,
+        payment_type ENUM('Reservation', 'DownPayment', 'FinalPayment', 'CancellationCharge') NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         due_date DATE NOT NULL,
         paymongo_checkout_id VARCHAR(255) NULL,
         paymongo_payment_id VARCHAR(255) NULL,
         payment_reference VARCHAR(255) NULL,
         payment_method VARCHAR(255) NULL,
-        payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue') DEFAULT 'Pending',
+        payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue', 'Cancelled') DEFAULT 'Pending',
         paid_at DATETIME NULL,
         receipt_url TEXT NULL,
         receipt_public_id VARCHAR(255) NULL,
@@ -133,6 +174,8 @@ export async function seedDatabaseIfEmpty() {
         verified_by INT NULL,
         verified_at DATETIME NULL,
         admin_remarks TEXT NULL,
+        is_cancellation_charge BOOLEAN DEFAULT FALSE,
+        cancellation_reference VARCHAR(255) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE
@@ -182,12 +225,56 @@ export async function seedDatabaseIfEmpty() {
     if (
       !currentPaymentEnum.includes("For_Verification") ||
       !currentPaymentEnum.includes("Rejected") ||
-      !currentPaymentEnum.includes("Overdue")
+      !currentPaymentEnum.includes("Overdue") ||
+      !currentPaymentEnum.includes("Cancelled")
     ) {
       await connection.query(
-        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue') DEFAULT 'Pending'`,
+        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue', 'Cancelled') DEFAULT 'Pending'`,
       );
       console.log("[MIGRATION] Updated payments.payment_status ENUM.");
+    }
+
+    // Ensure payment_type ENUM includes CancellationCharge
+    const [paymentTypeCheck] = await connection.query(
+      `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'payment_type'`,
+      [connection.config.database],
+    );
+    const currentPaymentTypeEnum = paymentTypeCheck[0]?.COLUMN_TYPE || "";
+    if (!currentPaymentTypeEnum.includes("CancellationCharge")) {
+      await connection.query(
+        `ALTER TABLE payments MODIFY COLUMN payment_type ENUM('Reservation', 'DownPayment', 'FinalPayment', 'CancellationCharge') NOT NULL`,
+      );
+      console.log(
+        "[MIGRATION] Updated payments.payment_type ENUM to include CancellationCharge.",
+      );
+    }
+
+    // Ensure is_cancellation_charge and cancellation_reference columns exist
+    const [paymentExtraColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments'",
+      [connection.config.database],
+    );
+    const paymentExtraColumnNames = paymentExtraColumns.map(
+      (c) => c.COLUMN_NAME,
+    );
+    const paymentExtraAlterations = [];
+    if (!paymentExtraColumnNames.includes("is_cancellation_charge")) {
+      paymentExtraAlterations.push(
+        "ADD COLUMN is_cancellation_charge BOOLEAN DEFAULT FALSE",
+      );
+    }
+    if (!paymentExtraColumnNames.includes("cancellation_reference")) {
+      paymentExtraAlterations.push(
+        "ADD COLUMN cancellation_reference VARCHAR(255) NULL",
+      );
+    }
+    if (paymentExtraAlterations.length > 0) {
+      const alterSql = `ALTER TABLE payments ${paymentExtraAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log(
+        "[MIGRATION] Added cancellation columns to payments table:",
+        paymentExtraAlterations.join(", "),
+      );
     }
 
     // 0.3 Create email_verifications table

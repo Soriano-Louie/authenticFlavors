@@ -35,7 +35,12 @@ export interface Booking {
   start_time: string;
   allergy_notes: string | null;
   dietary_notes: string | null;
-  booking_status: "Pending" | "Reserved" | "Confirmed" | "Completed" | "Cancelled";
+  booking_status:
+    | "Pending"
+    | "Reserved"
+    | "Confirmed"
+    | "Completed"
+    | "Cancelled";
   booking_summary: string | null; // JSON text containing receipt_path, rejection_reason, etc.
   total_price: number;
   amount_paid: number;
@@ -53,10 +58,14 @@ export interface Booking {
   menu_selections?: BookingMenuSelection[];
 }
 
-const API_BASE_URL = (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ?? "https://authenticflavors.onrender.com";
+const API_BASE_URL =
+  (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
+  "https://authenticflavors.onrender.com";
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string; code?: string } };
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: { message?: string; code?: string };
+  };
 
   if (!response.ok) {
     const message = payload.error?.message ?? "Request failed.";
@@ -79,8 +88,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export function createBooking(accessToken: string, payload: BookingPayload): Promise<{ booking_id: number; total_price: number; ai_booking_reference?: number; booking_reference?: string }> {
-  return request<{ booking_id: number; total_price: number; ai_booking_reference?: number; booking_reference?: string }>("/api/bookings", {
+export function createBooking(
+  accessToken: string,
+  payload: BookingPayload,
+): Promise<{
+  booking_id: number;
+  total_price: number;
+  ai_booking_reference?: number;
+  booking_reference?: string;
+}> {
+  return request<{
+    booking_id: number;
+    total_price: number;
+    ai_booking_reference?: number;
+    booking_reference?: string;
+  }>("/api/bookings", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -89,7 +111,9 @@ export function createBooking(accessToken: string, payload: BookingPayload): Pro
   });
 }
 
-export function getCustomerBookings(accessToken: string): Promise<{ bookings: Booking[] }> {
+export function getCustomerBookings(
+  accessToken: string,
+): Promise<{ bookings: Booking[] }> {
   return request<{ bookings: Booking[] }>("/api/bookings", {
     method: "GET",
     headers: {
@@ -98,7 +122,9 @@ export function getCustomerBookings(accessToken: string): Promise<{ bookings: Bo
   });
 }
 
-export function getAdminBookings(accessToken: string): Promise<{ bookings: Booking[] }> {
+export function getAdminBookings(
+  accessToken: string,
+): Promise<{ bookings: Booking[] }> {
   return request<{ bookings: Booking[] }>("/api/admin/bookings", {
     method: "GET",
     headers: {
@@ -107,13 +133,19 @@ export function getAdminBookings(accessToken: string): Promise<{ bookings: Booki
   });
 }
 
-export function completeBooking(accessToken: string, bookingId: number): Promise<{ message: string }> {
-  return request<{ message: string }>(`/api/admin/bookings/${bookingId}/complete`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+export function completeBooking(
+  accessToken: string,
+  bookingId: number,
+): Promise<{ message: string }> {
+  return request<{ message: string }>(
+    `/api/admin/bookings/${bookingId}/complete`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
 }
 
 export function verifyBooking(
@@ -153,6 +185,81 @@ export function rejectBooking(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ admin_remarks: adminRemarks }),
+    },
+  );
+}
+
+// ──────────────────────────────────────────
+// Cancellation API functions
+// ──────────────────────────────────────────
+
+export interface CancellationDetails {
+  booking_id: number;
+  booking_reference: string | null;
+  package_name: string;
+  event_date: string;
+  booking_status: string;
+  total_price: number;
+  amount_already_paid: number;
+  days_before_event: number;
+  is_cancelled: boolean;
+  cancellation_details: {
+    policy_applied: string;
+    amount_due_on_cancellation: number;
+    cancellation_requested_at: string;
+    cancellation_processed_at: string;
+    cancellation_notes: string | null;
+  } | null;
+  estimated_cancellation: {
+    policy_would_apply: string;
+    estimated_amount_due: number;
+    estimated_additional_due: number;
+    cancellation_charge_would_be_created: boolean;
+  } | null;
+  cancellation_payments: any[];
+}
+
+export interface CancellationResponse {
+  message: string;
+  booking_status: string;
+  booking_id: number;
+  booking_reference: string | null;
+  package_name: string;
+  event_date: string;
+  days_before_event: number;
+  policy_applied: string;
+  total_price: number;
+  amount_already_paid: number;
+  amount_due_on_cancellation: number;
+  additional_amount_due: number;
+  cancellation_charge_created: boolean;
+}
+
+export function requestCancellation(
+  accessToken: string,
+  bookingId: number,
+  cancellationReason?: string,
+): Promise<CancellationResponse> {
+  return request<CancellationResponse>(`/api/bookings/${bookingId}/cancel`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ cancellation_reason: cancellationReason }),
+  });
+}
+
+export function getCancellationDetails(
+  accessToken: string,
+  bookingId: number,
+): Promise<CancellationDetails> {
+  return request<CancellationDetails>(
+    `/api/bookings/${bookingId}/cancellation-details`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
   );
 }

@@ -10,6 +10,11 @@ import {
   type PaymentInstruction,
 } from "../api/paymentApi";
 import { checkFeedbackExists } from "../api/feedbackApi";
+import {
+  requestCancellation,
+  getCancellationDetails,
+  type CancellationDetails,
+} from "../api/bookingApi";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -24,6 +29,7 @@ import {
   User,
   Loader2,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 const TABS = [
@@ -447,6 +453,16 @@ export function CustomerDashboard() {
   >([]);
   const [showInstructions, setShowInstructions] = useState<number | null>(null);
 
+  // Cancellation state
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [cancellationBookingId, setCancellationBookingId] = useState<number | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancellationDetails, setCancellationDetails] =
+    useState<CancellationDetails | null>(null);
+  const [loadingCancellationDetails, setLoadingCancellationDetails] =
+    useState(false);
+  const [processingCancellation, setProcessingCancellation] = useState(false);
+
   const handlePayNow = async (paymentId: number, bookingId: number) => {
     try {
       // Fetch payment instructions
@@ -459,6 +475,87 @@ export function CustomerDashboard() {
           ? err.message
           : "Failed to load payment instructions.",
       );
+    }
+  };
+
+  const handleCancelBookingClick = async (bookingId: number) => {
+    setCancellationBookingId(bookingId);
+    setCancellationReason("");
+    setShowCancellationModal(true);
+    setCancellationDetails(null);
+  };
+
+  const loadCancellationDetails = async () => {
+    if (!cancellationBookingId || !accessToken) return;
+
+    setLoadingCancellationDetails(true);
+    try {
+      const details = await getCancellationDetails(
+        accessToken,
+        cancellationBookingId,
+      );
+      setCancellationDetails(details);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to load cancellation details.",
+      );
+    } finally {
+      setLoadingCancellationDetails(false);
+    }
+  };
+
+  // Load cancellation details when modal opens
+  useEffect(() => {
+    if (showCancellationModal && cancellationBookingId && !cancellationDetails) {
+      loadCancellationDetails();
+    }
+  }, [showCancellationModal, cancellationBookingId]);
+
+  const getPolicyText = (policy: string): string => {
+    switch (policy) {
+      case "standard":
+        return "≥5 days before event";
+      case "5_days_penalty":
+        return "<5 days before event";
+      case "1_day_penalty":
+        return "1 day or less before event";
+      default:
+        return "";
+    }
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!cancellationBookingId || !accessToken) return;
+
+    setProcessingCancellation(true);
+    try {
+      const result = await requestCancellation(
+        accessToken,
+        cancellationBookingId,
+        cancellationReason || undefined,
+      );
+
+      toast.success("Booking cancelled successfully. Check your email for details.");
+
+      // Close modal and refresh bookings
+      setShowCancellationModal(false);
+      setCancellationBookingId(null);
+      setCancellationReason("");
+      setCancellationDetails(null);
+
+      // Reload bookings
+      const res = await getCustomerBookings(accessToken);
+      setBookings(res.bookings);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to process cancellation. Please try again.",
+      );
+    } finally {
+      setProcessingCancellation(false);
     }
   };
 
@@ -516,6 +613,10 @@ export function CustomerDashboard() {
     const reservationPaid = reservation?.payment_status === "Paid";
     const downPaymentPaid = downPayment?.payment_status === "Paid";
 
+    const canCancel =
+      booking.booking_status !== "Cancelled" &&
+      booking.booking_status !== "Completed";
+
     return (
       <div className="mt-4 border-t border-[#C8922A]/10 pt-4 w-full">
         <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm mb-3 font-semibold">
@@ -552,6 +653,25 @@ export function CustomerDashboard() {
             </span>
           </div>
         </div>
+
+        {/* Cancellation Policy Warning */}
+        {canCancel && (
+          <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl p-3 mb-3 flex items-start gap-3">
+            <AlertTriangle size={18} className="text-[#C8922A] shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
+                Cancellation Policy
+              </p>
+              <p className="text-[10px] font-['Lato'] text-[#2C1810]/70 mt-0.5">
+                <strong>≥5 days before event:</strong> Reservation fee (₱5,000) forfeited
+                <br />
+                <strong><5 days before event:</strong> 50% of total price
+                <br />
+                <strong>1 day before event:</strong> 100% of total price
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Overdue Warning Banner */}
         {payments.some((p) => p.payment_status === "Overdue") && (
@@ -732,6 +852,19 @@ export function CustomerDashboard() {
                 </div>
               );
             })()}
+
+          {/* Cancel Booking Button */}
+          {canCancel && (
+            <div className="mt-4 pt-4 border-t border-[#C8922A]/10">
+              <button
+                onClick={() => handleCancelBookingClick(booking.booking_id)}
+                className="w-full px-4 py-2.5 bg-[#C4541A]/10 hover:bg-[#C4541A]/20 text-[#C4541A] rounded-full text-xs font-['Lato'] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <AlertTriangle size={14} />
+                Cancel Booking
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1622,6 +1755,176 @@ export function CustomerDashboard() {
             </div>
           );
         })()}
+
+      {/* Cancellation Modal */}
+      {showCancellationModal && cancellationBookingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                Request Cancellation
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCancellationModal(false);
+                  setCancellationBookingId(null);
+                  setCancellationReason("");
+                  setCancellationDetails(null);
+                }}
+                className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {loadingCancellationDetails ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                </div>
+              ) : cancellationDetails ? (
+                <div className="space-y-4">
+                  {/* Booking Info */}
+                  <div className="bg-[#F5F0E8] p-4 rounded-xl">
+                    <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider mb-1">
+                      Booking Reference
+                    </p>
+                    <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                      {cancellationDetails.booking_reference || `#BK${String(cancellationDetails.booking_id).padStart(4, "0")}`}
+                    </p>
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">
+                      {cancellationDetails.package_name}
+                    </p>
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato']">
+                      Event Date: {formatDate(cancellationDetails.event_date)}
+                    </p>
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato']">
+                      Days Until Event: {cancellationDetails.days_before_event} days
+                    </p>
+                  </div>
+
+                  {/* Cancellation Policy Applied */}
+                  {cancellationDetails.estimated_cancellation && (
+                    <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl p-4">
+                      <p className="text-xs font-['Lato'] font-semibold text-[#C8922A] uppercase tracking-wider mb-2">
+                        Cancellation Policy Applied
+                      </p>
+                      {(() => {
+                        const policy = cancellationDetails.estimated_cancellation.policy_would_apply;
+                        const policyText = policy === "standard" ? "≥5 days before event"
+                          : policy === "5_days_penalty" ? "<5 days before event"
+                          : policy === "1_day_penalty" ? "1 day or less before event"
+                          : "";
+                        return (
+                          <p className="text-xs font-['Lato'] text-[#2C1810]/70 mb-2">
+                            {policyText}
+                          </p>
+                        );
+                      })()}
+                      <div className="space-y-1 text-xs font-['Lato']">
+                        <div className="flex justify-between">
+                          <span className="text-[#2C1810]/60">Total Package Price:</span>
+                          <span className="font-semibold text-[#2C1810]">
+                            ₱{cancellationDetails.total_price.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#2C1810]/60">Amount Already Paid:</span>
+                          <span className="font-semibold text-[#7A8C5C]">
+                            ₱{cancellationDetails.amount_already_paid.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#2C1810]/60">Amount Due on Cancellation:</span>
+                          <span className="font-semibold text-[#C4541A]">
+                            ₱{cancellationDetails.estimated_cancellation.estimated_amount_due.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        {cancellationDetails.estimated_cancellation.estimated_additional_due > 0 && (
+                          <div className="flex justify-between pt-1 border-t border-[#C8922A]/20">
+                            <span className="text-[#2C1810]/80 font-semibold">Additional Payment Required:</span>
+                            <span className="font-bold text-[#C4541A]">
+                              ₱{cancellationDetails.estimated_cancellation.estimated_additional_due.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancellation Reason */}
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2C1810]/70 font-['Lato'] mb-2">
+                      Reason for Cancellation (Optional)
+                    </label>
+                    <textarea
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      placeholder="Please let us know why you're cancelling..."
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                    />
+                  </div>
+
+                  {/* Warning Message */}
+                  <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="text-[#C4541A] shrink-0 mt-0.5" />
+                      <p className="text-[10px] font-['Lato'] text-[#C4541A]">
+                        By confirming this cancellation, you agree to the cancellation policy. The reservation fee of ₱5,000 is non-refundable. Additional charges may apply based on the policy above.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        setShowCancellationModal(false);
+                        setCancellationBookingId(null);
+                        setCancellationReason("");
+                        setCancellationDetails(null);
+                      }}
+                      disabled={processingCancellation}
+                      className="flex-1 px-4 py-2.5 border border-[#2C1810]/20 text-[#2C1810] rounded-full text-sm font-['Lato'] hover:bg-[#F5F0E8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      Go Back
+                    </button>
+                    <button
+                      onClick={handleConfirmCancellation}
+                      disabled={processingCancellation}
+                      className="flex-1 px-4 py-2.5 bg-[#C4541A] hover:bg-[#C4541A]/90 text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {processingCancellation ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" /> Processing...
+                        </>
+                      ) : (
+                        "Confirm Cancellation"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
+                    Failed to load cancellation details.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowCancellationModal(false);
+                      setCancellationBookingId(null);
+                    }}
+                    className="mt-3 px-4 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
