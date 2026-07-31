@@ -132,6 +132,20 @@ function formatDate(dateStr: string) {
   }
 }
 
+function formatTime(timeStr: string) {
+  if (!timeStr) return "—";
+  try {
+    const [hours, minutes] = timeStr.split(":");
+    const h = parseInt(hours, 10);
+    const m = minutes || "00";
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 || 12;
+    return `${h12}:${m} ${period}`;
+  } catch {
+    return timeStr;
+  }
+}
+
 function getBookingReference(booking: Booking): string {
   if (booking.booking_reference) return booking.booking_reference;
   if (booking.ai_booking_reference)
@@ -905,7 +919,7 @@ export function CustomerDashboard() {
                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} · {ev.start_time} ·{" "}
+                              {formatDate(ev.event_date)} · {formatTime(ev.start_time)} ·{" "}
                               {ev.number_of_pax} guests
                             </p>
                           </div>
@@ -954,7 +968,7 @@ export function CustomerDashboard() {
                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} at {ev.start_time}
+                              {formatDate(ev.event_date)} at {formatTime(ev.start_time)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {ev.number_of_pax} guests ·{" "}

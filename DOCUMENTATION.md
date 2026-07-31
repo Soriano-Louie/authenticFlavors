@@ -144,7 +144,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | `authController.js` | Authentication, registration, email verification, password reset, profile management |
 | `bookingController.js` | Booking creation, retrieval, and management |
 | `packageController.js` | Package and pricing CRUD |
-| `paymentController.js` | Payment receipt upload and verification |
+| `paymentController.js` | Payment receipt upload, verification, overdue management, and scheduled email reminders |
 | `feedbackController.js` | Feedback submission, retrieval, and admin AI analysis |
 | `chatbotController.js` | AI-powered chatbot integration |
 
@@ -191,6 +191,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 - `total_price` is stored on the `bookings` record at submission time to preserve the price that was active when the booking was made.
 - `account_status` on `users` is an ENUM: `'Active'`, `'Inactive'`, `'Suspended'`, `'Pending'` (Pending = email not yet verified).
 - The `feedback` table stores AI analysis results inline: `sentiment_status` (Positive/Neutral/Negative/Pending), `sentiment_score` (0.00–1.00), `sentiment_summary` (concise AI summary), `key_topics` (JSON array of themes), `actionable_insights` (JSON array of recommendations), `is_analyzed` (boolean), and `analyzed_at` (timestamp). This avoids reprocessing the same feedback on every page load.
+- `payment_status` on `payments` is an ENUM: `'Pending'`, `'For_Verification'`, `'Paid'`, `'Failed'`, `'Rejected'`, `'Overdue'`. The `'Overdue'` status is set automatically when a payment's `due_date` passes and the status is still `'Pending'`.
 
 ---
 
@@ -247,6 +248,10 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 |---|---|---|
 | Email Verification | `sendVerificationCode()` | Sends a 6-digit verification code to new users |
 | Password Reset | `sendPasswordResetEmail()` | Sends a password reset link with a secure token |
+| Upcoming Payment Reminder | `sendUpcomingPaymentReminder()` | Sent 3 days before a payment is due |
+| Payment Due Today | `sendPaymentDueToday()` | Sent on the day a payment is due |
+| Overdue Payment Notice | `sendPaymentOverdueNotice()` | Sent when a payment is past due, with red urgency styling |
+| Scheduled Reminders | `sendScheduledPaymentReminders()` | Cron-job function that sends all three reminder types at once |
 
 ### Environment Variables
 
@@ -315,6 +320,30 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 | `GET` | `/bookings` | Bearer + Admin | List all bookings |
 | `POST` | `/bookings/:id/verify` | Bearer + Admin | Mark booking as Confirmed |
 | `POST` | `/bookings/:id/reject` | Bearer + Admin | Reject booking with a reason |
+
+### Payment Endpoints (`/api/payments`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/instructions/:bookingId` | Bearer | Get payment instructions for a booking |
+| `POST` | `/upload-receipt` | Bearer | Upload payment receipt URL (direct Cloudinary upload) |
+| `POST` | `/upload-receipt-file` | Bearer | Upload payment receipt file (multer + server-side Cloudinary) |
+| `GET` | `/status/:paymentId` | Bearer | Get payment status for a specific payment |
+| `GET` | `/booking/:bookingId` | Bearer | Get all payments for a booking (auto-updates overdue status) |
+| `GET` | `/admin/all` | Bearer + Admin | Get all payments (pending verification first) |
+| `POST` | `/admin/verify/:paymentId` | Bearer + Admin | Approve or reject a payment receipt |
+| `PUT` | `/admin/instructions` | Bearer + Admin | Update payment instructions |
+| `GET` | `/admin/overdue` | Bearer + Admin | Get all overdue payments with `overdue_days` |
+| `POST` | `/admin/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder for a payment |
+| `POST` | `/admin/overdue/cancel/:paymentId` | Bearer + Admin | Cancel a booking due to overdue payment |
+
+### Admin Overdue Management (`/api/payments/admin`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/overdue` | Bearer + Admin | List overdue payments with customer details and `overdue_days` |
+| `POST` | `/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder (upcoming or overdue notice) |
+| `POST` | `/overdue/cancel/:paymentId` | Bearer + Admin | Cancel booking and all unpaid payments |
 
 ### Feedback Endpoints (`/api`)
 
@@ -477,7 +506,10 @@ Set the following on the Render dashboard under the backend service's Environmen
 - [x] Automatic AI analysis of newly submitted feedback (stored in DB to avoid reprocessing)
 - [x] Admin re-analyze single / all feedback entries on demand
 - [x] Admin feedback deletion
-- [x] CSV export of AI feedback analysis report
+- [x] Overdue payment system with automatic status updates and grace period
+- [x] Admin overdue alerts section with send reminder and cancel booking actions
+- [x] Automated email reminders (upcoming, due today, overdue notice)
+- [x] Database migration to add `'Overdue'` to `payments.payment_status` ENUM
 - [x] Package browsing and selection
 - [x] Booking creation with menu selection
 - [x] AI-powered chatbot integration
@@ -496,3 +528,5 @@ Set the following on the Render dashboard under the backend service's Environmen
 - Added `key_topics`, `actionable_insights`, and `analyzed_at` columns to the `feedback` table (with auto-migration for existing databases)
 - Added `analyzeFeedback()` and `generateOverallFeedbackAnalysis()` helpers to `geminiService.js`
 - Added admin API endpoints for feedback analysis, re-analysis, and deletion
+- Added `'Overdue'` to `payments.payment_status` ENUM with auto-migration in `seed.js`
+- Implemented overdue payment system: auto status flip, admin alerts, email reminders, and booking cancellation
