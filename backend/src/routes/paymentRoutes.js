@@ -10,6 +10,9 @@ import {
   getBookingPayments,
   getAllPayments,
   updatePaymentInstructions,
+  getOverduePayments,
+  sendPaymentReminder,
+  cancelBookingForOverdue,
 } from "../controllers/paymentController.js";
 
 const router = express.Router();
@@ -51,6 +54,30 @@ router.put(
   requireAuth,
   requireRole("Admin"),
   updatePaymentInstructions,
+);
+
+// Admin: Get overdue payments
+router.get(
+  "/admin/overdue",
+  requireAuth,
+  requireRole("Admin"),
+  getOverduePayments,
+);
+
+// Admin: Send payment reminder email
+router.post(
+  "/admin/overdue/remind/:paymentId",
+  requireAuth,
+  requireRole("Admin"),
+  sendPaymentReminder,
+);
+
+// Admin: Cancel booking for overdue payment
+router.post(
+  "/admin/overdue/cancel/:paymentId",
+  requireAuth,
+  requireRole("Admin"),
+  cancelBookingForOverdue,
 );
 
 export const paymentRouter = router;

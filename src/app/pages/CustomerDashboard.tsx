@@ -49,6 +49,76 @@ function getStatusStyle(status: string) {
   }
 }
 
+function getPaymentStatusInfo(payment: Payment): {
+  label: string;
+  colorClass: string;
+  message: string;
+  canUpload: boolean;
+} {
+  switch (payment.payment_status) {
+    case "Pending":
+      return {
+        label: "Pending Payment",
+        colorClass: "bg-[#C8922A]/15 text-[#C8922A]",
+        message: "Please upload your payment receipt to proceed.",
+        canUpload: true,
+      };
+    case "For_Verification":
+      return {
+        label: "Pending Verification",
+        colorClass: "bg-[#C8922A]/15 text-[#C8922A]",
+        message: "Your receipt is currently being reviewed by the admin.",
+        canUpload: false,
+      };
+    case "Paid":
+      return {
+        label: "Approved ✓",
+        colorClass: "bg-[#7A8C5C]/15 text-[#7A8C5C]",
+        message: "Payment has been verified and approved.",
+        canUpload: false,
+      };
+    case "Rejected":
+      return {
+        label: "Rejected",
+        colorClass: "bg-[#C4541A]/10 text-[#C4541A]",
+        message: payment.admin_remarks
+          ? `Rejection reason: ${payment.admin_remarks}`
+          : "Your receipt was rejected. Please upload a new one.",
+        canUpload: true,
+      };
+    case "Failed":
+      return {
+        label: "Failed",
+        colorClass: "bg-[#C4541A]/10 text-[#C4541A]",
+        message: "Payment failed. Please try again.",
+        canUpload: false,
+      };
+    case "Overdue":
+      return {
+        label: "Overdue",
+        colorClass: "bg-[#C4541A]/15 text-[#C4541A]",
+        message: payment.overdue_days
+          ? `Payment overdue by ${payment.overdue_days} day(s). Please settle immediately to avoid cancellation.`
+          : "Payment is overdue. Please settle immediately to avoid cancellation.",
+        canUpload: true,
+      };
+    case "Cancelled":
+      return {
+        label: "Cancelled",
+        colorClass: "bg-[#2C1810]/10 text-[#2C1810]/60",
+        message: "This payment has been cancelled.",
+        canUpload: false,
+      };
+    default:
+      return {
+        label: payment.payment_status,
+        colorClass: "bg-[#C8922A]/15 text-[#C8922A]",
+        message: "",
+        canUpload: false,
+      };
+  }
+}
+
 function formatDate(dateStr: string) {
   if (!dateStr) return "—";
   try {
@@ -64,7 +134,8 @@ function formatDate(dateStr: string) {
 
 function getBookingReference(booking: Booking): string {
   if (booking.booking_reference) return booking.booking_reference;
-  if (booking.ai_booking_reference) return `#AF-${booking.ai_booking_reference}`;
+  if (booking.ai_booking_reference)
+    return `#AF-${booking.ai_booking_reference}`;
   return `#BK${String(booking.booking_id).padStart(4, "0")}`;
 }
 
@@ -468,131 +539,185 @@ export function CustomerDashboard() {
           </div>
         </div>
 
+        {/* Overdue Warning Banner */}
+        {payments.some((p) => p.payment_status === "Overdue") && (
+          <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3 mb-3 flex items-start gap-3">
+            <AlertCircle size={18} className="text-[#C4541A] shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-['Lato'] font-semibold text-[#C4541A]">
+                Overdue Payment Alert
+              </p>
+              <p className="text-[10px] font-['Lato'] text-[#C4541A]/80 mt-0.5">
+                One or more payments are overdue. Please settle immediately to
+                avoid cancellation of your booking.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3">
           {/* Reservation Fee */}
-          {reservation && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
-              <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">
-                  Reservation Fee
-                </span>
-                <span className="text-[#2C1810]/50 block">
-                  Due: {formatDate(reservation.due_date)}
-                </span>
-                <span className="text-[#C8922A] font-medium block">
-                  ₱
-                  {Number(reservation.amount).toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                    reservation.payment_status === "Paid"
-                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                      : "bg-[#C8922A]/15 text-[#C8922A]"
-                  }`}
-                >
-                  {reservation.payment_status}
-                </span>
-                {reservation.payment_status !== "Paid" && (
-                  <button
-                    onClick={() =>
-                      handlePayNow(reservation.payment_id, booking.booking_id)
-                    }
-                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
-                  >
-                    Pay Now
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {reservation &&
+            (() => {
+              const statusInfo = getPaymentStatusInfo(reservation);
+              return (
+                <div className="flex flex-col bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#2C1810] block">
+                        Reservation Fee
+                      </span>
+                      <span className="text-[#2C1810]/50 block">
+                        Due: {formatDate(reservation.due_date)}
+                      </span>
+                      <span className="text-[#C8922A] font-medium block">
+                        ₱
+                        {Number(reservation.amount).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                      {statusInfo.canUpload && (
+                        <button
+                          onClick={() =>
+                            handlePayNow(
+                              reservation.payment_id,
+                              booking.booking_id,
+                            )
+                          }
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {statusInfo.message && (
+                    <p
+                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                    >
+                      {statusInfo.message}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
           {/* Down Payment */}
-          {downPayment && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
-              <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">
-                  Down Payment
-                </span>
-                <span className="text-[#2C1810]/50 block">
-                  Due: {formatDate(downPayment.due_date)}
-                </span>
-                <span className="text-[#C8922A] font-medium block">
-                  ₱
-                  {Number(downPayment.amount).toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                    downPayment.payment_status === "Paid"
-                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                      : "bg-[#C8922A]/15 text-[#C8922A]"
-                  }`}
-                >
-                  {downPayment.payment_status}
-                </span>
-                {downPayment.payment_status !== "Paid" && (
-                  <button
-                    disabled={!reservationPaid}
-                    onClick={() =>
-                      handlePayNow(downPayment.payment_id, booking.booking_id)
-                    }
-                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
-                  >
-                    Pay Now
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {downPayment &&
+            (() => {
+              const statusInfo = getPaymentStatusInfo(downPayment);
+              const isDisabled = !reservationPaid || !statusInfo.canUpload;
+              return (
+                <div className="flex flex-col bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#2C1810] block">
+                        Down Payment
+                      </span>
+                      <span className="text-[#2C1810]/50 block">
+                        Due: {formatDate(downPayment.due_date)}
+                      </span>
+                      <span className="text-[#C8922A] font-medium block">
+                        ₱
+                        {Number(downPayment.amount).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                      {statusInfo.canUpload && (
+                        <button
+                          disabled={!reservationPaid}
+                          onClick={() =>
+                            handlePayNow(
+                              downPayment.payment_id,
+                              booking.booking_id,
+                            )
+                          }
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {statusInfo.message && (
+                    <p
+                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                    >
+                      {statusInfo.message}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
           {/* Final Payment */}
-          {finalPayment && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
-              <div className="text-xs">
-                <span className="font-semibold text-[#2C1810] block">
-                  Final Payment
-                </span>
-                <span className="text-[#2C1810]/50 block">
-                  Due: {formatDate(finalPayment.due_date)}
-                </span>
-                <span className="text-[#C8922A] font-medium block">
-                  ₱
-                  {Number(finalPayment.amount).toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                    finalPayment.payment_status === "Paid"
-                      ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
-                      : "bg-[#C8922A]/15 text-[#C8922A]"
-                  }`}
-                >
-                  {finalPayment.payment_status}
-                </span>
-                {finalPayment.payment_status !== "Paid" && (
-                  <button
-                    disabled={!downPaymentPaid}
-                    onClick={() =>
-                      handlePayNow(finalPayment.payment_id, booking.booking_id)
-                    }
-                    className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
-                  >
-                    Pay Now
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {finalPayment &&
+            (() => {
+              const statusInfo = getPaymentStatusInfo(finalPayment);
+              const isDisabled = !downPaymentPaid || !statusInfo.canUpload;
+              return (
+                <div className="flex flex-col bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#2C1810] block">
+                        Final Payment
+                      </span>
+                      <span className="text-[#2C1810]/50 block">
+                        Due: {formatDate(finalPayment.due_date)}
+                      </span>
+                      <span className="text-[#C8922A] font-medium block">
+                        ₱
+                        {Number(finalPayment.amount).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                      {statusInfo.canUpload && (
+                        <button
+                          disabled={!downPaymentPaid}
+                          onClick={() =>
+                            handlePayNow(
+                              finalPayment.payment_id,
+                              booking.booking_id,
+                            )
+                          }
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {statusInfo.message && (
+                    <p
+                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                    >
+                      {statusInfo.message}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
         </div>
       </div>
     );
@@ -777,7 +902,7 @@ export function CustomerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                               {ev.package_name || getBookingReference(ev)}
+                              {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {formatDate(ev.event_date)} · {ev.start_time} ·{" "}
@@ -826,7 +951,7 @@ export function CustomerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                               {ev.package_name || getBookingReference(ev)}
+                              {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {formatDate(ev.event_date)} at {ev.start_time}
@@ -1274,106 +1399,215 @@ export function CustomerDashboard() {
         )}
       </div>
 
-      {showInstructions !== null && (() => {
-        const currentPayment = bookings
-          .flatMap((b) => paymentsByBooking[b.booking_id] || [])
-          .find((p) => p.payment_id === showInstructions);
-        const paymentAmount = currentPayment?.amount ?? 0;
-        const paymentType = currentPayment?.payment_type ?? "";
-        const instructionsToShow =
-          paymentInstructions.length > 0
-            ? paymentInstructions
-            : MOCK_PAYMENT_INSTRUCTIONS;
+      {showInstructions !== null &&
+        (() => {
+          const currentPayment = bookings
+            .flatMap((b) => paymentsByBooking[b.booking_id] || [])
+            .find((p) => p.payment_id === showInstructions);
+          const paymentAmount = currentPayment?.amount ?? 0;
+          const paymentType = currentPayment?.payment_type ?? "";
+          const instructionsToShow =
+            paymentInstructions.length > 0
+              ? paymentInstructions
+              : MOCK_PAYMENT_INSTRUCTIONS;
+          const statusInfo = currentPayment
+            ? getPaymentStatusInfo(currentPayment)
+            : null;
 
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
-              <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
-                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                  Payment Instructions
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowInstructions(null);
-                    setSelectedFile(null);
-                  }}
-                  className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-5 bg-[#F5F0E8]">
-                <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider">
-                  Amount to Pay
-                </p>
-                <p className="text-2xl font-bold text-[#2C1810] font-['Playfair_Display'] mt-1">
-                  ₱{Number(paymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">{paymentType}</p>
-              </div>
-
-              <div className="p-5 space-y-3">
-                {instructionsToShow.map((instruction) => (
-                  <div
-                    key={instruction.instruction_id || instruction.payment_type + instruction.instruction_text}
-                    className="border border-[#C8922A]/10 rounded-xl p-4 bg-white"
-                  >
-                    <h4 className="font-semibold text-sm text-[#2C1810] font-['Lato']">
-                      {instruction.instruction_text}
-                    </h4>
-                    <pre className="text-xs text-[#2C1810]/70 whitespace-pre-wrap mt-2 font-['Lato'] leading-relaxed">
-                      {instruction.account_details}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-5 border-t border-[#C8922A]/10">
-                <label className="block text-sm font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  Upload Receipt
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setSelectedFile(file);
-                  }}
-                  className="w-full text-sm text-[#2C1810]/70 font-['Lato'] file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-['Lato'] file:bg-[#C8922A]/10 file:text-[#C8922A] hover:file:bg-[#C8922A]/20 cursor-pointer"
-                />
-                {selectedFile && (
-                  <p className="text-xs text-[#7A8C5C] mt-2 font-['Lato']">
-                    Selected: {selectedFile.name} (
-                    {(selectedFile.size / 1024).toFixed(1)} KB)
-                  </p>
-                )}
-                <button
-                  onClick={() => {
-                    if (selectedFile) {
-                      handleReceiptUpload(showInstructions, selectedFile);
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
+                <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+                  <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                    Payment Instructions
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowInstructions(null);
                       setSelectedFile(null);
-                    }
-                  }}
-                  disabled={!selectedFile || uploadingPaymentId === showInstructions}
-                  className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {uploadingPaymentId === showInstructions ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> Uploading...
-                    </>
-                  ) : (
-                    "Upload Receipt"
-                  )}
-                </button>
-                <p className="text-[10px] text-[#2C1810]/40 text-center mt-2 font-['Lato']">
-                  Accepted formats: JPEG, PNG, GIF, WebP (max 5MB)
-                </p>
+                    }}
+                    className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Status Banner */}
+                {statusInfo && (
+                  <div
+                    className={`px-5 py-3 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "bg-[#C4541A]/5 border-b border-[#C4541A]/20" : statusInfo.colorClass === "bg-[#7A8C5C]/15 text-[#7A8C5C]" ? "bg-[#7A8C5C]/5 border-b border-[#7A8C5C]/20" : "bg-[#C8922A]/5 border-b border-[#C8922A]/20"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-['Lato'] ${statusInfo.colorClass}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                    <p
+                      className={`text-[11px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : statusInfo.colorClass === "bg-[#7A8C5C]/15 text-[#7A8C5C]" ? "text-[#7A8C5C]" : "text-[#2C1810]/60"}`}
+                    >
+                      {statusInfo.message}
+                    </p>
+                    {/* Show rejection reason prominently */}
+                    {currentPayment?.payment_status === "Rejected" &&
+                      currentPayment?.admin_remarks && (
+                        <div className="mt-2 p-2.5 bg-[#C4541A]/10 rounded-lg border border-[#C4541A]/20">
+                          <p className="text-[10px] font-['Lato'] font-semibold text-[#C4541A] uppercase tracking-wider">
+                            Admin Rejection Reason
+                          </p>
+                          <p className="text-xs font-['Lato'] text-[#C4541A] mt-0.5">
+                            {currentPayment.admin_remarks}
+                          </p>
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                <div className="p-5 bg-[#F5F0E8]">
+                  <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider">
+                    Amount to Pay
+                  </p>
+                  <p className="text-2xl font-bold text-[#2C1810] font-['Playfair_Display'] mt-1">
+                    ₱
+                    {Number(paymentAmount).toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                  <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                    {paymentType}
+                  </p>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  {instructionsToShow.map((instruction) => (
+                    <div
+                      key={
+                        instruction.instruction_id ||
+                        instruction.payment_type + instruction.instruction_text
+                      }
+                      className="border border-[#C8922A]/10 rounded-xl p-4 bg-white"
+                    >
+                      <h4 className="font-semibold text-sm text-[#2C1810] font-['Lato']">
+                        {instruction.instruction_text}
+                      </h4>
+                      <pre className="text-xs text-[#2C1810]/70 whitespace-pre-wrap mt-2 font-['Lato'] leading-relaxed">
+                        {instruction.account_details}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Upload Section - Only show when payment allows upload */}
+                {statusInfo && statusInfo.canUpload ? (
+                  <div className="p-5 border-t border-[#C8922A]/10">
+                    <label className="block text-sm font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                      Upload Receipt
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setSelectedFile(file);
+                      }}
+                      className="w-full text-sm text-[#2C1810]/70 font-['Lato'] file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-['Lato'] file:bg-[#C8922A]/10 file:text-[#C8922A] hover:file:bg-[#C8922A]/20 cursor-pointer"
+                    />
+                    {selectedFile && (
+                      <p className="text-xs text-[#7A8C5C] mt-2 font-['Lato']">
+                        Selected: {selectedFile.name} (
+                        {(selectedFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (selectedFile) {
+                          handleReceiptUpload(showInstructions, selectedFile);
+                          setSelectedFile(null);
+                        }
+                      }}
+                      disabled={
+                        !selectedFile || uploadingPaymentId === showInstructions
+                      }
+                      className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {uploadingPaymentId === showInstructions ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />{" "}
+                          Uploading...
+                        </>
+                      ) : (
+                        "Upload Receipt"
+                      )}
+                    </button>
+                    <p className="text-[10px] text-[#2C1810]/40 text-center mt-2 font-['Lato']">
+                      Accepted formats: JPEG, PNG, GIF, WebP (max 5MB)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-5 border-t border-[#C8922A]/10">
+                    <div
+                      className={`p-4 rounded-xl text-center ${
+                        currentPayment?.payment_status === "Paid"
+                          ? "bg-[#7A8C5C]/10 border border-[#7A8C5C]/20"
+                          : currentPayment?.payment_status ===
+                              "For_Verification"
+                            ? "bg-[#C8922A]/10 border border-[#C8922A]/20"
+                            : "bg-[#2C1810]/5 border border-[#2C1810]/10"
+                      }`}
+                    >
+                      {currentPayment?.payment_status === "Paid" ? (
+                        <>
+                          <CheckCircle
+                            size={24}
+                            className="text-[#7A8C5C] mx-auto mb-2"
+                          />
+                          <p className="text-sm font-['Lato'] text-[#7A8C5C] font-semibold">
+                            Payment Approved
+                          </p>
+                          <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
+                            This payment has been verified and approved. No
+                            further action is needed.
+                          </p>
+                        </>
+                      ) : currentPayment?.payment_status ===
+                        "For_Verification" ? (
+                        <>
+                          <Loader2
+                            size={24}
+                            className="animate-spin text-[#C8922A] mx-auto mb-2"
+                          />
+                          <p className="text-sm font-['Lato'] text-[#C8922A] font-semibold">
+                            Pending Verification
+                          </p>
+                          <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
+                            Your receipt is currently being reviewed by the
+                            admin. You will be notified once it has been
+                            verified.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle
+                            size={24}
+                            className="text-[#2C1810]/40 mx-auto mb-2"
+                          />
+                          <p className="text-sm font-['Lato'] text-[#2C1810]/60 font-semibold">
+                            Upload Not Available
+                          </p>
+                          <p className="text-xs font-['Lato'] text-[#2C1810]/40 mt-1">
+                            Receipt upload is not available for this payment at
+                            this time.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

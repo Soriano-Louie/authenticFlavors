@@ -14,7 +14,9 @@ export interface Payment {
     | "Paid"
     | "Failed"
     | "Cancelled"
-    | "Rejected";
+    | "Rejected"
+    | "Overdue";
+  overdue_days?: number;
   paid_at: string | null;
   receipt_url: string | null;
   receipt_public_id: string | null;
@@ -257,4 +259,48 @@ export function updatePaymentInstructions(
     },
     body: JSON.stringify({ instruction_id: instructionId, ...data }),
   });
+}
+
+// Admin: Get overdue payments
+export function getOverduePayments(
+  accessToken: string,
+): Promise<{ payments: Payment[] }> {
+  return request<{ payments: Payment[] }>("/api/payments/admin/overdue", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+// Admin: Send payment reminder email
+export function sendPaymentReminder(
+  accessToken: string,
+  paymentId: number,
+): Promise<{ message: string }> {
+  return request<{ message: string }>(
+    `/api/payments/admin/overdue/remind/${paymentId}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+// Admin: Cancel booking for overdue payment
+export function cancelBookingForOverdue(
+  accessToken: string,
+  paymentId: number,
+): Promise<{ message: string; booking_status: string }> {
+  return request<{ message: string; booking_status: string }>(
+    `/api/payments/admin/overdue/cancel/${paymentId}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
 }

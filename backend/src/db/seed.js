@@ -125,7 +125,7 @@ export async function seedDatabaseIfEmpty() {
         paymongo_payment_id VARCHAR(255) NULL,
         payment_reference VARCHAR(255) NULL,
         payment_method VARCHAR(255) NULL,
-        payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending',
+        payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue') DEFAULT 'Pending',
         paid_at DATETIME NULL,
         receipt_url TEXT NULL,
         receipt_public_id VARCHAR(255) NULL,
@@ -181,10 +181,11 @@ export async function seedDatabaseIfEmpty() {
     const currentPaymentEnum = paymentStatusCheck[0]?.COLUMN_TYPE || "";
     if (
       !currentPaymentEnum.includes("For_Verification") ||
-      !currentPaymentEnum.includes("Rejected")
+      !currentPaymentEnum.includes("Rejected") ||
+      !currentPaymentEnum.includes("Overdue")
     ) {
       await connection.query(
-        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected') DEFAULT 'Pending'`,
+        `ALTER TABLE payments MODIFY COLUMN payment_status ENUM('Pending', 'For_Verification', 'Paid', 'Failed', 'Rejected', 'Overdue') DEFAULT 'Pending'`,
       );
       console.log("[MIGRATION] Updated payments.payment_status ENUM.");
     }

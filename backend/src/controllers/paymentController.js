@@ -3,6 +3,23 @@ import {
   uploadToCloudinary,
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
+import {
+  sendUpcomingPaymentReminder,
+  sendPaymentDueToday,
+  sendPaymentOverdueNotice,
+} from "../services/emailService.js";
+
+// ──────────────────────────────────────────
+// Auto-update overdue payments (run on every payment fetch)
+// ──────────────────────────────────────────
+export async function autoUpdateOverduePayments() {
+  await pool.query(
+    `UPDATE payments 
+     SET payment_status = 'Overdue' 
+     WHERE payment_status = 'Pending' 
+       AND due_date < CURDATE()`,
+  );
+}
 
 // ──────────────────────────────────────────
 // Get payment instructions for a booking
@@ -256,6 +273,16 @@ export async function verifyReceipt(req, res) {
       });
     }
 
+    // Require rejection reason when rejecting
+    if (action === "reject" && (!admin_remarks || !admin_remarks.trim())) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Rejection reason is required.",
+        },
+      });
+    }
+
     // Get payment details
     const [payments] = await connection.query(
       `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status
@@ -430,10 +457,283 @@ export async function getPaymentStatus(req, res) {
 }
 
 // ──────────────────────────────────────────
+// Admin: Get overdue payments
+// ──────────────────────────────────────────
+export async function getOverduePayments(req, res) {
+  try {
+    await autoUpdateOverduePayments();
+
+    const [payments] = await pool.query(
+      `SELECT p.*, b.booking_reference, b.event_date, b.booking_status,
+              u.first_name, u.last_name, u.email,
+              DATEDIFF(CURDATE(), p.due_date) AS overdue_days
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_status IN ('Pending', 'Overdue')
+         AND p.due_date < CURDATE()
+       ORDER BY p.due_date ASC`,
+    );
+
+    res.status(200).json({ payments });
+  } catch (error) {
+    console.error("Get overdue payments failed:", error);
+    res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to get overdue payments.",
+      },
+    });
+  }
+}
+
+// ──────────────────────────────────────────
+// Admin: Send payment reminder email
+// ──────────────────────────────────────────
+export async function sendPaymentReminder(req, res) {
+  try {
+    const { paymentId } = req.params;
+
+    const [payments] = await pool.query(
+      `SELECT p.*, b.booking_reference,
+              u.first_name, u.last_name, u.email
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_id = ?`,
+      [paymentId],
+    );
+
+    if (payments.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Payment not found." },
+      });
+    }
+
+    const payment = payments[0];
+    const paymentDetails = {
+      payment_type: payment.payment_type,
+      amount: payment.amount,
+      due_date: payment.due_date,
+      booking_reference: payment.booking_reference,
+      overdue_days: Math.max(
+        0,
+        Math.floor(
+          (Date.now() - new Date(payment.due_date).getTime()) /
+            (1000 * 60 * 60 * 24),
+        ),
+      ),
+    };
+
+    const fullName = `${payment.first_name} ${payment.last_name}`.trim();
+
+    // Determine which email to send based on overdue status
+    if (
+      payment.payment_status === "Overdue" ||
+      new Date(payment.due_date) < new Date()
+    ) {
+      await sendPaymentOverdueNotice(payment.email, fullName, paymentDetails);
+    } else {
+      await sendUpcomingPaymentReminder(
+        payment.email,
+        fullName,
+        paymentDetails,
+      );
+    }
+
+    res.status(200).json({ message: "Payment reminder sent successfully." });
+  } catch (error) {
+    console.error("Send payment reminder failed:", error);
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Failed to send reminder." },
+    });
+  }
+}
+
+// ──────────────────────────────────────────
+// Admin: Cancel booking for overdue payment
+// ──────────────────────────────────────────
+export async function cancelBookingForOverdue(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const { paymentId } = req.params;
+
+    // Get the payment and its booking
+    const [payments] = await connection.query(
+      `SELECT p.*, b.booking_status
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       WHERE p.payment_id = ?`,
+      [paymentId],
+    );
+
+    if (payments.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Payment not found." },
+      });
+    }
+
+    const payment = payments[0];
+
+    if (payment.booking_status === "Cancelled") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking is already cancelled.",
+        },
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // Cancel all unpaid payments for this booking
+    await connection.query(
+      `UPDATE payments 
+       SET payment_status = 'Cancelled'
+       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+      [payment.booking_id],
+    );
+
+    // Cancel the booking
+    await connection.query(
+      `UPDATE bookings 
+       SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [payment.booking_id],
+    );
+
+    await connection.commit();
+
+    res.status(200).json({
+      message: "Booking cancelled due to overdue payment.",
+      booking_status: "Cancelled",
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Cancel booking for overdue failed:", error);
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Failed to cancel booking." },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// ──────────────────────────────────────────
+// Send scheduled payment reminders (called by cron)
+// ──────────────────────────────────────────
+export async function sendScheduledPaymentReminders() {
+  try {
+    await autoUpdateOverduePayments();
+
+    // Send reminder for payments due in 3 days
+    const [upcomingPayments] = await pool.query(
+      `SELECT p.*, b.booking_reference,
+              u.first_name, u.last_name, u.email
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_status IN ('Pending', 'Overdue')
+         AND p.due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)`,
+    );
+
+    for (const payment of upcomingPayments) {
+      try {
+        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
+        await sendUpcomingPaymentReminder(payment.email, fullName, {
+          payment_type: payment.payment_type,
+          amount: payment.amount,
+          due_date: payment.due_date,
+          booking_reference: payment.booking_reference,
+        });
+      } catch (err) {
+        console.error(
+          "Failed to send upcoming reminder for payment:",
+          payment.payment_id,
+          err,
+        );
+      }
+    }
+
+    // Send "due today" emails
+    const [dueTodayPayments] = await pool.query(
+      `SELECT p.*, b.booking_reference,
+              u.first_name, u.last_name, u.email
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_status IN ('Pending', 'Overdue')
+         AND p.due_date = CURDATE()`,
+    );
+
+    for (const payment of dueTodayPayments) {
+      try {
+        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
+        await sendPaymentDueToday(payment.email, fullName, {
+          payment_type: payment.payment_type,
+          amount: payment.amount,
+          due_date: payment.due_date,
+          booking_reference: payment.booking_reference,
+        });
+      } catch (err) {
+        console.error(
+          "Failed to send due today notice for payment:",
+          payment.payment_id,
+          err,
+        );
+      }
+    }
+
+    // Send overdue notices for payments 1+ day past due
+    const [overduePayments] = await pool.query(
+      `SELECT p.*, b.booking_reference,
+              u.first_name, u.last_name, u.email,
+              DATEDIFF(CURDATE(), p.due_date) AS overdue_days
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_status IN ('Pending', 'Overdue')
+         AND p.due_date < CURDATE()`,
+    );
+
+    for (const payment of overduePayments) {
+      try {
+        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
+        await sendPaymentOverdueNotice(payment.email, fullName, {
+          payment_type: payment.payment_type,
+          amount: payment.amount,
+          due_date: payment.due_date,
+          booking_reference: payment.booking_reference,
+          overdue_days: payment.overdue_days,
+        });
+      } catch (err) {
+        console.error(
+          "Failed to send overdue notice for payment:",
+          payment.payment_id,
+          err,
+        );
+      }
+    }
+
+    return {
+      upcomingSent: upcomingPayments.length,
+      dueTodaySent: dueTodayPayments.length,
+      overdueSent: overduePayments.length,
+    };
+  } catch (error) {
+    console.error("Send scheduled payment reminders failed:", error);
+    throw error;
+  }
+}
+
+// ──────────────────────────────────────────
 // Get all payments for a booking
 // ──────────────────────────────────────────
 export async function getBookingPayments(req, res) {
   try {
+    // Auto-update overdue payments before returning
+    await autoUpdateOverduePayments();
+
     const { bookingId } = req.params;
     const userId = Number(req.auth.sub);
 

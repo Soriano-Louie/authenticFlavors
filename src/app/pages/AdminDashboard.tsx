@@ -9,6 +9,9 @@ import {
 import {
   getBookingPayments,
   verifyReceipt,
+  getOverduePayments,
+  sendPaymentReminder,
+  cancelBookingForOverdue,
   type Payment,
 } from "../api/paymentApi";
 import {
@@ -112,9 +115,10 @@ export function AdminDashboard() {
     try {
       setGeneratingReport(true);
       const res = await getAdminFeedbackAnalysis(accessToken);
-      
+
       let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Feedback ID,Customer Name,Customer Email,Package,Rating,Sentiment,AI Summary,Topics,Submitted At\n";
+      csvContent +=
+        "Feedback ID,Customer Name,Customer Email,Package,Rating,Sentiment,AI Summary,Topics,Submitted At\n";
 
       res.feedbacks.forEach((fb) => {
         const row = [
@@ -134,7 +138,10 @@ export function AdminDashboard() {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `AI_Feedback_Analysis_Report_${new Date().toISOString().split("T")[0]}.csv`);
+      link.setAttribute(
+        "download",
+        `AI_Feedback_Analysis_Report_${new Date().toISOString().split("T")[0]}.csv`,
+      );
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -527,7 +534,13 @@ function FeedbackSection({
   };
 
   const handleDelete = async (feedbackId: number) => {
-    if (!accessToken || !window.confirm("Are you sure you want to delete this customer feedback entry?")) return;
+    if (
+      !accessToken ||
+      !window.confirm(
+        "Are you sure you want to delete this customer feedback entry?",
+      )
+    )
+      return;
     try {
       setDeletingId(feedbackId);
       await deleteAdminFeedback(accessToken, feedbackId);
@@ -548,8 +561,12 @@ function FeedbackSection({
       !searchQuery ||
       fb.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       fb.package_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (fb.comment && fb.comment.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (fb.key_topics && fb.key_topics.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
+      (fb.comment &&
+        fb.comment.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (fb.key_topics &&
+        fb.key_topics.some((t) =>
+          t.toLowerCase().includes(searchQuery.toLowerCase()),
+        ));
     return matchesSentiment && matchesSearch;
   });
 
@@ -568,7 +585,9 @@ function FeedbackSection({
         <div className="flex items-center gap-3">
           <button
             onClick={handleReanalyzeAll}
-            disabled={reanalyzingAll || loading || !data || data.totalFeedback === 0}
+            disabled={
+              reanalyzingAll || loading || !data || data.totalFeedback === 0
+            }
             className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#2C1810] border border-[#C8922A]/30 hover:border-[#C8922A] rounded-xl text-sm font-['Lato'] transition-all shadow-sm disabled:opacity-50"
           >
             {reanalyzingAll ? (
@@ -580,7 +599,9 @@ function FeedbackSection({
           </button>
           <button
             onClick={onGenerateReport}
-            disabled={isGenerating || loading || !data || data.totalFeedback === 0}
+            disabled={
+              isGenerating || loading || !data || data.totalFeedback === 0
+            }
             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             <Download size={16} />
@@ -596,7 +617,8 @@ function FeedbackSection({
           <div>
             <p className="font-semibold font-['Lato']">AI Service Notice</p>
             <p className="text-xs text-[#2C1810]/80 mt-0.5">
-              The AI service is currently busy or unreachable. Showing previously stored database analysis.
+              The AI service is currently busy or unreachable. Showing
+              previously stored database analysis.
             </p>
           </div>
         </div>
@@ -605,8 +627,13 @@ function FeedbackSection({
       {loading ? (
         <div className="bg-white rounded-xl p-12 border border-[#C8922A]/10 flex justify-center items-center">
           <div className="text-center">
-            <Loader2 className="animate-spin text-[#C8922A] mx-auto mb-3" size={32} />
-            <p className="text-sm text-[#2C1810]/60 font-['Lato']">Analyzing customer feedback with Gemini AI...</p>
+            <Loader2
+              className="animate-spin text-[#C8922A] mx-auto mb-3"
+              size={32}
+            />
+            <p className="text-sm text-[#2C1810]/60 font-['Lato']">
+              Analyzing customer feedback with Gemini AI...
+            </p>
           </div>
         </div>
       ) : !data || data.totalFeedback === 0 ? (
@@ -620,7 +647,9 @@ function FeedbackSection({
               No feedback available for AI analysis.
             </h3>
             <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1 max-w-md mx-auto">
-              Once customers submit reviews for their completed catering bookings, AI-generated sentiment classification, key topics, and operational insights will automatically populate here.
+              Once customers submit reviews for their completed catering
+              bookings, AI-generated sentiment classification, key topics, and
+              operational insights will automatically populate here.
             </p>
           </div>
         </div>
@@ -645,20 +674,26 @@ function FeedbackSection({
                   <div className="flex items-center justify-between mb-2">
                     <span
                       className="text-sm font-['Lato'] font-semibold"
-                      style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                      style={{
+                        color: SENTIMENT_COLORS[item.sentiment] || "#C8922A",
+                      }}
                     >
                       {item.sentiment} Feedback
                     </span>
                     <span
                       className="text-xs font-['Lato'] font-bold"
-                      style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                      style={{
+                        color: SENTIMENT_COLORS[item.sentiment] || "#C8922A",
+                      }}
                     >
                       {item.percentage}%
                     </span>
                   </div>
                   <p
                     className="text-3xl font-['Playfair_Display'] font-bold"
-                    style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                    style={{
+                      color: SENTIMENT_COLORS[item.sentiment] || "#C8922A",
+                    }}
                   >
                     {item.count}
                   </p>
@@ -722,7 +757,8 @@ function FeedbackSection({
               <TrendingUp size={20} className="text-[#C8922A]" />
               Actionable Recommendations for Management
             </h3>
-            {data.actionableRecommendations && data.actionableRecommendations.length > 0 ? (
+            {data.actionableRecommendations &&
+            data.actionableRecommendations.length > 0 ? (
               <div className="space-y-3">
                 {data.actionableRecommendations.map((rec, idx) => (
                   <div
@@ -751,7 +787,7 @@ function FeedbackSection({
               <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810]">
                 Customer Feedback Entries ({filteredFeedbacks.length})
               </h3>
-              
+
               {/* Sentiment Filter */}
               <div className="flex items-center gap-1.5 bg-[#EDE8DF]/60 p-1 rounded-xl text-xs font-['Lato']">
                 {["All", "Positive", "Neutral", "Negative"].map((s) => (
@@ -808,7 +844,15 @@ function FeedbackSection({
                               {fb.customer_name}
                             </p>
                             <p className="text-xs font-['Lato'] text-[#2C1810]/60">
-                              {fb.package_name} • {new Date(fb.submitted_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                              {fb.package_name} •{" "}
+                              {new Date(fb.submitted_at).toLocaleDateString(
+                                "en-PH",
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )}
                             </p>
                           </div>
                         </div>
@@ -827,13 +871,18 @@ function FeedbackSection({
                           </span>
 
                           <button
-                            onClick={() => handleReanalyzeSingle(fb.feedback_id)}
+                            onClick={() =>
+                              handleReanalyzeSingle(fb.feedback_id)
+                            }
                             disabled={isReanalyzing}
                             title="Re-analyze feedback with AI"
                             className="p-1.5 text-[#2C1810]/60 hover:text-[#C8922A] rounded-lg hover:bg-white transition-colors disabled:opacity-50"
                           >
                             {isReanalyzing ? (
-                              <Loader2 size={16} className="animate-spin text-[#C8922A]" />
+                              <Loader2
+                                size={16}
+                                className="animate-spin text-[#C8922A]"
+                              />
                             ) : (
                               <Sparkles size={16} />
                             )}
@@ -846,7 +895,10 @@ function FeedbackSection({
                             className="p-1.5 text-[#2C1810]/40 hover:text-[#C4541A] rounded-lg hover:bg-white transition-colors disabled:opacity-50"
                           >
                             {isDeleting ? (
-                              <Loader2 size={16} className="animate-spin text-[#C4541A]" />
+                              <Loader2
+                                size={16}
+                                className="animate-spin text-[#C4541A]"
+                              />
                             ) : (
                               <Trash2 size={16} />
                             )}
@@ -883,8 +935,16 @@ function FeedbackSection({
                       {/* AI Sentiment Summary */}
                       {fb.sentiment_summary && (
                         <div className="text-xs font-['Lato'] text-[#2C1810]/80 bg-[#C8922A]/05 p-2.5 rounded-lg border border-[#C8922A]/10 flex items-start gap-2">
-                          <Sparkles size={14} className="text-[#C8922A] shrink-0 mt-0.5" />
-                          <span><strong className="font-semibold text-[#2C1810]">AI Summary:</strong> {fb.sentiment_summary}</span>
+                          <Sparkles
+                            size={14}
+                            className="text-[#C8922A] shrink-0 mt-0.5"
+                          />
+                          <span>
+                            <strong className="font-semibold text-[#2C1810]">
+                              AI Summary:
+                            </strong>{" "}
+                            {fb.sentiment_summary}
+                          </span>
                         </div>
                       )}
 
@@ -937,6 +997,10 @@ function BookingsSection() {
   const [expandedBookingId, setExpandedBookingId] = useState<number | null>(
     null,
   );
+  const [overduePayments, setOverduePayments] = useState<Payment[]>([]);
+  const [overdueLoading, setOverdueLoading] = useState(false);
+  const [remindingId, setRemindingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const fetchBookings = async () => {
     if (!accessToken) return;
@@ -965,8 +1029,22 @@ function BookingsSection() {
     }
   };
 
+  const fetchOverduePayments = async () => {
+    if (!accessToken) return;
+    try {
+      setOverdueLoading(true);
+      const res = await getOverduePayments(accessToken);
+      setOverduePayments(res.payments);
+    } catch (err) {
+      console.error("Failed to fetch overdue payments:", err);
+    } finally {
+      setOverdueLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchBookings();
+    fetchOverduePayments();
   }, [accessToken]);
 
   const handleComplete = async (bookingId: number) => {
@@ -1066,6 +1144,44 @@ function BookingsSection() {
     return eDate <= today;
   };
 
+  const handleSendReminder = async (paymentId: number) => {
+    if (!accessToken) return;
+    setRemindingId(paymentId);
+    try {
+      const res = await sendPaymentReminder(accessToken, paymentId);
+      toast.success(res.message || "Reminder sent successfully!");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to send reminder.",
+      );
+    } finally {
+      setRemindingId(null);
+    }
+  };
+
+  const handleCancelBooking = async (paymentId: number) => {
+    if (!accessToken) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to cancel this booking? This will cancel all unpaid payments. This action cannot be undone.",
+      )
+    )
+      return;
+    setCancellingId(paymentId);
+    try {
+      const res = await cancelBookingForOverdue(accessToken, paymentId);
+      toast.success(res.message || "Booking cancelled successfully.");
+      fetchBookings();
+      fetchOverduePayments();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to cancel booking.",
+      );
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   const getBookingReference = (booking: Booking) => {
     if (booking.booking_reference) return booking.booking_reference;
     if (booking.ai_booking_reference)
@@ -1082,12 +1198,77 @@ function BookingsSection() {
             Manage Bookings
           </h2>
           <button
-            onClick={fetchBookings}
+            onClick={() => {
+              fetchBookings();
+              fetchOverduePayments();
+            }}
             className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1"
           >
             Refresh
           </button>
         </div>
+
+        {/* Overdue Payments Alert */}
+        {overduePayments.length > 0 && (
+          <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={18} className="text-[#C4541A]" />
+                <p className="text-sm font-['Lato'] text-[#C4541A] font-semibold">
+                  {overduePayments.length} overdue payment(s) requiring
+                  attention
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {overduePayments.slice(0, 10).map((payment) => (
+                <div
+                  key={payment.payment_id}
+                  className="flex items-center justify-between bg-white/50 rounded-lg p-2.5 border border-[#C4541A]/10"
+                >
+                  <div className="text-xs font-['Lato']">
+                    <span className="font-semibold text-[#2C1810]">
+                      {(payment as any).first_name} {(payment as any).last_name}
+                    </span>
+                    <span className="text-[#2C1810]/50"> — </span>
+                    <span className="text-[#C4541A] font-semibold">
+                      {paymentTypeLabel[payment.payment_type] ||
+                        payment.payment_type}
+                    </span>
+                    <span className="text-[#2C1810]/50">
+                      {" "}
+                      · ₱
+                      {Number(payment.amount).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      · Due: {formatDate(payment.due_date)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSendReminder(payment.payment_id)}
+                      disabled={remindingId === payment.payment_id}
+                      className="px-2.5 py-1 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      {remindingId === payment.payment_id
+                        ? "Sending..."
+                        : "Send Reminder"}
+                    </button>
+                    <button
+                      onClick={() => handleCancelBooking(payment.payment_id)}
+                      disabled={cancellingId === payment.payment_id}
+                      className="px-2.5 py-1 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      {cancellingId === payment.payment_id
+                        ? "Cancelling..."
+                        : "Cancel Booking"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-10">
@@ -1309,6 +1490,18 @@ function BookingsSection() {
                                                 )}
                                               </span>
                                             )}
+                                          </span>
+                                        )}
+                                        {payment.admin_remarks && (
+                                          <span className="col-span-2 mt-1">
+                                            <span
+                                              className={`text-[10px] font-['Lato'] ${payment.payment_status === "Rejected" ? "text-[#C4541A]" : "text-[#2C1810]/60"}`}
+                                            >
+                                              <span className="font-semibold">
+                                                Admin Remarks:
+                                              </span>{" "}
+                                              {payment.admin_remarks}
+                                            </span>
                                           </span>
                                         )}
                                       </div>
