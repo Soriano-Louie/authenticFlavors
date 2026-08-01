@@ -84,12 +84,8 @@ export async function sendMessage(req, res) {
       }
     }
 
-    const { reply, usage, processingTimeMs, action } = await generateChatResponse(
-      trimmedMessage,
-      history,
-      userProfile,
-      req
-    );
+    const { reply, usage, processingTimeMs, action } =
+      await generateChatResponse(trimmedMessage, history, userProfile, req);
 
     // ── Store AI response ───────────────────────────────────────────────
     if (conversationId) {
@@ -229,7 +225,10 @@ export async function startBookingSession(req, res) {
     await connection.query(
       `INSERT INTO ai_messages (conversation_id, sender, message_text)
        VALUES (?, 'AI', ?)`,
-      [conversationId, "Let's start your event booking! Please choose your Event Type."],
+      [
+        conversationId,
+        "Let's start your event booking! Please choose your Event Type.",
+      ],
     );
 
     res.status(201).json({
@@ -239,7 +238,10 @@ export async function startBookingSession(req, res) {
   } catch (error) {
     console.error("[ChatbotController] startBookingSession error:", error);
     res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to start booking session." },
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to start booking session.",
+      },
     });
   } finally {
     connection.release();
@@ -283,12 +285,30 @@ export async function updateBookingSession(req, res) {
     const updates = [];
     const params = [];
 
-    if (current_step !== undefined) { updates.push("current_booking_step = ?"); params.push(current_step); }
-    if (event_date !== undefined) { updates.push("extracted_event_date = ?"); params.push(event_date || null); }
-    if (event_time !== undefined) { updates.push("extracted_event_time = ?"); params.push(event_time || null); }
-    if (pax !== undefined) { updates.push("extracted_pax = ?"); params.push(pax); }
-    if (event_type_id !== undefined) { updates.push("extracted_event_type_id = ?"); params.push(event_type_id || null); }
-    if (package_id !== undefined) { updates.push("extracted_package_id = ?"); params.push(package_id || null); }
+    if (current_step !== undefined) {
+      updates.push("current_booking_step = ?");
+      params.push(current_step);
+    }
+    if (event_date !== undefined) {
+      updates.push("extracted_event_date = ?");
+      params.push(event_date || null);
+    }
+    if (event_time !== undefined) {
+      updates.push("extracted_event_time = ?");
+      params.push(event_time || null);
+    }
+    if (pax !== undefined) {
+      updates.push("extracted_pax = ?");
+      params.push(pax);
+    }
+    if (event_type_id !== undefined) {
+      updates.push("extracted_event_type_id = ?");
+      params.push(event_type_id || null);
+    }
+    if (package_id !== undefined) {
+      updates.push("extracted_package_id = ?");
+      params.push(package_id || null);
+    }
 
     if (updates.length > 0) {
       params.push(session_id);
@@ -311,7 +331,10 @@ export async function updateBookingSession(req, res) {
   } catch (error) {
     console.error("[ChatbotController] updateBookingSession error:", error);
     res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to update booking session." },
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to update booking session.",
+      },
     });
   }
 }
@@ -322,16 +345,14 @@ export async function completeBookingSession(req, res) {
   const connection = await pool.getConnection();
   try {
     const userId = Number(req.auth.sub);
-    const {
-      session_id,
-      conversation_id,
-      booking_id,
-      summary_text,
-    } = req.body;
+    const { session_id, conversation_id, booking_id, summary_text } = req.body;
 
     if (!session_id || !conversation_id || !booking_id) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "session_id, conversation_id, and booking_id are required." },
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "session_id, conversation_id, and booking_id are required.",
+        },
       });
     }
 
@@ -366,7 +387,10 @@ export async function completeBookingSession(req, res) {
     await connection.query(
       `INSERT INTO ai_messages (conversation_id, sender, message_text)
        VALUES (?, 'AI', ?)`,
-      [conversation_id, summary_text || `Booking #${booking_id} created successfully.`],
+      [
+        conversation_id,
+        summary_text || `Booking #${booking_id} created successfully.`,
+      ],
     );
 
     // Insert ai_requests record for the booking
@@ -374,14 +398,90 @@ export async function completeBookingSession(req, res) {
       `INSERT INTO ai_requests 
        (conversation_id, booking_id, request_type, prompt_text, response_text, request_status)
        VALUES (?, ?, 'Booking', 'Interactive Booking Wizard', ?, 'Success')`,
-      [conversation_id, booking_id, summary_text || `Booking #${booking_id} confirmed.`],
+      [
+        conversation_id,
+        booking_id,
+        summary_text || `Booking #${booking_id} confirmed.`,
+      ],
     );
 
     res.status(200).json({ success: true });
   } catch (error) {
     console.error("[ChatbotController] completeBookingSession error:", error);
     res.status(500).json({
-      error: { code: "DATABASE_ERROR", message: "Failed to complete booking session." },
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to complete booking session.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// ─── POST /api/chat/booking-session/cancel ───────────────────────────────────
+// Cancels an in-progress booking session and its conversation when the user
+// closes the chat, restarts the wizard, or abandons the flow mid-booking.
+export async function cancelBookingSession(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const userId = Number(req.auth.sub);
+    const { session_id, conversation_id } = req.body;
+
+    if (!session_id) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "session_id is required." },
+      });
+    }
+
+    // Verify ownership (and ensure the session is not already completed)
+    const [sessions] = await connection.query(
+      `SELECT session_id, session_status FROM ai_booking_sessions
+       WHERE session_id = ? AND user_id = ?`,
+      [session_id, userId],
+    );
+    if (sessions.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking session not found." },
+      });
+    }
+
+    // Update ai_booking_sessions: mark cancelled
+    await connection.query(
+      `UPDATE ai_booking_sessions
+       SET session_status = 'Cancelled', current_booking_step = 'CANCELLED'
+       WHERE session_id = ?`,
+      [session_id],
+    );
+
+    // Update ai_conversations: mark cancelled (but never downgrade a completed booking conversation)
+    if (conversation_id) {
+      await connection.query(
+        `UPDATE ai_conversations
+         SET conversation_status = 'Cancelled', ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
+         WHERE conversation_id = ?
+           AND conversation_status != 'Completed'`,
+        [conversation_id],
+      );
+    }
+
+    // Log cancellation message
+    if (conversation_id) {
+      await connection.query(
+        `INSERT INTO ai_messages (conversation_id, sender, message_text)
+         VALUES (?, 'AI', 'Your booking session has been cancelled. Feel free to start a new booking anytime!')`,
+        [conversation_id],
+      );
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("[ChatbotController] cancelBookingSession error:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to cancel booking session.",
+      },
     });
   } finally {
     connection.release();

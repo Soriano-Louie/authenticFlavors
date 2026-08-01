@@ -142,7 +142,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | Controller | File | Description |
 |---|---|---|
 | `authController.js` | Authentication, registration, email verification, password reset, profile management |
-| `bookingController.js` | Booking creation, retrieval, and management |
+| `bookingController.js` | Booking creation, retrieval, cancellation, and management |
 | `packageController.js` | Package and pricing CRUD |
 | `paymentController.js` | Payment receipt upload, verification, overdue management, and scheduled email reminders |
 | `feedbackController.js` | Feedback submission, retrieval, and admin AI analysis |
@@ -153,7 +153,7 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 | Route File | Prefix | Description |
 |---|---|---|
 | `authRoutes.js` | `/api/auth` | Authentication, verification, password reset |
-| `bookingRoutes.js` | `/api` | Booking CRUD |
+| `bookingRoutes.js` | `/api` | Booking CRUD and customer cancellation |
 | `packageRoutes.js` | `/api` | Package and pricing |
 | `paymentRoutes.js` | `/api` | Payment receipt upload |
 | `feedbackRoutes.js` | `/api` | Feedback submission and admin AI analysis |
@@ -192,6 +192,24 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 - `account_status` on `users` is an ENUM: `'Active'`, `'Inactive'`, `'Suspended'`, `'Pending'` (Pending = email not yet verified).
 - The `feedback` table stores AI analysis results inline: `sentiment_status` (Positive/Neutral/Negative/Pending), `sentiment_score` (0.00–1.00), `sentiment_summary` (concise AI summary), `key_topics` (JSON array of themes), `actionable_insights` (JSON array of recommendations), `is_analyzed` (boolean), and `analyzed_at` (timestamp). This avoids reprocessing the same feedback on every page load.
 - `payment_status` on `payments` is an ENUM: `'Pending'`, `'For_Verification'`, `'Paid'`, `'Failed'`, `'Rejected'`, `'Overdue'`. The `'Overdue'` status is set automatically when a payment's `due_date` passes and the status is still `'Pending'`.
+- `payment_type` on `payments` is an ENUM: `'Reservation'`, `'DownPayment'`, `'FinalPayment'`, `'CancellationCharge'`. The `'CancellationCharge'` type is used when generating cancellation penalty invoices.
+- `is_cancellation_charge` on `payments` is a BOOLEAN flag (`FALSE` by default) that marks a payment record as a cancellation charge rather than a regular payment.
+- `cancellation_reference` on `payments` is a `VARCHAR(255)` that links a cancellation charge payment back to the original booking.
+- The `bookings` table tracks cancellations via: `cancellation_requested_at` (timestamp), `cancellation_processed_at` (timestamp), `cancellation_policy_applied` (VARCHAR: `standard`, `5_days_penalty`, `1_day_penalty`), `amount_due_on_cancellation` (DECIMAL), and `cancellation_notes` (TEXT).
+
+---
+
+## Cancellation Policy
+
+The system supports three automated cancellation policies based on how many days remain before the event:
+
+| Policy | Days Before Event | Amount Charged |
+| |---|---|
+| `standard` | ≥ 5 days | Reservation fee (₱5,000) forfeited; no additional charge |
+| `5_days_penalty` | < 5 days but ≥ 1 day | 50% of total package price |
+| `1_day_penalty` | 1 day or less (including event day) | 100% of total package price |
+
+When a customer requests cancellation, the backend calculates the applicable policy, creates a `CancellationCharge` payment record, and updates the booking status to `Cancelled`.
 
 ---
 
@@ -304,14 +322,35 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 | `GET` | `/menu-items` | Public | List all menu items |
 | `GET` | `/event-types` | Public | List event types |
 | `GET` | `/venue-setups` | Public | List venue setup options |
+| `GET` | `/homepage/statistics` | Public | Get homepage statistics |
+| `GET` | `/homepage/upcoming-events` | Public | Get upcoming events |
+
+### Admin Package Endpoints (`/api/admin`)
+
+| Method | Path | Auth | Description |
+| |---|---|---|
+| `GET` | `/packages` | Bearer + Admin | List all packages (including inactive) |
+| `POST` | `/packages` | Bearer + Admin | Create a new package with image upload |
+| `PUT` | `/packages/:id` | Bearer + Admin | Update a package with optional image upload |
+| `DELETE` | `/packages/:id` | Bearer + Admin | Delete a package |
+
+### Menu Endpoints (`/api`)
+
+| Method | Path | Auth | Description |
+| |---|---|---|
+| `GET` | `/menu/categories` | Public | List all menu categories |
+| `GET` | `/menu/items` | Public | List all menu items |
+| `GET` | `/menu/categories/:categoryId/items` | Public | List menu items by category |
 
 ### Booking Endpoints (`/api`)
 
 | Method | Path | Auth | Description |
-|---|---|---|---|
+| |---|---|---|
 | `POST` | `/bookings` | Bearer | Submit a new booking |
 | `GET` | `/bookings` | Bearer | Get own bookings (Customer) |
 | `POST` | `/bookings/:id/receipt` | Bearer | Upload GCash payment receipt |
+| `POST` | `/bookings/:id/cancel` | Bearer | Request cancellation of a booking |
+| `GET` | `/bookings/:id/cancellation-details` | Bearer | Get estimated cancellation fees and policy |
 
 ### Admin Booking Endpoints (`/api/admin`)
 
@@ -512,6 +551,7 @@ Set the following on the Render dashboard under the backend service's Environmen
 - [x] Database migration to add `'Overdue'` to `payments.payment_status` ENUM
 - [x] Package browsing and selection
 - [x] Booking creation with menu selection
+- [x] Customer booking cancellation with automated penalty calculation
 - [x] AI-powered chatbot integration
 - [x] Transactional email (Brevo HTTP API)
 - [x] Role-based access control (Customer / Admin)
@@ -519,6 +559,9 @@ Set the following on the Render dashboard under the backend service's Environmen
 
 ### Recent Fixes
 
+- Implemented customer booking cancellation workflow with automated penalty calculations based on event date
+- Added cancellation policy tracking (`standard`, `5_days_penalty`, `1_day_penalty`) with database migration
+- Updated `payments` schema to support `CancellationCharge` payment type
 - Switched from SMTP (nodemailer) to Brevo HTTP API for email delivery to resolve connection timeout issues on Render
 - Fixed `logout` function `ReferenceError` (parameter named `_req` but referenced as `req`)
 - Fixed `account_status` ENUM to include `'Pending'` for new user registration
@@ -530,3 +573,5 @@ Set the following on the Render dashboard under the backend service's Environmen
 - Added admin API endpoints for feedback analysis, re-analysis, and deletion
 - Added `'Overdue'` to `payments.payment_status` ENUM with auto-migration in `seed.js`
 - Implemented overdue payment system: auto status flip, admin alerts, email reminders, and booking cancellation
+- Implemented full package management CRUD for admins (create, update, delete packages with image upload)
+- Improved time formatting in CustomerDashboard to display 12-hour AM/PM format

@@ -26,6 +26,8 @@ import {
   startBookingSession,
   updateBookingSession,
   completeBookingSession,
+  cancelBookingSession,
+  cancelBookingSessionBeacon,
 } from "../api/chatApi";
 import { createBooking } from "../api/bookingApi";
 import { getBookingPayments } from "../api/paymentApi";
@@ -647,7 +649,34 @@ export function ChatBot() {
     }
   };
 
+  // Cancel the active booking session (fire-and-forget) so no stale
+  // InProgress/Active rows are left behind when the user abandons the flow.
+  const cancelActiveBookingSession = () => {
+    if (!bookingSessionId || !accessToken) return;
+    cancelBookingSession(accessToken, {
+      session_id: bookingSessionId,
+      conversation_id: conversationId,
+    }).catch(() => {});
+    setBookingSessionId(null);
+  };
+
+  // On page unload / disconnect, best-effort cancel via keepalive fetch
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (bookingSessionId && accessToken) {
+        cancelBookingSessionBeacon(accessToken, {
+          session_id: bookingSessionId,
+          conversation_id: conversationId,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [bookingSessionId, conversationId, accessToken]);
+
   const handleClose = () => {
+    cancelActiveBookingSession();
+    setWizard(initialWizardState);
     setOpen(false);
     setIsFloating(false);
   };
@@ -715,7 +744,10 @@ export function ChatBot() {
             <div className="flex items-center gap-1 shrink-0">
               {wizard.step !== "IDLE" && (
                 <button
-                  onClick={() => setWizard(initialWizardState)}
+                  onClick={() => {
+                    cancelActiveBookingSession();
+                    setWizard(initialWizardState);
+                  }}
                   title="Restart Wizard"
                   className="text-[#F5F0E8]/60 hover:text-[#C8922A] transition-colors p-1.5 rounded-lg hover:bg-white/5"
                 >

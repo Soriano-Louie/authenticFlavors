@@ -169,3 +169,51 @@ export function completeBookingSession(
     body: JSON.stringify(data),
   });
 }
+
+/**
+ * Cancel an in-progress booking session (and its conversation).
+ * Used when the user closes the chat, restarts the wizard, or abandons the flow.
+ */
+export function cancelBookingSession(
+  accessToken: string,
+  data: {
+    session_id: number;
+    conversation_id?: number | null;
+  },
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>("/api/chat/booking-session/cancel", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Fire-and-forget cancel using fetch keepalive.
+ * Use this on page unload / beforeunload so the cancel request still
+ * reaches the server even while the page is closing.
+ */
+export function cancelBookingSessionBeacon(
+  accessToken: string,
+  data: {
+    session_id: number;
+    conversation_id?: number | null;
+  },
+): void {
+  try {
+    fetch(`${API_BASE_URL}/api/chat/booking-session/cancel`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(data),
+    }).catch(() => {
+      /* best-effort — ignore failures during page unload */
+    });
+  } catch {
+    /* ignore */
+  }
+}

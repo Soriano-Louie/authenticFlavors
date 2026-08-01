@@ -665,7 +665,7 @@ export function CustomerDashboard() {
               <p className="text-[10px] font-['Lato'] text-[#2C1810]/70 mt-0.5">
                 <strong>≥5 days before event:</strong> Reservation fee (₱5,000) forfeited
                 <br />
-                <strong><5 days before event:</strong> 50% of total price
+                 <strong>&lt;5 days before event:</strong> 50% of total price
                 <br />
                 <strong>1 day before event:</strong> 100% of total price
               </p>

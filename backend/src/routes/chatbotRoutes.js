@@ -6,6 +6,7 @@ import {
   startBookingSession,
   updateBookingSession,
   completeBookingSession,
+  cancelBookingSession,
 } from "../controllers/chatbotController.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -37,6 +38,23 @@ chatbotRouter.get("/chat/conversations", requireAuth, getConversations);
 chatbotRouter.get("/chat/conversations/:id/messages", requireAuth, getMessages);
 
 // ─── Booking Session endpoints (wizard ↔ AI tables) ──────────────────────────
-chatbotRouter.post("/chat/booking-session/start", requireAuth, startBookingSession);
-chatbotRouter.post("/chat/booking-session/update", requireAuth, updateBookingSession);
-chatbotRouter.post("/chat/booking-session/complete", requireAuth, completeBookingSession);
+chatbotRouter.post(
+  "/chat/booking-session/start",
+  requireAuth,
+  startBookingSession,
+);
+chatbotRouter.post(
+  "/chat/booking-session/update",
+  requireAuth,
+  updateBookingSession,
+);
+chatbotRouter.post(
+  "/chat/booking-session/complete",
+  requireAuth,
+  completeBookingSession,
+);
+chatbotRouter.post(
+  "/chat/booking-session/cancel",
+  requireAuth,
+  cancelBookingSession,
+);
