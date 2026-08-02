@@ -20,6 +20,7 @@ import {
   RedirectIfAuthenticated,
   RequireAdmin,
   RequireAuth,
+  RequireCustomer,
 } from "./components/AuthGuards";
 
 function NotFound() {
@@ -73,9 +74,9 @@ export const router = createBrowserRouter([
       {
         path: "dashboard",
         Component: () => (
-          <RequireAuth>
+          <RequireCustomer>
             <CustomerDashboard />
-          </RequireAuth>
+          </RequireCustomer>
         ),
       },
       {

@@ -38,6 +38,23 @@ export function RequireAdmin({ children }: { children: JSX.Element }) {
   return children;
 }
 
+export function RequireCustomer({ children }: { children: JSX.Element }) {
+  const { user, isBootstrapping } = useAuth();
+  const location = useLocation();
+
+  if (isBootstrapping) return <FullScreenLoader />;
+
+  if (!user) {
+    return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
+  }
+
+  if (user.role === "Admin") {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return children;
+}
+
 export function RedirectIfAuthenticated({ children }: { children: JSX.Element }) {
   const { user, isBootstrapping } = useAuth();
 

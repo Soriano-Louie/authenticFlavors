@@ -1,6 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
-import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowRight, Check, CheckCircle, Loader2 } from "lucide-react";
+import { BookingRules } from "../components/BookingRules";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import {
   getPackages,
   getMenuCategories,
@@ -83,6 +92,7 @@ export function PackageSelectionPage() {
   const [selectedPackageId, setSelectedPackageId] =
     useState<string>(selectedPackageQuery);
   const [selectedPax, setSelectedPax] = useState<number>(initialPax);
+  const [showRulesModal, setShowRulesModal] = useState(true);
 
   // Data fetching state
   const [packages, setPackages] = useState<Package[]>([]);
@@ -186,6 +196,30 @@ export function PackageSelectionPage() {
 
   return (
     <div className="bg-[#F5F0E8] min-h-screen">
+      {/* Rules Popup Modal */}
+      <Dialog open={showRulesModal} onOpenChange={setShowRulesModal}>
+        <DialogContent className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-['Playfair_Display'] text-[#C8922A] text-xl">
+              Booking Policies & Rules
+            </DialogTitle>
+            <DialogDescription className="text-[#F5F0E8]/60 font-['Lato'] text-sm">
+              Please review the following policies before proceeding with your
+              booking.
+            </DialogDescription>
+          </DialogHeader>
+          <BookingRules />
+          <DialogFooter>
+            <button
+              onClick={() => setShowRulesModal(false)}
+              className="w-full px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md"
+            >
+              <CheckCircle size={16} /> I Understand, Continue Booking
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <Link

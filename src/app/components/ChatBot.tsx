@@ -689,7 +689,13 @@ export function ChatBot() {
     <>
       {/* Floating Toggle Button */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (open) {
+            handleClose();
+          } else {
+            setOpen(true);
+          }
+        }}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-[#F5F0E8] flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200"
         aria-label="Open chat"
       >

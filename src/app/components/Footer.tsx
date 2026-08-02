@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { MapPin, Phone, Mail, Instagram, Facebook } from "lucide-react";
+import { MapPin, Mail, Instagram, Facebook } from "lucide-react";
 
 export function Footer() {
   return (
@@ -102,12 +102,19 @@ export function Footer() {
                 <span>35 ML Quezon St. New Lower Bicutan, Taguig City</span>
               </li>
               <li className="flex items-center gap-2">
-                <Phone size={15} className="text-[#C8922A] shrink-0" />
-                <span>+63 (2) 8888-RAMOS</span>
+                <a
+                  href="https://www.facebook.com/authenticflavorsbycheframos/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 hover:text-[#C8922A] transition-colors"
+                >
+                  <Facebook size={15} className="text-[#C8922A] shrink-0" />
+                  <span>Authentic Flavors by Chef Ramos</span>
+                </a>
               </li>
               <li className="flex items-center gap-2">
                 <Mail size={15} className="text-[#C8922A] shrink-0" />
-                <span>events@authenticflavors.ph</span>
+                <span>ramosauthenticflavors@gmail.com</span>
               </li>
             </ul>
           </div>

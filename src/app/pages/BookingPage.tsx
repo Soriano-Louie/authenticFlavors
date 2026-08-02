@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { createBooking } from "../api/bookingApi";
+import { BookingRules } from "../components/BookingRules";
 import {
   getPackages,
   getMenuCategories,
@@ -967,6 +968,9 @@ export function BookingPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Booking Rules */}
+                <BookingRules />
 
                 {/* Pricing */}
                 <div className="bg-[#2C1810] rounded-xl p-5 text-[#F5F0E8]">
