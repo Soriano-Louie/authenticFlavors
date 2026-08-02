@@ -65,6 +65,21 @@ export function NotificationCenter({
     return () => clearInterval(interval);
   }, [user, accessToken]);
 
+  // Close the popover when the user scrolls on mobile to keep it in view.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const isMobile = window.matchMedia("(max-width: 639px)").matches;
+    if (!isMobile) return;
+
+    const handleScroll = () => {
+      setIsOpen(false);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isOpen]);
+
   // Close popover when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -225,7 +240,7 @@ export function NotificationCenter({
 
       {/* Popover Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="fixed left-2 right-2 top-[4.75rem] max-h-[calc(100vh-5.5rem)] overflow-hidden bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 z-50 animate-in fade-in slide-in-from-top-2 duration-200 sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-3 sm:w-96 sm:max-h-[32rem]">
           {/* Header */}
           <div className="bg-[#2C1810] px-4 py-3.5 flex items-center justify-between border-b border-[#C8922A]/20">
             <div className="flex items-center gap-2">
@@ -261,7 +276,7 @@ export function NotificationCenter({
           </div>
 
           {/* List Content */}
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-[#C8922A]/10">
+          <div className="max-h-[calc(100vh-10rem)] overflow-y-auto divide-y divide-[#C8922A]/10 sm:max-h-[380px]">
             {loading ? (
               <div className="py-12 text-center text-[#2C1810]/50 flex flex-col items-center gap-2">
                 <Loader2 className="w-6 h-6 animate-spin text-[#C8922A]" />

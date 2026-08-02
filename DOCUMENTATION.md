@@ -327,16 +327,16 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ### Package Endpoints (`/api`)
 
-| Method | Path                        | Auth   | Description               |
-| ------ | --------------------------- | ------ | ------------------------- |
-| `GET`  | `/packages`                 | Public | List all active packages  |
-| `GET`  | `/packages/:id`             | Public | Get a single package      |
-| `GET`  | `/packages/:id/pricing`     | Public | Get per-pax pricing tiers |
-| `GET`  | `/menu-categories`          | Public | List menu categories      |
-| `GET`  | `/menu-items`               | Public | List all menu items       |
-| `GET`  | `/event-types`              | Public | List event types          |
-| `GET`  | `/venue-setups`             | Public | List venue setup options  |
-| `GET`  | `/homepage/statistics`      | Public | Get homepage statistics   |
+| Method | Path                        | Auth   | Description                                |
+| ------ | --------------------------- | ------ | ------------------------------------------ |
+| `GET`  | `/packages`                 | Public | List all active packages                   |
+| `GET`  | `/packages/:id`             | Public | Get a single package                       |
+| `GET`  | `/packages/:id/pricing`     | Public | Get per-pax pricing tiers                  |
+| `GET`  | `/menu-categories`          | Public | List menu categories                       |
+| `GET`  | `/menu-items`               | Public | List all menu items                        |
+| `GET`  | `/event-types`              | Public | List event types                           |
+| `GET`  | `/venue-setups`             | Public | List venue setup options                   |
+| `GET`  | `/homepage/statistics`      | Public | Get homepage statistics                    |
 | `GET`  | `/homepage/upcoming-events` | Public | Get upcoming reserved and confirmed events |
 
 ### Admin Package Endpoints (`/api/admin`)
