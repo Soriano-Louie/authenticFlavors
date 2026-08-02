@@ -6,7 +6,7 @@ import { pool } from "../db/pool.js";
  */
 export async function getUserNotifications(req, res, next) {
   try {
-    const userId = req.user.user_id;
+    const userId = Number(req.auth.sub);
 
     const [notifications] = await pool.query(
       `SELECT notification_id, user_id, booking_id, type, title, message, is_read, link, created_at, read_at
@@ -34,7 +34,7 @@ export async function getUserNotifications(req, res, next) {
  */
 export async function markAsRead(req, res, next) {
   try {
-    const userId = req.user.user_id;
+    const userId = Number(req.auth.sub);
     const notificationId = req.params.id;
 
     const [result] = await pool.query(
@@ -60,7 +60,7 @@ export async function markAsRead(req, res, next) {
  */
 export async function markAllAsRead(req, res, next) {
   try {
-    const userId = req.user.user_id;
+    const userId = Number(req.auth.sub);
 
     await pool.query(
       `UPDATE notifications
@@ -81,7 +81,7 @@ export async function markAllAsRead(req, res, next) {
  */
 export async function deleteNotification(req, res, next) {
   try {
-    const userId = req.user.user_id;
+    const userId = Number(req.auth.sub);
     const notificationId = req.params.id;
 
     const [result] = await pool.query(
