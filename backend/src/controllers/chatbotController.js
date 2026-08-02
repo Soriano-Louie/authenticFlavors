@@ -1,6 +1,248 @@
 import { pool } from "../db/pool.js";
 import { generateChatResponse } from "../services/geminiService.js";
 
+// ─── Knowledge Base Lookup ────────────────────────────────────────────────────
+// Checks the knowledge_base table for FAQ matches before calling Gemini API
+// to reduce API costs and improve response time for common questions.
+
+/**
+ * Normalizes a text string for comparison (lowercase, remove punctuation, extra spaces)
+ */
+function normalizeText(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Calculates a simple match score between user message and FAQ question
+ * based on keyword overlap
+ */
+function calculateMatchScore(userMessage, faqQuestion) {
+  const normalizedUser = normalizeText(userMessage);
+  const normalizedFAQ = normalizeText(faqQuestion);
+
+  // Extract words (filter out common stop words)
+  const stopWords = new Set([
+    "a",
+    "an",
+    "the",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "can",
+    "need",
+    "dare",
+    "ought",
+    "used",
+    "to",
+    "of",
+    "in",
+    "for",
+    "on",
+    "with",
+    "at",
+    "by",
+    "from",
+    "as",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "out",
+    "off",
+    "over",
+    "under",
+    "again",
+    "further",
+    "then",
+    "once",
+    "here",
+    "there",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "both",
+    "each",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "nor",
+    "not",
+    "only",
+    "own",
+    "same",
+    "so",
+    "than",
+    "too",
+    "very",
+    "just",
+    "because",
+    "but",
+    "and",
+    "or",
+    "if",
+    "while",
+    "about",
+    "up",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "this",
+    "that",
+    "these",
+    "those",
+    "i",
+    "me",
+    "my",
+    "myself",
+    "we",
+    "our",
+    "ours",
+    "ourselves",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
+    "he",
+    "him",
+    "his",
+    "himself",
+    "she",
+    "her",
+    "hers",
+    "herself",
+    "it",
+    "its",
+    "itself",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "themselves",
+    "am",
+    "any",
+    "do",
+    "have",
+    "has",
+    "had",
+    "been",
+    "being",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+  ]);
+
+  const userWords = new Set(
+    normalizedUser
+      .split(" ")
+      .filter((word) => word.length > 2 && !stopWords.has(word)),
+  );
+
+  const faqWords = normalizedFAQ.split(" ").filter((word) => word.length > 2);
+
+  if (userWords.size === 0 || faqWords.length === 0) {
+    return 0;
+  }
+
+  // Count matching words
+  let matches = 0;
+  userWords.forEach((word) => {
+    if (
+      faqWords.some(
+        (faqWord) => faqWord.includes(word) || word.includes(faqWord),
+      )
+    ) {
+      matches++;
+    }
+  });
+
+  // Calculate score as percentage of user words matched
+  const score = (matches / userWords.size) * 100;
+
+  return score;
+}
+
+/**
+ * Queries the knowledge base for the best matching FAQ answer
+ * @param {string} userMessage - The user's question
+ * @param {number} [minScore=60] - Minimum match score threshold (0-100)
+ * @returns {Promise<{answer: string, category: string, confidence: number}|null}
+ */
+export async function findKnowledgeBaseAnswer(userMessage, minScore = 60) {
+  try {
+    // Fetch all active FAQs from knowledge base
+    const [faqs] = await pool.query(
+      `SELECT category, question, answer 
+       FROM knowledge_base 
+       WHERE status = 'Active' 
+       ORDER BY category, question`,
+    );
+
+    if (faqs.length === 0) {
+      return null;
+    }
+
+    // Find the best match
+    let bestMatch = null;
+    let highestScore = minScore;
+
+    for (const faq of faqs) {
+      const score = calculateMatchScore(userMessage, faq.question);
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = {
+          answer: faq.answer,
+          category: faq.category,
+          confidence: score,
+          matchedQuestion: faq.question,
+        };
+      }
+    }
+
+    return bestMatch;
+  } catch (error) {
+    console.error("[ChatbotController] Knowledge base lookup error:", error);
+    // If knowledge base lookup fails, return null to fall back to Gemini
+    return null;
+  }
+}
+
 // ─── POST /api/chat/message ──────────────────────────────────────────────────
 // Accepts a user message, optionally links to a conversation, stores messages
 // in the database, calls Gemini, and returns the AI reply.
@@ -18,6 +260,7 @@ export async function sendMessage(req, res) {
     const trimmedMessage = String(message).trim();
     const userId = req.auth ? Number(req.auth.sub) : null;
     let conversationId = conversation_id ? Number(conversation_id) : null;
+    const startTime = Date.now(); // Track processing time for knowledge base queries
 
     // ── Resolve or create conversation ──────────────────────────────────
     if (conversationId) {
@@ -64,6 +307,44 @@ export async function sendMessage(req, res) {
          VALUES (?, 'User', ?)`,
         [conversationId, trimmedMessage],
       );
+    }
+
+    // ── Check Knowledge Base First (to reduce API calls) ─────────────────
+    const knowledgeBaseMatch = await findKnowledgeBaseAnswer(
+      trimmedMessage,
+      60,
+    );
+
+    if (knowledgeBaseMatch) {
+      // Found a match in knowledge base - return answer without calling Gemini
+      const kbReply = knowledgeBaseMatch.answer;
+      const processingTimeMs = Date.now() - startTime; // Approximate time for DB query
+
+      // Store AI response (from knowledge base)
+      if (conversationId) {
+        await pool.query(
+          `INSERT INTO ai_messages (conversation_id, sender, message_text)
+           VALUES (?, 'AI', ?)`,
+          [conversationId, kbReply],
+        );
+      }
+
+      // Log request as FAQ from knowledge base
+      if (conversationId) {
+        await pool.query(
+          `INSERT INTO ai_requests 
+           (conversation_id, request_type, prompt_text, response_text,
+            processing_time_ms, request_status)
+           VALUES (?, 'FAQ_KB', ?, ?, ?, 'Success')`,
+          [conversationId, trimmedMessage, kbReply, processingTimeMs],
+        );
+      }
+
+      return res.status(200).json({
+        reply: kbReply,
+        conversation_id: conversationId,
+        booking_action: null,
+      });
     }
 
     // ── Call Gemini with user context & DB validation ──────────────────

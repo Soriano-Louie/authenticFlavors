@@ -53,35 +53,35 @@ authenticFlavors/
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| **React** | 18.3.1 | UI framework |
-| **TypeScript** | (via Vite) | Type-safe JavaScript |
-| **Vite** | 6.3.5 | Build tool and dev server |
-| **React Router** | 7.13.0 | Client-side routing and navigation |
-| **Tailwind CSS** | 4.1.12 | Utility-first CSS styling |
-| **Lucide React** | 0.487.0 | Icon library |
-| **Sonner** | 2.0.3 | Toast notification system |
-| **Recharts** | 2.15.2 | Data visualization charts (Admin Dashboard) |
-| **Motion** | 12.23.24 | Animation library |
-| **React Hook Form** | 7.55.0 | Form state management and validation |
-| **Radix UI** | Various | Headless accessible UI primitives |
+| Technology          | Version    | Purpose                                     |
+| ------------------- | ---------- | ------------------------------------------- |
+| **React**           | 18.3.1     | UI framework                                |
+| **TypeScript**      | (via Vite) | Type-safe JavaScript                        |
+| **Vite**            | 6.3.5      | Build tool and dev server                   |
+| **React Router**    | 7.13.0     | Client-side routing and navigation          |
+| **Tailwind CSS**    | 4.1.12     | Utility-first CSS styling                   |
+| **Lucide React**    | 0.487.0    | Icon library                                |
+| **Sonner**          | 2.0.3      | Toast notification system                   |
+| **Recharts**        | 2.15.2     | Data visualization charts (Admin Dashboard) |
+| **Motion**          | 12.23.24   | Animation library                           |
+| **React Hook Form** | 7.55.0     | Form state management and validation        |
+| **Radix UI**        | Various    | Headless accessible UI primitives           |
 
 ### Backend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| **Node.js** | LTS | JavaScript runtime |
-| **Express** | 4.19.2 | HTTP server framework |
-| **mysql2** | 3.11.0 | MySQL database driver with Promise support |
-| **bcryptjs** | 2.4.3 | Password hashing |
-| **jsonwebtoken** | 9.0.2 | JWT token creation and verification |
-| **multer** | 2.2.0 | Multipart form-data file upload handling |
-| **cookie-parser** | 1.4.6 | HTTP cookie parsing middleware |
-| **cors** | 2.8.5 | Cross-Origin Resource Sharing headers |
-| **dotenv** | 16.4.5 | Environment variable loading |
-| **Brevo HTTP API** | — | Transactional email delivery (replaces SMTP) |
-| **Google Gemini API** | — | AI-powered chatbot, feedback sentiment analysis, and recommendations |
+| Technology            | Version | Purpose                                                              |
+| --------------------- | ------- | -------------------------------------------------------------------- |
+| **Node.js**           | LTS     | JavaScript runtime                                                   |
+| **Express**           | 4.19.2  | HTTP server framework                                                |
+| **mysql2**            | 3.11.0  | MySQL database driver with Promise support                           |
+| **bcryptjs**          | 2.4.3   | Password hashing                                                     |
+| **jsonwebtoken**      | 9.0.2   | JWT token creation and verification                                  |
+| **multer**            | 2.2.0   | Multipart form-data file upload handling                             |
+| **cookie-parser**     | 1.4.6   | HTTP cookie parsing middleware                                       |
+| **cors**              | 2.8.5   | Cross-Origin Resource Sharing headers                                |
+| **dotenv**            | 16.4.5  | Environment variable loading                                         |
+| **Brevo HTTP API**    | —       | Transactional email delivery (replaces SMTP)                         |
+| **Google Gemini API** | —       | AI-powered chatbot, feedback sentiment analysis, and recommendations |
 
 ---
 
@@ -91,28 +91,29 @@ authenticFlavors/
 
 Routing is handled by **React Router v7** with the following pages:
 
-| Route | Component | Access |
-|---|---|---|
-| `/` | `LandingPage` | Public |
-| `/auth` | `AuthPage` | Public (Login & Register) |
-| `/verify-email` | `VerifyEmailPage` | Public |
-| `/forgot-password` | `ForgotPasswordPage` | Public |
-| `/reset-password` | `ResetPasswordPage` | Public |
-| `/packages` | `PackagesPage` | Public |
-| `/package-selection` | `PackageSelectionPage` | Public |
-| `/package/:id` | `PackageDetailPage` | Public |
-| `/about` | `AboutPage` | Public |
-| `/booking` | `BookingPage` | Authenticated |
-| `/payment-upload` | `PaymentUploadPage` | Authenticated |
-| `/dashboard` | `CustomerDashboard` | Authenticated (Admin → redirected to `/admin`) |
-| `/admin` | `AdminDashboard` | Authenticated (Admin) |
-| `/feedback` | `FeedbackPage` | Authenticated |
-| `/payment/success` | `SuccessPage` | Authenticated |
-| `/payment/cancel` | `CancelPage` | Authenticated |
+| Route                | Component              | Access                                         |
+| -------------------- | ---------------------- | ---------------------------------------------- |
+| `/`                  | `LandingPage`          | Public                                         |
+| `/auth`              | `AuthPage`             | Public (Login & Register)                      |
+| `/verify-email`      | `VerifyEmailPage`      | Public                                         |
+| `/forgot-password`   | `ForgotPasswordPage`   | Public                                         |
+| `/reset-password`    | `ResetPasswordPage`    | Public                                         |
+| `/packages`          | `PackagesPage`         | Public                                         |
+| `/package-selection` | `PackageSelectionPage` | Public                                         |
+| `/package/:id`       | `PackageDetailPage`    | Public                                         |
+| `/about`             | `AboutPage`            | Public                                         |
+| `/booking`           | `BookingPage`          | Authenticated                                  |
+| `/payment-upload`    | `PaymentUploadPage`    | Authenticated                                  |
+| `/dashboard`         | `CustomerDashboard`    | Authenticated (Admin → redirected to `/admin`) |
+| `/admin`             | `AdminDashboard`       | Authenticated (Admin)                          |
+| `/feedback`          | `FeedbackPage`         | Authenticated                                  |
+| `/payment/success`   | `SuccessPage`          | Authenticated                                  |
+| `/payment/cancel`    | `CancelPage`           | Authenticated                                  |
 
 ### State Management
 
 Authentication state is managed globally using React's **Context API** (`AuthContext`). The context stores:
+
 - The authenticated `user` object
 - The `accessToken` (short-lived JWT)
 - Functions: `login`, `register`, `logout`, `updateProfile`, `setAuth`, `refreshUser`
@@ -139,25 +140,25 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 
 ### Controllers
 
-| Controller | File | Description |
-|---|---|---|
-| `authController.js` | Authentication, registration, email verification, password reset, profile management |
-| `bookingController.js` | Booking creation, retrieval, cancellation, and management |
-| `packageController.js` | Package and pricing CRUD |
-| `paymentController.js` | Payment receipt upload, verification, overdue management, and scheduled email reminders |
-| `feedbackController.js` | Feedback submission, retrieval, and admin AI analysis |
-| `chatbotController.js` | AI-powered chatbot integration |
+| Controller              | File                                                                                    | Description |
+| ----------------------- | --------------------------------------------------------------------------------------- | ----------- |
+| `authController.js`     | Authentication, registration, email verification, password reset, profile management    |
+| `bookingController.js`  | Booking creation, retrieval, cancellation, and management                               |
+| `packageController.js`  | Package and pricing CRUD                                                                |
+| `paymentController.js`  | Payment receipt upload, verification, overdue management, and scheduled email reminders |
+| `feedbackController.js` | Feedback submission, retrieval, and admin AI analysis                                   |
+| `chatbotController.js`  | AI-powered chatbot integration                                                          |
 
 ### Routes
 
-| Route File | Prefix | Description |
-|---|---|---|
-| `authRoutes.js` | `/api/auth` | Authentication, verification, password reset |
-| `bookingRoutes.js` | `/api` | Booking CRUD and customer cancellation |
-| `packageRoutes.js` | `/api` | Package and pricing |
-| `paymentRoutes.js` | `/api` | Payment receipt upload |
-| `feedbackRoutes.js` | `/api` | Feedback submission and admin AI analysis |
-| `chatbotRoutes.js` | `/api` | Chatbot interactions |
+| Route File          | Prefix      | Description                                  |
+| ------------------- | ----------- | -------------------------------------------- |
+| `authRoutes.js`     | `/api/auth` | Authentication, verification, password reset |
+| `bookingRoutes.js`  | `/api`      | Booking CRUD and customer cancellation       |
+| `packageRoutes.js`  | `/api`      | Package and pricing                          |
+| `paymentRoutes.js`  | `/api`      | Payment receipt upload                       |
+| `feedbackRoutes.js` | `/api`      | Feedback submission and admin AI analysis    |
+| `chatbotRoutes.js`  | `/api`      | Chatbot interactions                         |
 
 ---
 
@@ -169,21 +170,21 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 
 ### Schema Summary
 
-| Table | Description |
-|---|---|
-| `users` | Registered customers and admins |
-| `packages` | Catering food packages |
-| `package_pricing` | Per-pax price tiers for each package |
-| `menu_categories` | Food categories (e.g., Soup, Main Course) |
-| `menu_items` | Individual food items linked to categories |
-| `event_types` | Event types (e.g., Birthday, Wedding, Corporate) |
-| `venue_setups` | Venue add-on options (e.g., Floral Arrangements) |
-| `bookings` | Customer booking records |
-| `booking_menu_selections` | Junction table linking bookings to chosen menu items |
-| `email_verifications` | One-time verification codes for email activation |
-| `password_reset_tokens` | One-time tokens for password reset flow |
-| `feedback` | Customer feedback linked to bookings (with AI analysis fields) |
-| `payments` | Payment records with receipt tracking |
+| Table                     | Description                                                    |
+| ------------------------- | -------------------------------------------------------------- |
+| `users`                   | Registered customers and admins                                |
+| `packages`                | Catering food packages                                         |
+| `package_pricing`         | Per-pax price tiers for each package                           |
+| `menu_categories`         | Food categories (e.g., Soup, Main Course)                      |
+| `menu_items`              | Individual food items linked to categories                     |
+| `event_types`             | Event types (e.g., Birthday, Wedding, Corporate)               |
+| `venue_setups`            | Venue add-on options (e.g., Floral Arrangements)               |
+| `bookings`                | Customer booking records                                       |
+| `booking_menu_selections` | Junction table linking bookings to chosen menu items           |
+| `email_verifications`     | One-time verification codes for email activation               |
+| `password_reset_tokens`   | One-time tokens for password reset flow                        |
+| `feedback`                | Customer feedback linked to bookings (with AI analysis fields) |
+| `payments`                | Payment records with receipt tracking                          |
 
 ### Key Design Decisions
 
@@ -228,10 +229,10 @@ Passwords are hashed using **bcrypt** via the `bcryptjs` library.
 
 The application uses a **two-token authentication flow**:
 
-| Token | Type | Storage | TTL (Default) | Purpose |
-|---|---|---|---|---|
-| **Access Token** | JWT (HS256) | In-memory (React state) | `15 minutes` | Authorizes API requests via `Authorization: Bearer <token>` header |
-| **Refresh Token** | JWT (HS256) | HttpOnly Cookie | `7 days` | Used to silently obtain a new access token without re-login |
+| Token             | Type        | Storage                 | TTL (Default) | Purpose                                                            |
+| ----------------- | ----------- | ----------------------- | ------------- | ------------------------------------------------------------------ |
+| **Access Token**  | JWT (HS256) | In-memory (React state) | `15 minutes`  | Authorizes API requests via `Authorization: Bearer <token>` header |
+| **Refresh Token** | JWT (HS256) | HttpOnly Cookie         | `7 days`      | Used to silently obtain a new access token without re-login        |
 
 - **Algorithm:** HMAC-SHA256 (`HS256`) — symmetric signing using a secret key
 - **Secrets:** Separate `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` environment variables
@@ -241,21 +242,23 @@ The application uses a **two-token authentication flow**:
 ### Role-Based Access Control (RBAC)
 
 User roles are stored in the `users.role` column as a MySQL `ENUM`:
+
 - `Customer` — can create bookings, upload receipts, view their own bookings
 - `Admin` — can view all bookings, preview receipts, verify or reject payments
 
 **Backend:** Protected API routes use two middleware layers:
+
 1. `requireAuth` — validates the Bearer access token
 2. `requireRole("Admin")` — checks that the authenticated user has the required role
 
 **Frontend:** Route protection is handled by guard components in `src/app/components/AuthGuards.tsx`:
 
-| Guard | Behavior |
-|---|---|
-| `RequireAuth` | Renders children if authenticated; redirects unauthenticated users to `/auth` |
-| `RequireAdmin` | Renders children if admin; redirects customers to `/dashboard`; redirects unauthenticated to `/auth` |
-| `RequireCustomer` | Renders children if customer; redirects admins to `/admin`; redirects unauthenticated to `/auth` with `from` state |
-| `RedirectIfAuthenticated` | Redirects authenticated users to `/admin` (Admin) or `/dashboard` (Customer) — used on the `/auth` page |
+| Guard                     | Behavior                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `RequireAuth`             | Renders children if authenticated; redirects unauthenticated users to `/auth`                                      |
+| `RequireAdmin`            | Renders children if admin; redirects customers to `/dashboard`; redirects unauthenticated to `/auth`               |
+| `RequireCustomer`         | Renders children if customer; redirects admins to `/admin`; redirects unauthenticated to `/auth` with `from` state |
+| `RedirectIfAuthenticated` | Redirects authenticated users to `/admin` (Admin) or `/dashboard` (Customer) — used on the `/auth` page            |
 
 All payment reminder email links (`sendUpcomingPaymentReminder`, `sendPaymentDueToday`, `sendPaymentOverdueNotice`) point to `/dashboard`. The `RequireCustomer` guard ensures admins who click these links are automatically redirected to `/admin` instead of seeing the customer dashboard.
 
@@ -273,22 +276,22 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ### Email Features
 
-| Feature | Endpoint | Description |
-|---|---|---|
-| Email Verification | `sendVerificationCode()` | Sends a 6-digit verification code to new users |
-| Password Reset | `sendPasswordResetEmail()` | Sends a password reset link with a secure token |
-| Upcoming Payment Reminder | `sendUpcomingPaymentReminder()` | Sent 3 days before a payment is due |
-| Payment Due Today | `sendPaymentDueToday()` | Sent on the day a payment is due |
-| Overdue Payment Notice | `sendPaymentOverdueNotice()` | Sent when a payment is past due, with red urgency styling |
-| Scheduled Reminders | `sendScheduledPaymentReminders()` | Cron-job function that sends all three reminder types at once |
+| Feature                   | Endpoint                          | Description                                                   |
+| ------------------------- | --------------------------------- | ------------------------------------------------------------- |
+| Email Verification        | `sendVerificationCode()`          | Sends a 6-digit verification code to new users                |
+| Password Reset            | `sendPasswordResetEmail()`        | Sends a password reset link with a secure token               |
+| Upcoming Payment Reminder | `sendUpcomingPaymentReminder()`   | Sent 3 days before a payment is due                           |
+| Payment Due Today         | `sendPaymentDueToday()`           | Sent on the day a payment is due                              |
+| Overdue Payment Notice    | `sendPaymentOverdueNotice()`      | Sent when a payment is past due, with red urgency styling     |
+| Scheduled Reminders       | `sendScheduledPaymentReminders()` | Cron-job function that sends all three reminder types at once |
 
 ### Environment Variables
 
-| Variable | Description |
-|---|---|
-| `BREVO_API_KEY` | Brevo SMTP API key (starts with `xsmtpsib-`) |
-| `BREVO_SENDER_EMAIL` | Verified sender email address |
-| `BREVO_SENDER_NAME` | Display name for the sender |
+| Variable             | Description                                  |
+| -------------------- | -------------------------------------------- |
+| `BREVO_API_KEY`      | Brevo SMTP API key (starts with `xsmtpsib-`) |
+| `BREVO_SENDER_EMAIL` | Verified sender email address                |
+| `BREVO_SENDER_NAME`  | Display name for the sender                  |
 
 ---
 
@@ -309,32 +312,32 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ### Auth Endpoints (`/api/auth`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/register` | Public | Create a new customer account (status: Pending) |
-| `POST` | `/login` | Public | Login and receive tokens |
-| `POST` | `/refresh` | Cookie | Issue a new access token using a refresh cookie |
-| `POST` | `/logout` | Public | Clear the refresh cookie |
-| `GET` | `/me` | Bearer | Get the current authenticated user |
-| `PUT` | `/profile` | Bearer | Update name, email, and phone number |
-| `POST` | `/send-verification` | Public | Send a verification code to the user's email |
-| `POST` | `/verify-email` | Public | Verify the code and activate the account |
-| `POST` | `/forgot-password` | Public | Send a password reset link |
-| `POST` | `/reset-password` | Public | Reset password using a token |
+| Method | Path                 | Auth   | Description                                     |
+| ------ | -------------------- | ------ | ----------------------------------------------- |
+| `POST` | `/register`          | Public | Create a new customer account (status: Pending) |
+| `POST` | `/login`             | Public | Login and receive tokens                        |
+| `POST` | `/refresh`           | Cookie | Issue a new access token using a refresh cookie |
+| `POST` | `/logout`            | Public | Clear the refresh cookie                        |
+| `GET`  | `/me`                | Bearer | Get the current authenticated user              |
+| `PUT`  | `/profile`           | Bearer | Update name, email, and phone number            |
+| `POST` | `/send-verification` | Public | Send a verification code to the user's email    |
+| `POST` | `/verify-email`      | Public | Verify the code and activate the account        |
+| `POST` | `/forgot-password`   | Public | Send a password reset link                      |
+| `POST` | `/reset-password`    | Public | Reset password using a token                    |
 
 ### Package Endpoints (`/api`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/packages` | Public | List all active packages |
-| `GET` | `/packages/:id` | Public | Get a single package |
-| `GET` | `/packages/:id/pricing` | Public | Get per-pax pricing tiers |
-| `GET` | `/menu-categories` | Public | List menu categories |
-| `GET` | `/menu-items` | Public | List all menu items |
-| `GET` | `/event-types` | Public | List event types |
-| `GET` | `/venue-setups` | Public | List venue setup options |
-| `GET` | `/homepage/statistics` | Public | Get homepage statistics |
-| `GET` | `/homepage/upcoming-events` | Public | Get upcoming events |
+| Method | Path                        | Auth   | Description               |
+| ------ | --------------------------- | ------ | ------------------------- |
+| `GET`  | `/packages`                 | Public | List all active packages  |
+| `GET`  | `/packages/:id`             | Public | Get a single package      |
+| `GET`  | `/packages/:id/pricing`     | Public | Get per-pax pricing tiers |
+| `GET`  | `/menu-categories`          | Public | List menu categories      |
+| `GET`  | `/menu-items`               | Public | List all menu items       |
+| `GET`  | `/event-types`              | Public | List event types          |
+| `GET`  | `/venue-setups`             | Public | List venue setup options  |
+| `GET`  | `/homepage/statistics`      | Public | Get homepage statistics   |
+| `GET`  | `/homepage/upcoming-events` | Public | Get upcoming events       |
 
 ### Admin Package Endpoints (`/api/admin`)
 
@@ -365,53 +368,53 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ### Admin Booking Endpoints (`/api/admin`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/bookings` | Bearer + Admin | List all bookings |
-| `POST` | `/bookings/:id/verify` | Bearer + Admin | Mark booking as Confirmed |
+| Method | Path                   | Auth           | Description                  |
+| ------ | ---------------------- | -------------- | ---------------------------- |
+| `GET`  | `/bookings`            | Bearer + Admin | List all bookings            |
+| `POST` | `/bookings/:id/verify` | Bearer + Admin | Mark booking as Confirmed    |
 | `POST` | `/bookings/:id/reject` | Bearer + Admin | Reject booking with a reason |
 
 ### Payment Endpoints (`/api/payments`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/instructions/:bookingId` | Bearer | Get payment instructions for a booking |
-| `POST` | `/upload-receipt` | Bearer | Upload payment receipt URL (direct Cloudinary upload) |
-| `POST` | `/upload-receipt-file` | Bearer | Upload payment receipt file (multer + server-side Cloudinary) |
-| `GET` | `/status/:paymentId` | Bearer | Get payment status for a specific payment |
-| `GET` | `/booking/:bookingId` | Bearer | Get all payments for a booking (auto-updates overdue status) |
-| `GET` | `/admin/all` | Bearer + Admin | Get all payments (pending verification first) |
-| `POST` | `/admin/verify/:paymentId` | Bearer + Admin | Approve or reject a payment receipt |
-| `PUT` | `/admin/instructions` | Bearer + Admin | Update payment instructions |
-| `GET` | `/admin/overdue` | Bearer + Admin | Get all overdue payments with `overdue_days` |
-| `POST` | `/admin/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder for a payment |
-| `POST` | `/admin/overdue/cancel/:paymentId` | Bearer + Admin | Cancel a booking due to overdue payment |
+| Method | Path                               | Auth           | Description                                                   |
+| ------ | ---------------------------------- | -------------- | ------------------------------------------------------------- |
+| `GET`  | `/instructions/:bookingId`         | Bearer         | Get payment instructions for a booking                        |
+| `POST` | `/upload-receipt`                  | Bearer         | Upload payment receipt URL (direct Cloudinary upload)         |
+| `POST` | `/upload-receipt-file`             | Bearer         | Upload payment receipt file (multer + server-side Cloudinary) |
+| `GET`  | `/status/:paymentId`               | Bearer         | Get payment status for a specific payment                     |
+| `GET`  | `/booking/:bookingId`              | Bearer         | Get all payments for a booking (auto-updates overdue status)  |
+| `GET`  | `/admin/all`                       | Bearer + Admin | Get all payments (pending verification first)                 |
+| `POST` | `/admin/verify/:paymentId`         | Bearer + Admin | Approve or reject a payment receipt                           |
+| `PUT`  | `/admin/instructions`              | Bearer + Admin | Update payment instructions                                   |
+| `GET`  | `/admin/overdue`                   | Bearer + Admin | Get all overdue payments with `overdue_days`                  |
+| `POST` | `/admin/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder for a payment                             |
+| `POST` | `/admin/overdue/cancel/:paymentId` | Bearer + Admin | Cancel a booking due to overdue payment                       |
 
 ### Admin Overdue Management (`/api/payments/admin`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/overdue` | Bearer + Admin | List overdue payments with customer details and `overdue_days` |
-| `POST` | `/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder (upcoming or overdue notice) |
-| `POST` | `/overdue/cancel/:paymentId` | Bearer + Admin | Cancel booking and all unpaid payments |
+| Method | Path                         | Auth           | Description                                                    |
+| ------ | ---------------------------- | -------------- | -------------------------------------------------------------- |
+| `GET`  | `/overdue`                   | Bearer + Admin | List overdue payments with customer details and `overdue_days` |
+| `POST` | `/overdue/remind/:paymentId` | Bearer + Admin | Send email reminder (upcoming or overdue notice)               |
+| `POST` | `/overdue/cancel/:paymentId` | Bearer + Admin | Cancel booking and all unpaid payments                         |
 
 ### Feedback Endpoints (`/api`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/feedback` | Bearer | Submit feedback for a completed booking (auto-analyzed by AI) |
-| `GET` | `/feedback/:bookingId` | Bearer | Get own feedback for a booking |
-| `GET` | `/feedback/check/:bookingId` | Bearer | Check if feedback exists for a booking |
-| `GET` | `/feedbacks/public` | Public | List all public feedback entries |
+| Method | Path                         | Auth   | Description                                                   |
+| ------ | ---------------------------- | ------ | ------------------------------------------------------------- |
+| `POST` | `/feedback`                  | Bearer | Submit feedback for a completed booking (auto-analyzed by AI) |
+| `GET`  | `/feedback/:bookingId`       | Bearer | Get own feedback for a booking                                |
+| `GET`  | `/feedback/check/:bookingId` | Bearer | Check if feedback exists for a booking                        |
+| `GET`  | `/feedbacks/public`          | Public | List all public feedback entries                              |
 
 ### Admin Feedback Analysis Endpoints (`/api/admin`)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/feedback-analysis` | Bearer + Admin | Get full AI feedback analysis (sentiment breakdown, executive summary, key topics, recommendations, feedback list) |
-| `POST` | `/feedback/:id/reanalyze` | Bearer + Admin | Re-run AI analysis on a single feedback entry |
-| `POST` | `/feedback/reanalyze-all` | Bearer + Admin | Re-analyze all feedback entries in batch |
-| `DELETE` | `/feedback/:id` | Bearer + Admin | Delete a feedback entry |
+| Method   | Path                      | Auth           | Description                                                                                                        |
+| -------- | ------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/feedback-analysis`      | Bearer + Admin | Get full AI feedback analysis (sentiment breakdown, executive summary, key topics, recommendations, feedback list) |
+| `POST`   | `/feedback/:id/reanalyze` | Bearer + Admin | Re-run AI analysis on a single feedback entry                                                                      |
+| `POST`   | `/feedback/reanalyze-all` | Bearer + Admin | Re-analyze all feedback entries in batch                                                                           |
+| `DELETE` | `/feedback/:id`           | Bearer + Admin | Delete a feedback entry                                                                                            |
 
 ---
 
@@ -508,6 +511,7 @@ The compiled frontend assets will be output to the `dist/` folder.
 ## Deployment
 
 The application is deployed on **Render**:
+
 - **Backend:** Node.js server running on Render
 - **Frontend:** Static assets served from the `dist/` folder or via a separate frontend hosting service
 - **Database:** MySQL hosted externally (e.g., Aiven Cloud)
@@ -516,25 +520,25 @@ The application is deployed on **Render**:
 
 Set the following on the Render dashboard under the backend service's Environment tab:
 
-| Variable | Description |
-|---|---|
-| `DB_HOST` | MySQL host URL |
-| `DB_PORT` | MySQL port |
-| `DB_USER` | MySQL username |
-| `DB_PASSWORD` | MySQL password |
-| `DB_NAME` | Database name |
-| `JWT_ACCESS_SECRET` | JWT access token signing secret |
-| `JWT_REFRESH_SECRET` | JWT refresh token signing secret |
-| `BREVO_API_KEY` | Brevo SMTP API key |
-| `BREVO_SENDER_EMAIL` | Verified sender email |
-| `BREVO_SENDER_NAME` | Sender display name |
-| `FRONTEND_URL` | Frontend URL (e.g., `https://authenticflavors.onrender.com`) |
-| `CORS_ORIGIN` | Comma-separated list of allowed origins |
-| `NODE_ENV` | `production` |
-| `PORT` | Server port (Render sets this automatically) |
-| `GEMINI_API_KEY` | Google Gemini API key |
-| `GEMINI_BASE_URL` | Gemini REST API base URL |
-| `GEMINI_MODEL` | Gemini model identifier (e.g., `gemini-2.0-flash`) |
+| Variable             | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `DB_HOST`            | MySQL host URL                                               |
+| `DB_PORT`            | MySQL port                                                   |
+| `DB_USER`            | MySQL username                                               |
+| `DB_PASSWORD`        | MySQL password                                               |
+| `DB_NAME`            | Database name                                                |
+| `JWT_ACCESS_SECRET`  | JWT access token signing secret                              |
+| `JWT_REFRESH_SECRET` | JWT refresh token signing secret                             |
+| `BREVO_API_KEY`      | Brevo SMTP API key                                           |
+| `BREVO_SENDER_EMAIL` | Verified sender email                                        |
+| `BREVO_SENDER_NAME`  | Sender display name                                          |
+| `FRONTEND_URL`       | Frontend URL (e.g., `https://authenticflavors.onrender.com`) |
+| `CORS_ORIGIN`        | Comma-separated list of allowed origins                      |
+| `NODE_ENV`           | `production`                                                 |
+| `PORT`               | Server port (Render sets this automatically)                 |
+| `GEMINI_API_KEY`     | Google Gemini API key                                        |
+| `GEMINI_BASE_URL`    | Gemini REST API base URL                                     |
+| `GEMINI_MODEL`       | Gemini model identifier (e.g., `gemini-2.0-flash`)           |
 
 ---
 
@@ -571,6 +575,7 @@ Set the following on the Render dashboard under the backend service's Environmen
 ### Recent Fixes
 
 - Fixed admin routing when clicking payment reminder email links: Admins clicking "Settle Payment Now", "Pay Now", or "Go to Dashboard" in any of the three payment notification emails (upcoming payment, due today, overdue) were shown the customer dashboard. Added a `RequireCustomer` frontend guard (`src/app/components/AuthGuards.tsx`) that redirects admins to `/admin` when they navigate to `/dashboard`, and updated the `/dashboard` route in `src/app/routes.tsx` to use it instead of `RequireAuth`.
+- Implemented knowledge base lookup for chatbot to reduce Gemini API usage: Added `findKnowledgeBaseAnswer()` function in `chatbotController.js` that checks the `knowledge_base` table before calling Gemini API. Uses keyword-based matching algorithm with 60% threshold. Common FAQ questions are now served from the database, significantly reducing API costs and improving response time. Knowledge base hits are logged with request_type `'FAQ_KB'` in the `ai_requests` table.
 - Implemented customer booking cancellation workflow with automated penalty calculations based on event date
 - Added cancellation policy tracking (`standard`, `5_days_penalty`, `1_day_penalty`) with database migration
 - Updated `payments` schema to support `CancellationCharge` payment type
