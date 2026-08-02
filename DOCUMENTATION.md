@@ -104,7 +104,7 @@ Routing is handled by **React Router v7** with the following pages:
 | `/about` | `AboutPage` | Public |
 | `/booking` | `BookingPage` | Authenticated |
 | `/payment-upload` | `PaymentUploadPage` | Authenticated |
-| `/dashboard` | `CustomerDashboard` | Authenticated (Customer) |
+| `/dashboard` | `CustomerDashboard` | Authenticated (Admin → redirected to `/admin`) |
 | `/admin` | `AdminDashboard` | Authenticated (Admin) |
 | `/feedback` | `FeedbackPage` | Authenticated |
 | `/payment/success` | `SuccessPage` | Authenticated |
@@ -244,9 +244,20 @@ User roles are stored in the `users.role` column as a MySQL `ENUM`:
 - `Customer` — can create bookings, upload receipts, view their own bookings
 - `Admin` — can view all bookings, preview receipts, verify or reject payments
 
-Protected routes use two middleware layers:
+**Backend:** Protected API routes use two middleware layers:
 1. `requireAuth` — validates the Bearer access token
 2. `requireRole("Admin")` — checks that the authenticated user has the required role
+
+**Frontend:** Route protection is handled by guard components in `src/app/components/AuthGuards.tsx`:
+
+| Guard | Behavior |
+|---|---|
+| `RequireAuth` | Renders children if authenticated; redirects unauthenticated users to `/auth` |
+| `RequireAdmin` | Renders children if admin; redirects customers to `/dashboard`; redirects unauthenticated to `/auth` |
+| `RequireCustomer` | Renders children if customer; redirects admins to `/admin`; redirects unauthenticated to `/auth` with `from` state |
+| `RedirectIfAuthenticated` | Redirects authenticated users to `/admin` (Admin) or `/dashboard` (Customer) — used on the `/auth` page |
+
+All payment reminder email links (`sendUpcomingPaymentReminder`, `sendPaymentDueToday`, `sendPaymentOverdueNotice`) point to `/dashboard`. The `RequireCustomer` guard ensures admins who click these links are automatically redirected to `/admin` instead of seeing the customer dashboard.
 
 ---
 
@@ -559,6 +570,7 @@ Set the following on the Render dashboard under the backend service's Environmen
 
 ### Recent Fixes
 
+- Fixed admin routing when clicking payment reminder email links: Admins clicking "Settle Payment Now", "Pay Now", or "Go to Dashboard" in any of the three payment notification emails (upcoming payment, due today, overdue) were shown the customer dashboard. Added a `RequireCustomer` frontend guard (`src/app/components/AuthGuards.tsx`) that redirects admins to `/admin` when they navigate to `/dashboard`, and updated the `/dashboard` route in `src/app/routes.tsx` to use it instead of `RequireAuth`.
 - Implemented customer booking cancellation workflow with automated penalty calculations based on event date
 - Added cancellation policy tracking (`standard`, `5_days_penalty`, `1_day_penalty`) with database migration
 - Updated `payments` schema to support `CancellationCharge` payment type

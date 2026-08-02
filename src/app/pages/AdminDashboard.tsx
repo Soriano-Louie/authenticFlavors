@@ -32,6 +32,13 @@ import {
   type AdminFeedbackAnalysisResponse,
   type AdminFeedbackItem,
 } from "../api/feedbackApi";
+import {
+  getAdminAnnouncements,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  type Announcement,
+} from "../api/announcementApi";
 import type { Package as PackageType, PackagePricing } from "../api/packageApi";
 import { toast } from "sonner";
 import {
@@ -64,6 +71,9 @@ import {
   Edit3,
   Trash2,
   ImagePlus,
+  Megaphone,
+  Send,
+  EyeOff,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -83,6 +93,7 @@ const SIDEBAR_LINKS = [
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
   { key: "packages", label: "Food Packages", icon: Package },
+  { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "activity", label: "Recent Activity", icon: Activity },
 ];
 
@@ -257,6 +268,7 @@ export function AdminDashboard() {
           {activeSection === "activity" && <ActivitySection />}
           {activeSection === "bookings" && <BookingsSection />}
           {activeSection === "packages" && <PackagesSection />}
+          {activeSection === "announcements" && <AnnouncementsSection />}
         </div>
       </main>
     </div>
@@ -2186,6 +2198,642 @@ function PackagesSection() {
                   {submitting ? "Deleting..." : "Delete Package"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Helper Functions
+
+// ─── Announcements Section ─────────────────────────────────────────────────────
+
+interface AnnouncementFormData {
+  title: string;
+  content: string;
+  status: "draft" | "published";
+  publish_date: string;
+  expiration_date: string;
+}
+
+const emptyAnnouncementForm: AnnouncementFormData = {
+  title: "",
+  content: "",
+  status: "draft",
+  publish_date: new Date().toISOString().slice(0, 16),
+  expiration_date: "",
+};
+
+function AnnouncementsSection() {
+  const { accessToken } = useAuth();
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingAnn, setEditingAnn] = useState<Announcement | null>(null);
+  const [deletingAnn, setDeletingAnn] = useState<Announcement | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] =
+    useState<AnnouncementFormData>(emptyAnnouncementForm);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "published" | "draft"
+  >("all");
+
+  const fetchAnnouncements = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminAnnouncements(accessToken);
+      setAnnouncements(res.announcements);
+    } catch (err) {
+      console.error("Failed to fetch announcements:", err);
+      toast.error("Failed to load announcements.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [accessToken]);
+
+  const handleAdd = () => {
+    setEditingAnn(null);
+    setFormData(emptyAnnouncementForm);
+    setImageFile(null);
+    setImagePreview(null);
+    setShowModal(true);
+  };
+
+  const handleEdit = (ann: Announcement) => {
+    setEditingAnn(ann);
+    setFormData({
+      title: ann.title,
+      content: ann.content,
+      status: ann.status,
+      publish_date: ann.publish_date
+        ? new Date(ann.publish_date).toISOString().slice(0, 16)
+        : new Date().toISOString().slice(0, 16),
+      expiration_date: ann.expiration_date
+        ? new Date(ann.expiration_date).toISOString().slice(0, 16)
+        : "",
+    });
+    setImageFile(null);
+    setImagePreview(ann.image_url || null);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingAnn(null);
+    setFormData(emptyAnnouncementForm);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const validateForm = (): boolean => {
+    if (!formData.title.trim()) {
+      toast.error("Title is required.");
+      return false;
+    }
+    if (!formData.content.trim()) {
+      toast.error("Content is required.");
+      return false;
+    }
+    if (!formData.publish_date) {
+      toast.error("Publish date is required.");
+      return false;
+    }
+    if (
+      formData.expiration_date &&
+      new Date(formData.expiration_date) <= new Date(formData.publish_date)
+    ) {
+      toast.error("Expiration date must be after publish date.");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!accessToken) return;
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    try {
+      const payload = new FormData();
+      payload.append("title", formData.title.trim());
+      payload.append("content", formData.content.trim());
+      payload.append("status", formData.status);
+      payload.append("publish_date", formData.publish_date);
+      if (formData.expiration_date) {
+        payload.append("expiration_date", formData.expiration_date);
+      } else {
+        payload.append("expiration_date", "");
+      }
+
+      if (imageFile) {
+        payload.append("image", imageFile);
+      }
+
+      // If editing and image was removed (no new file and preview cleared)
+      if (editingAnn && !imageFile && !imagePreview && editingAnn.image_url) {
+        payload.append("remove_image", "true");
+      }
+
+      if (editingAnn) {
+        await updateAnnouncement(accessToken, editingAnn.id, payload);
+        toast.success("Announcement updated successfully.");
+      } else {
+        await createAnnouncement(accessToken, payload);
+        toast.success("Announcement created successfully.");
+      }
+
+      closeModal();
+      fetchAnnouncements();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save announcement.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (ann: Announcement) => {
+    if (!accessToken) return;
+    const newStatus = ann.status === "published" ? "draft" : "published";
+    try {
+      const payload = new FormData();
+      payload.append("title", ann.title);
+      payload.append("content", ann.content);
+      payload.append("status", newStatus);
+
+      const pubDate = new Date(ann.publish_date);
+      if (!isNaN(pubDate.getTime())) {
+        payload.append("publish_date", pubDate.toISOString().slice(0, 16));
+      } else {
+        payload.append("publish_date", ann.publish_date);
+      }
+
+      if (ann.expiration_date) {
+        const expDate = new Date(ann.expiration_date);
+        if (!isNaN(expDate.getTime())) {
+          payload.append("expiration_date", expDate.toISOString().slice(0, 16));
+        } else {
+          payload.append("expiration_date", ann.expiration_date);
+        }
+      }
+      await updateAnnouncement(accessToken, ann.id, payload);
+      toast.success(
+        `Announcement ${newStatus === "published" ? "published" : "unpublished"}.`,
+      );
+      fetchAnnouncements();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update status.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!accessToken || !deletingAnn) return;
+    setSubmitting(true);
+    try {
+      await deleteAnnouncement(accessToken, deletingAnn.id);
+      toast.success("Announcement deleted.");
+      setDeletingAnn(null);
+      fetchAnnouncements();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete announcement.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredAnnouncements =
+    filterStatus === "all"
+      ? announcements
+      : announcements.filter((a) => a.status === filterStatus);
+
+  const publishedCount = announcements.filter(
+    (a) => a.status === "published",
+  ).length;
+  const draftCount = announcements.filter((a) => a.status === "draft").length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-[#2C1810]/60 font-['Lato']">
+            Manage announcements displayed on the landing page.
+          </p>
+          <div className="flex items-center gap-4 mt-2">
+            <span className="text-xs font-['Lato'] px-2 py-1 rounded-full bg-[#7A8C5C]/15 text-[#7A8C5C]">
+              {publishedCount} Published
+            </span>
+            <span className="text-xs font-['Lato'] px-2 py-1 rounded-full bg-[#C8922A]/15 text-[#C8922A]">
+              {draftCount} Draft
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shadow-lg shadow-[#C8922A]/20"
+        >
+          <Plus size={16} />
+          New Announcement
+        </button>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        {(["all", "published", "draft"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilterStatus(f)}
+            className={`px-4 py-2 text-xs rounded-lg font-['Lato'] capitalize transition-all ${
+              filterStatus === f
+                ? "bg-[#2C1810] text-[#F5F0E8] shadow-md"
+                : "bg-white text-[#2C1810]/60 hover:bg-[#2C1810]/5 border border-[#2C1810]/10"
+            }`}
+          >
+            {f} ({f === "all" ? announcements.length : f === "published" ? publishedCount : draftCount})
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={28} className="animate-spin text-[#C8922A]" />
+        </div>
+      ) : filteredAnnouncements.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-[#2C1810]/5">
+          <Megaphone
+            size={40}
+            className="text-[#2C1810]/20 mx-auto mb-3"
+          />
+          <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
+            No announcements found.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredAnnouncements.map((ann) => (
+            <div
+              key={ann.id}
+              className="bg-white rounded-2xl border border-[#2C1810]/5 p-5 flex flex-col md:flex-row md:items-center gap-4 hover:shadow-md transition-shadow"
+            >
+              {/* Image thumbnail */}
+              {ann.image_url && (
+                <img
+                  src={ann.image_url}
+                  alt={ann.title}
+                  className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-[#2C1810]/10"
+                />
+              )}
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-['Playfair_Display'] text-[#2C1810] text-base font-semibold truncate">
+                    {ann.title}
+                  </h3>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 ${
+                      ann.status === "published"
+                        ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                        : "bg-[#C8922A]/15 text-[#C8922A]"
+                    }`}
+                  >
+                    {ann.status}
+                  </span>
+                </div>
+                <p className="text-sm text-[#2C1810]/60 font-['Lato'] line-clamp-2 mb-1.5">
+                  {ann.content}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#2C1810]/40 font-['Lato']">
+                  <span>
+                    Publish:{" "}
+                    {new Date(ann.publish_date).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  {ann.expiration_date && (
+                    <span>
+                      Expires:{" "}
+                      {new Date(ann.expiration_date).toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => handleToggleStatus(ann)}
+                  title={
+                    ann.status === "published" ? "Unpublish" : "Publish"
+                  }
+                  className={`p-2 rounded-lg transition-colors ${
+                    ann.status === "published"
+                      ? "bg-[#7A8C5C]/10 text-[#7A8C5C] hover:bg-[#7A8C5C]/20"
+                      : "bg-[#C8922A]/10 text-[#C8922A] hover:bg-[#C8922A]/20"
+                  }`}
+                >
+                  {ann.status === "published" ? (
+                    <EyeOff size={15} />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleEdit(ann)}
+                  title="Edit"
+                  className="p-2 rounded-lg bg-[#2C1810]/5 text-[#2C1810]/60 hover:bg-[#2C1810]/10 transition-colors"
+                >
+                  <Edit3 size={15} />
+                </button>
+                <button
+                  onClick={() => setDeletingAnn(ann)}
+                  title="Delete"
+                  className="p-2 rounded-lg bg-[#C4541A]/5 text-[#C4541A] hover:bg-[#C4541A]/10 transition-colors"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="p-6 border-b border-[#2C1810]/10">
+              <div className="flex items-center justify-between">
+                <h2 className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+                  {editingAnn ? "Edit Announcement" : "New Announcement"}
+                </h2>
+                <button
+                  onClick={closeModal}
+                  className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Title */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Title *
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                  placeholder="e.g. Summer Menu Launch"
+                />
+              </div>
+
+              {/* Content */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Content *
+                </label>
+                <textarea
+                  value={formData.content}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      content: e.target.value,
+                    }))
+                  }
+                  rows={4}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30 resize-none"
+                  placeholder="Write the announcement content..."
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Status
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, status: "draft" }))
+                    }
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-['Lato'] transition-all border ${
+                      formData.status === "draft"
+                        ? "bg-[#C8922A]/15 border-[#C8922A]/40 text-[#C8922A]"
+                        : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                    }`}
+                  >
+                    Draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, status: "published" }))
+                    }
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-['Lato'] transition-all border ${
+                      formData.status === "published"
+                        ? "bg-[#7A8C5C]/15 border-[#7A8C5C]/40 text-[#7A8C5C]"
+                        : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                    }`}
+                  >
+                    Published
+                  </button>
+                </div>
+              </div>
+
+              {/* Publish Date */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Publish Date *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.publish_date}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      publish_date: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                />
+              </div>
+
+              {/* Expiration Date */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Expiration Date (Optional)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.expiration_date}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      expiration_date: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                />
+                {formData.expiration_date && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        expiration_date: "",
+                      }))
+                    }
+                    className="text-xs text-[#C4541A] font-['Lato'] mt-1 hover:underline"
+                  >
+                    Clear expiration
+                  </button>
+                )}
+              </div>
+
+              {/* Image */}
+              <div>
+                <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                  Banner Image (Optional)
+                </label>
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-36 rounded-xl object-cover border border-[#2C1810]/10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageFile(null);
+                        setImagePreview(null);
+                      }}
+                      className="absolute top-2 right-2 bg-[#C4541A] text-white rounded-full p-1.5 hover:bg-[#8B3A1A] transition-colors shadow-md"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-[#2C1810]/15 rounded-xl cursor-pointer hover:border-[#C8922A]/40 transition-colors bg-white">
+                    <ImagePlus
+                      size={24}
+                      className="text-[#2C1810]/25 mb-1"
+                    />
+                    <span className="text-xs text-[#2C1810]/40 font-['Lato']">
+                      Click to upload image
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      className="hidden"
+                      onChange={handleImageSelect}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3">
+              <button
+                onClick={closeModal}
+                className="px-5 py-2.5 rounded-xl text-sm font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50 shadow-lg shadow-[#C8922A]/20"
+              >
+                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting
+                  ? "Saving..."
+                  : editingAnn
+                    ? "Update Announcement"
+                    : "Create Announcement"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingAnn && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#C4541A]/10 flex items-center justify-center">
+                  <AlertCircle size={20} className="text-[#C4541A]" />
+                </div>
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+                  Delete Announcement
+                </h3>
+              </div>
+              <p className="text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
+                Are you sure you want to delete{" "}
+                <strong>"{deletingAnn.title}"</strong>?
+              </p>
+              <p className="text-xs text-[#C4541A] font-['Lato']">
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setDeletingAnn(null)}
+                disabled={submitting}
+                className="px-5 py-2.5 rounded-xl text-sm font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting ? "Deleting..." : "Delete"}
+              </button>
             </div>
           </div>
         </div>

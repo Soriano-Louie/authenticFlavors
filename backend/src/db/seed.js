@@ -331,6 +331,25 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] notifications table ensured.");
 
+    // 0.7 Create announcements table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS announcements (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        content TEXT NOT NULL,
+        status ENUM('draft', 'published') DEFAULT 'draft',
+        publish_date DATETIME NOT NULL,
+        expiration_date DATETIME NULL,
+        image_url VARCHAR(500) NULL,
+        image_public_id VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_status_publish (status, publish_date),
+        INDEX idx_expiration (expiration_date)
+      )
+    `);
+    console.log("[MIGRATION] announcements table ensured.");
+
     // 0.5 Ensure account_status ENUM includes 'Pending'
     const [accountStatusCol] = await connection.query(
       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",

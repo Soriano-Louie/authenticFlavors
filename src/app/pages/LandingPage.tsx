@@ -4,6 +4,8 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   Users,
   Award,
@@ -12,10 +14,15 @@ import {
   Heart,
   Briefcase,
   Loader2,
+  Megaphone,
 } from "lucide-react";
 import { IMAGES, TESTIMONIALS } from "../data/mockData";
 import { getHomepageStatistics, getUpcomingEvents } from "../api/packageApi";
 import type { HomepageStatistics, UpcomingEvent } from "../api/packageApi";
+import {
+  getPublicAnnouncements,
+  type Announcement,
+} from "../api/announcementApi";
 
 const CAROUSEL_EVENTS = [
   {
@@ -74,6 +81,11 @@ export function LandingPage() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [showAllEvents, setShowAllEvents] = useState(false);
 
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [showMoreAnnouncements, setShowMoreAnnouncements] = useState(false);
+
   // Statistics state
   const [statistics, setStatistics] = useState<HomepageStatistics | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(true);
@@ -86,6 +98,24 @@ export function LandingPage() {
     null,
   );
   const [selectedDate, setSelectedDate] = useState<string>("");
+
+  // Fetch announcements on mount
+  useEffect(() => {
+    async function fetchAnnouncements() {
+      try {
+        setAnnouncementsLoading(true);
+        const data = await getPublicAnnouncements();
+        setAnnouncements(data.announcements);
+      } catch {
+        // Silently fail — we'll just show the default message
+        setAnnouncements([]);
+      } finally {
+        setAnnouncementsLoading(false);
+      }
+    }
+
+    fetchAnnouncements();
+  }, []);
 
   // Fetch statistics on mount
   useEffect(() => {
@@ -342,23 +372,98 @@ export function LandingPage() {
       {/* ─── Announcements ─── */}
       <section className="bg-[#2C1810] border-y border-[#C8922A]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-[11px] font-['Lato'] uppercase tracking-[0.3em] text-[#C8922A]">
-                Latest updates
-              </p>
-              <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8]">
-                New seasonal menus, private dining openings, and live singing or
-                acoustic sets are now featured for July bookings.
-              </p>
+          {announcementsLoading ? (
+            <div className="flex items-center justify-center py-3">
+              <Loader2 size={18} className="animate-spin text-[#C8922A]" />
+              <span className="ml-2 text-sm font-['Lato'] text-[#F5F0E8]/60">
+                Loading announcements...
+              </span>
             </div>
-            <Link
-              to="/package-selection"
-              className="inline-flex items-center justify-center rounded-full bg-[#C8922A] px-4 py-2 text-sm font-['Lato'] text-[#F5F0E8] hover:bg-[#C4541A] transition-colors"
-            >
-              Reserve Now
-            </Link>
-          </div>
+          ) : announcements.length === 0 ? (
+            <div className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <Megaphone size={18} className="text-[#C8922A] flex-shrink-0" />
+                <div>
+                  <p className="text-[11px] font-['Lato'] uppercase tracking-[0.3em] text-[#C8922A]">
+                    Announcements
+                  </p>
+                  <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8]/60 italic">
+                    No announcements available at this time.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/package-selection"
+                className="inline-flex items-center justify-center rounded-full bg-[#C8922A] px-4 py-2 text-sm font-['Lato'] text-[#F5F0E8] hover:bg-[#C4541A] transition-colors"
+              >
+                Reserve Now
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Primary (latest) announcement */}
+              {(() => {
+                const visibleAnnouncements = showMoreAnnouncements
+                  ? announcements
+                  : [announcements[0]];
+                return visibleAnnouncements.map((ann) => (
+                  <div
+                    key={ann.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-4 md:flex-row md:items-center md:justify-between transition-all duration-300"
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {ann.image_url ? (
+                        <img
+                          src={ann.image_url}
+                          alt={ann.title}
+                          className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[#C8922A]/20"
+                        />
+                      ) : (
+                        <Megaphone
+                          size={18}
+                          className="text-[#C8922A] flex-shrink-0 mt-1"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-['Lato'] uppercase tracking-[0.3em] text-[#C8922A]">
+                          {ann.title}
+                        </p>
+                        <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8] line-clamp-2">
+                          {ann.content}
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      to="/package-selection"
+                      className="inline-flex items-center justify-center rounded-full bg-[#C8922A] px-4 py-2 text-sm font-['Lato'] text-[#F5F0E8] hover:bg-[#C4541A] transition-colors flex-shrink-0"
+                    >
+                      Reserve Now
+                    </Link>
+                  </div>
+                ));
+              })()}
+
+              {/* Show more / Show less toggle */}
+              {announcements.length > 1 && (
+                <button
+                  onClick={() => setShowMoreAnnouncements((prev) => !prev)}
+                  className="flex items-center gap-1.5 mx-auto text-xs font-['Lato'] text-[#C8922A] hover:text-[#F5F0E8] transition-colors py-1"
+                >
+                  {showMoreAnnouncements ? (
+                    <>
+                      Show less <ChevronUp size={14} />
+                    </>
+                  ) : (
+                    <>
+                      {announcements.length - 1} more announcement
+                      {announcements.length - 1 > 1 ? "s" : ""}{" "}
+                      <ChevronDown size={14} />
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
