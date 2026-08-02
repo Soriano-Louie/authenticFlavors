@@ -350,6 +350,44 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] announcements table ensured.");
 
+    // 0.8 Create menu_change_requests table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS menu_change_requests (
+        request_id INT AUTO_INCREMENT PRIMARY KEY,
+        booking_id INT NOT NULL,
+        user_id INT NOT NULL,
+        requested_menu_selections JSON NOT NULL,
+        dietary_notes TEXT NULL,
+        status ENUM('Pending', 'Approved', 'Rejected') DEFAULT 'Pending',
+        rejection_reason TEXT NULL,
+        reviewed_by INT NULL,
+        reviewed_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_booking_status (booking_id, status)
+      )
+    `);
+    console.log("[MIGRATION] menu_change_requests table ensured.");
+
+    // 0.9 Create booking_history table for auditing
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS booking_history (
+        history_id INT AUTO_INCREMENT PRIMARY KEY,
+        booking_id INT NOT NULL,
+        change_type VARCHAR(50) NOT NULL,
+        description TEXT NOT NULL,
+        previous_state JSON NULL,
+        new_state JSON NULL,
+        changed_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE,
+        INDEX idx_booking_history (booking_id)
+      )
+    `);
+    console.log("[MIGRATION] booking_history table ensured.");
+
     // 0.5 Ensure account_status ENUM includes 'Pending'
     const [accountStatusCol] = await connection.query(
       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",

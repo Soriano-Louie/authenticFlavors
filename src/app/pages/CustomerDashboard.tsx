@@ -11,6 +11,12 @@ import {
 } from "../api/paymentApi";
 import { checkFeedbackExists } from "../api/feedbackApi";
 import { requestCancellation, getCancellationDetails, type CancellationDetails } from "../api/bookingApi";
+import {
+  submitMenuChangeRequest,
+  getBookingMenuChangeRequests,
+  type MenuChangeRequest,
+} from "../api/menuChangeApi";
+import { getMenuCategories, getMenuItems, type MenuCategory, type MenuItem } from "../api/packageApi";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { toast } from "sonner";
 import {
@@ -27,6 +33,9 @@ import {
   Loader2,
   X,
   AlertTriangle,
+  Utensils,
+  Edit3,
+  Check,
 } from "lucide-react";
 
 const TABS = [
@@ -441,6 +450,17 @@ export function CustomerDashboard() {
     }
   };
 
+  // Menu Change Request state
+  const [showMenuChangeModal, setShowMenuChangeModal] = useState(false);
+  const [menuChangeBooking, setMenuChangeBooking] = useState<Booking | null>(null);
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [selectedMenuItems, setSelectedMenuItems] = useState<string[]>([]);
+  const [menuDietaryNotes, setMenuDietaryNotes] = useState<string>("");
+  const [submittingMenuChange, setSubmittingMenuChange] = useState(false);
+  const [loadingMenuData, setLoadingMenuData] = useState(false);
+  const [pendingMenuRequests, setPendingMenuRequests] = useState<Record<number, MenuChangeRequest | null>>({});
+
   const [uploadingPaymentId, setUploadingPaymentId] = useState<number | null>(
     null,
   );
@@ -553,6 +573,102 @@ export function CustomerDashboard() {
       );
     } finally {
       setProcessingCancellation(false);
+    }
+  };
+
+  // Load pending menu change requests for confirmed bookings
+  useEffect(() => {
+    if (!accessToken || bookings.length === 0) return;
+    const confirmedBookings = bookings.filter(
+      (b) => b.booking_status === "Confirmed",
+    );
+    if (confirmedBookings.length === 0) return;
+
+    async function loadPendingRequests() {
+      const result: Record<number, MenuChangeRequest | null> = {};
+      await Promise.all(
+        confirmedBookings.map(async (b) => {
+          try {
+            const res = await getBookingMenuChangeRequests(
+              accessToken!,
+              b.booking_id,
+            );
+            const pending = res.requests.find((r) => r.status === "Pending");
+            result[b.booking_id] = pending ?? null;
+          } catch {
+            result[b.booking_id] = null;
+          }
+        }),
+      );
+      setPendingMenuRequests(result);
+    }
+
+    loadPendingRequests();
+  }, [accessToken, bookings]);
+
+  const handleOpenMenuChangeModal = async (booking: Booking) => {
+    setMenuChangeBooking(booking);
+    setShowMenuChangeModal(true);
+    setSelectedMenuItems([]);
+    setMenuDietaryNotes("");
+    setLoadingMenuData(true);
+    try {
+      const [categoriesRes, itemsRes] = await Promise.all([
+        getMenuCategories(),
+        getMenuItems(),
+      ]);
+      setMenuCategories(
+        categoriesRes.categories.filter((c) => c.status === "Active"),
+      );
+      setMenuItems(
+        itemsRes.items.filter((i) => i.availability_status === "Active"),
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load menu options.",
+      );
+      setShowMenuChangeModal(false);
+      setMenuChangeBooking(null);
+    } finally {
+      setLoadingMenuData(false);
+    }
+  };
+
+  const handleToggleMenuItem = (itemName: string) => {
+    setSelectedMenuItems((prev) =>
+      prev.includes(itemName)
+        ? prev.filter((n) => n !== itemName)
+        : [...prev, itemName],
+    );
+  };
+
+  const handleSubmitMenuChange = async () => {
+    if (!menuChangeBooking || !accessToken || selectedMenuItems.length === 0)
+      return;
+    setSubmittingMenuChange(true);
+    try {
+      await submitMenuChangeRequest(accessToken, menuChangeBooking.booking_id, {
+        menu_selections: selectedMenuItems,
+        dietary_notes: menuDietaryNotes.trim() || undefined,
+      });
+      toast.success(
+        "Menu change request submitted! The administrator will review it shortly.",
+      );
+      setShowMenuChangeModal(false);
+      setMenuChangeBooking(null);
+      setSelectedMenuItems([]);
+      setMenuDietaryNotes("");
+      // Refresh bookings & pending requests
+      const res = await getCustomerBookings(accessToken);
+      setBookings(res.bookings);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit menu change request.",
+      );
+    } finally {
+      setSubmittingMenuChange(false);
     }
   };
 
@@ -850,9 +966,64 @@ export function CustomerDashboard() {
               );
             })()}
 
+          {/* Request Menu Change Section */}
+          {(() => {
+            const isConfirmed = booking.booking_status === "Confirmed";
+            const isCancelledOrCompleted =
+              booking.booking_status === "Cancelled" ||
+              booking.booking_status === "Completed";
+
+            if (isCancelledOrCompleted) return null;
+
+            // 14-day calculation
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const eventDate = new Date(booking.event_date);
+            eventDate.setHours(0, 0, 0, 0);
+            const diffTime = eventDate.getTime() - today.getTime();
+            const daysBeforeEvent = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const isEligibleForMenuChange = isConfirmed && daysBeforeEvent >= 14;
+            const existingPendingRequest = pendingMenuRequests[booking.booking_id];
+
+            return (
+              <div className="mt-4 pt-4 border-t border-[#C8922A]/10 space-y-2">
+                {existingPendingRequest ? (
+                  <div className="p-3 bg-[#C8922A]/10 rounded-xl border border-[#C8922A]/30 flex items-center justify-between text-xs font-['Lato'] text-[#C8922A]">
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      <Clock size={14} /> Menu Change Request Pending Approval
+                    </span>
+                    <span className="text-[10px] text-[#2C1810]/60">
+                      Requested on {new Date(existingPendingRequest.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      disabled={!isEligibleForMenuChange}
+                      onClick={() => handleOpenMenuChangeModal(booking)}
+                      className={`w-full px-4 py-2.5 rounded-full text-xs font-['Lato'] font-semibold transition-all flex items-center justify-center gap-2 ${
+                        isEligibleForMenuChange
+                          ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] hover:opacity-90 cursor-pointer shadow-sm"
+                          : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                      }`}
+                    >
+                      <Utensils size={14} />
+                      Request Menu Change
+                    </button>
+                    {!isEligibleForMenuChange && isConfirmed && (
+                      <p className="text-[11px] font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
+                        Menu changes are only allowed until 14 days before the scheduled event.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Cancel Booking Button */}
           {canCancel && (
-            <div className="mt-4 pt-4 border-t border-[#C8922A]/10">
+            <div className="mt-3 pt-3 border-t border-[#C8922A]/10">
               <button
                 onClick={() => handleCancelBookingClick(booking.booking_id)}
                 className="w-full px-4 py-2.5 bg-[#C4541A]/10 hover:bg-[#C4541A]/20 text-[#C4541A] rounded-full text-xs font-['Lato'] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
@@ -1908,7 +2079,7 @@ export function CustomerDashboard() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
-                    Failed to load cancellation details.
+Failed to load cancellation details.
                   </p>
                   <button
                     onClick={() => {
@@ -1921,6 +2092,173 @@ export function CustomerDashboard() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Menu Change Request Modal */}
+      {showMenuChangeModal && menuChangeBooking && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+            {/* Modal Header */}
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8] flex items-center gap-2">
+                  <Utensils className="text-[#C8922A]" size={20} />
+                  Request Menu Change
+                </h3>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                  Booking Reference: {menuChangeBooking.booking_reference || `#${menuChangeBooking.booking_id}`}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMenuChangeModal(false);
+                  setMenuChangeBooking(null);
+                }}
+                className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {loadingMenuData ? (
+                <div className="py-16 text-center">
+                  <Loader2 size={32} className="animate-spin text-[#C8922A] mx-auto mb-3" />
+                  <p className="text-[#2C1810]/60 font-['Lato'] text-sm">
+                    Loading menu options...
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Notice banner */}
+                  <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex items-start gap-3">
+                    <Edit3 size={18} className="text-[#C8922A] shrink-0 mt-0.5" />
+                    <div className="text-xs font-['Lato'] text-[#2C1810]">
+                      <p className="font-semibold text-[#C8922A] mb-0.5">Menu Selection Policy</p>
+                      <p className="text-[#2C1810]/70">
+                        Select your preferred dishes below. All menu changes are submitted to Chef Ramos for approval.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Category Selection */}
+                  <div className="space-y-6">
+                    {menuCategories.map((category) => {
+                      const categoryItems = menuItems.filter(
+                        (i) => i.category_id === category.category_id,
+                      );
+                      if (categoryItems.length === 0) return null;
+
+                      return (
+                        <div key={category.category_id} className="space-y-3">
+                          <h4 className="font-['Playfair_Display'] text-[#2C1810] text-base font-bold border-b border-[#C8922A]/15 pb-1 flex items-center justify-between">
+                            <span>{category.category_name}</span>
+                            <span className="text-xs font-normal text-[#2C1810]/50 font-['Lato']">
+                              Select items
+                            </span>
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {categoryItems.map((item) => {
+                              const isSelected = selectedMenuItems.includes(item.item_name);
+                              return (
+                                <button
+                                  key={item.menu_item_id}
+                                  type="button"
+                                  onClick={() => handleToggleMenuItem(item.item_name)}
+                                  className={`p-3 rounded-xl border text-left text-xs font-['Lato'] transition-all flex items-center justify-between cursor-pointer ${
+                                    isSelected
+                                      ? "bg-[#C8922A]/15 border-[#C8922A] text-[#2C1810] font-semibold shadow-xs"
+                                      : "bg-white border-[#2C1810]/10 text-[#2C1810]/70 hover:border-[#C8922A]/40"
+                                  }`}
+                                >
+                                  <div>
+                                    <p className="font-medium text-[#2C1810]">{item.item_name}</p>
+                                    {item.description && (
+                                      <p className="text-[10px] text-[#2C1810]/50 line-clamp-1 mt-0.5">
+                                        {item.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <div className="w-5 h-5 rounded-full bg-[#C8922A] text-white flex items-center justify-center shrink-0 ml-2">
+                                      <Check size={12} />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dietary & Allergy Notes */}
+                  <div className="space-y-2 pt-2 border-t border-[#C8922A]/15">
+                    <label className="block text-xs font-semibold text-[#2C1810] font-['Lato']">
+                      Special Dietary Requests / Allergy Notes (Optional)
+                    </label>
+                    <textarea
+                      value={menuDietaryNotes}
+                      onChange={(e) => setMenuDietaryNotes(e.target.value)}
+                      placeholder="Specify any food allergies, vegan/vegetarian preferences, or chef notes..."
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                    />
+                  </div>
+
+                  {/* Updated Menu Review Summary */}
+                  <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-2">
+                    <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] uppercase tracking-wider">
+                      Updated Menu Review Summary ({selectedMenuItems.length} items)
+                    </h5>
+                    {selectedMenuItems.length === 0 ? (
+                      <p className="text-xs text-[#C4541A] font-['Lato'] italic">
+                        Please select at least one menu item.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {selectedMenuItems.map((item) => (
+                          <span
+                            key={item}
+                            className="px-2.5 py-1 bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/20 rounded-lg text-xs font-['Lato'] font-medium"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenuChangeModal(false);
+                  setMenuChangeBooking(null);
+                }}
+                disabled={submittingMenuChange}
+                className="px-5 py-2.5 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitMenuChange}
+                disabled={submittingMenuChange || selectedMenuItems.length === 0}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+              >
+                {submittingMenuChange && <Loader2 size={14} className="animate-spin" />}
+                {submittingMenuChange ? "Submitting..." : "Submit Menu Change Request"}
+              </button>
             </div>
           </div>
         </div>

@@ -178,4 +178,37 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  /**
+   * Interactive Element Cursors
+   * Ensures pointer cursor on all clickable elements and not-allowed on disabled elements across the entire app.
+   */
+  button,
+  a,
+  select,
+  summary,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="button"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"]::file-selector-button,
+  label[for] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled,
+  [aria-disabled="true"],
+  .disabled,
+  :disabled {
+    cursor: not-allowed !important;
+  }
 }
+

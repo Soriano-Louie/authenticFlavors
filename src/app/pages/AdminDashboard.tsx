@@ -7,6 +7,12 @@ import {
   type Booking,
 } from "../api/bookingApi";
 import {
+  getAdminMenuChangeRequests,
+  approveMenuChangeRequest,
+  rejectMenuChangeRequest,
+  type MenuChangeRequest,
+} from "../api/menuChangeApi";
+import {
   getBookingPayments,
   verifyReceipt,
   getOverduePayments,
@@ -92,6 +98,7 @@ const SIDEBAR_LINKS = [
   { key: "overview", label: "Overview", icon: BarChart2 },
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
+  { key: "menu-changes", label: "Menu Change Requests", icon: ChefHat },
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "activity", label: "Recent Activity", icon: Activity },
@@ -267,6 +274,7 @@ export function AdminDashboard() {
           )}
           {activeSection === "activity" && <ActivitySection />}
           {activeSection === "bookings" && <BookingsSection />}
+          {activeSection === "menu-changes" && <MenuChangeRequestsSection />}
           {activeSection === "packages" && <PackagesSection />}
           {activeSection === "announcements" && <AnnouncementsSection />}
         </div>
@@ -2866,4 +2874,351 @@ function getStatusStyle(status: string): string {
     Cancelled: "bg-[#C4541A]/15 text-[#C4541A]",
   };
   return styles[status] || "bg-gray-100 text-gray-600";
+}
+
+// ─── Menu Change Requests Section ────────────────────────────────────────────
+function MenuChangeRequestsSection() {
+  const { accessToken } = useAuth();
+  const [requests, setRequests] = useState<MenuChangeRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<"All" | "Pending" | "Approved" | "Rejected">("Pending");
+
+  // Approve state
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+
+  // Reject modal state
+  const [rejectingRequest, setRejectingRequest] = useState<MenuChangeRequest | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [submittingRejection, setSubmittingRejection] = useState(false);
+
+  const loadRequests = async () => {
+    if (!accessToken) return;
+    setLoading(true);
+    try {
+      const res = await getAdminMenuChangeRequests(accessToken);
+      setRequests(res.requests);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to load menu change requests.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, [accessToken]);
+
+  const handleApprove = async (requestId: number) => {
+    if (!accessToken) return;
+    setApprovingId(requestId);
+    try {
+      await approveMenuChangeRequest(accessToken, requestId);
+      toast.success("Menu change request approved. The customer has been notified.");
+      await loadRequests();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to approve request.",
+      );
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleOpenRejectModal = (request: MenuChangeRequest) => {
+    setRejectingRequest(request);
+    setRejectionReason("");
+  };
+
+  const handleConfirmReject = async () => {
+    if (!accessToken || !rejectingRequest) return;
+    if (!rejectionReason.trim()) {
+      toast.error("Please provide a rejection reason.");
+      return;
+    }
+    setSubmittingRejection(true);
+    try {
+      await rejectMenuChangeRequest(
+        accessToken,
+        rejectingRequest.request_id,
+        rejectionReason.trim(),
+      );
+      toast.success("Menu change request rejected. The customer has been notified.");
+      setRejectingRequest(null);
+      setRejectionReason("");
+      await loadRequests();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reject request.",
+      );
+    } finally {
+      setSubmittingRejection(false);
+    }
+  };
+
+  const filtered =
+    filterStatus === "All"
+      ? requests
+      : requests.filter((r) => r.status === filterStatus);
+
+  const pendingCount = requests.filter((r) => r.status === "Pending").length;
+
+  function formatDate(dateStr: string) {
+    if (!dateStr) return "—";
+    try {
+      return new Date(dateStr).toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  }
+
+  const statusBadge = (status: string) => {
+    if (status === "Pending")
+      return "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30";
+    if (status === "Approved")
+      return "bg-[#7A8C5C]/15 text-[#7A8C5C] border border-[#7A8C5C]/30";
+    return "bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30";
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="font-['Playfair_Display'] text-[#2C1810] text-2xl">
+            Menu Change Requests
+          </h2>
+          <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-0.5">
+            Review and process customer menu change requests
+          </p>
+        </div>
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2 bg-[#C8922A]/10 border border-[#C8922A]/30 px-4 py-2 rounded-full">
+            <Clock size={14} className="text-[#C8922A]" />
+            <span className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
+              {pendingCount} pending review
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex gap-1 bg-white rounded-2xl p-1.5 border border-[#C8922A]/10 w-fit">
+        {(["All", "Pending", "Approved", "Rejected"] as const).map((status) => (
+          <button
+            key={status}
+            onClick={() => setFilterStatus(status)}
+            className={`px-4 py-2 rounded-xl text-xs font-['Lato'] font-semibold transition-all cursor-pointer ${
+              filterStatus === status
+                ? "bg-[#2C1810] text-[#F5F0E8] shadow-sm"
+                : "text-[#2C1810]/50 hover:text-[#2C1810]"
+            }`}
+          >
+            {status}
+            {status === "Pending" && pendingCount > 0 && (
+              <span className="ml-1.5 bg-[#C8922A] text-white text-[10px] rounded-full px-1.5 py-0.5">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 size={28} className="animate-spin text-[#C8922A]" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-[#C8922A]/10 p-12 text-center">
+          <div className="w-14 h-14 rounded-full bg-[#C8922A]/10 flex items-center justify-center mx-auto mb-4">
+            <ChefHat size={24} className="text-[#C8922A]" />
+          </div>
+          <p className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+            No {filterStatus === "All" ? "" : filterStatus.toLowerCase()}{" "}
+            requests found
+          </p>
+          <p className="text-xs text-[#2C1810]/40 font-['Lato'] mt-1">
+            Menu change requests will appear here once submitted.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((req) => {
+            const menuItems: string[] =
+              typeof req.requested_menu_selections === "string"
+                ? JSON.parse(req.requested_menu_selections)
+                : Array.isArray(req.requested_menu_selections)
+                  ? req.requested_menu_selections
+                  : [];
+
+            return (
+              <div
+                key={req.request_id}
+                className="bg-white rounded-3xl border border-[#C8922A]/10 overflow-hidden shadow-sm"
+              >
+                {/* Card Header */}
+                <div className="bg-[#F5F0E8] px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#C8922A]/10">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-['Playfair_Display'] text-[#2C1810] font-semibold">
+                        {req.booking_reference || `#BK${String(req.booking_id).padStart(4, "0")}`}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-['Lato'] ${statusBadge(req.status)}`}>
+                        {req.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-0.5">
+                      {req.first_name} {req.last_name} · {req.email}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs font-['Lato'] text-[#2C1810]/50">
+                    <p>Event: <span className="text-[#2C1810] font-semibold">{formatDate(req.event_date ?? "")}</span></p>
+                    <p>Requested: {formatDate(req.created_at)}</p>
+                  </div>
+                </div>
+
+                {/* Card Body */}
+                <div className="px-6 py-4 space-y-4">
+                  {/* Package */}
+                  {req.package_name && (
+                    <div className="flex items-center gap-2 text-xs font-['Lato']">
+                      <Package size={13} className="text-[#C8922A]" />
+                      <span className="text-[#2C1810]/50">Package:</span>
+                      <span className="text-[#2C1810] font-semibold">{req.package_name}</span>
+                    </div>
+                  )}
+
+                  {/* Requested Menu Items */}
+                  <div>
+                    <p className="text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2 flex items-center gap-1.5">
+                      <ChefHat size={13} className="text-[#C8922A]" />
+                      Requested Menu Items ({menuItems.length})
+                    </p>
+                    {menuItems.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {menuItems.map((item) => (
+                          <span
+                            key={item}
+                            className="px-2.5 py-1 bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/20 rounded-lg text-xs font-['Lato'] font-medium"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#2C1810]/40 font-['Lato'] italic">No items specified.</p>
+                    )}
+                  </div>
+
+                  {/* Dietary Notes */}
+                  {req.dietary_notes && (
+                    <div className="p-3 bg-[#F5F0E8] rounded-xl border border-[#C8922A]/15">
+                      <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] mb-1 uppercase tracking-wider">Dietary / Allergy Notes</p>
+                      <p className="text-xs text-[#2C1810] font-['Lato']">{req.dietary_notes}</p>
+                    </div>
+                  )}
+
+                  {/* Rejection Reason (if rejected) */}
+                  {req.status === "Rejected" && req.rejection_reason && (
+                    <div className="p-3 bg-[#C4541A]/5 border border-[#C4541A]/20 rounded-xl">
+                      <p className="text-[10px] text-[#C4541A] font-['Lato'] uppercase tracking-wider mb-1">Rejection Reason</p>
+                      <p className="text-xs text-[#C4541A] font-['Lato']">{req.rejection_reason}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Actions — only for pending requests */}
+                {req.status === "Pending" && (
+                  <div className="px-6 py-4 border-t border-[#C8922A]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5">
+                    <button
+                      onClick={() => handleOpenRejectModal(req)}
+                      disabled={approvingId === req.request_id}
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <XCircle size={14} />
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleApprove(req.request_id)}
+                      disabled={approvingId === req.request_id}
+                      className="flex items-center gap-2 px-5 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-gradient-to-r from-[#7A8C5C] to-[#5E6E43] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                    >
+                      {approvingId === req.request_id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <CheckCircle size={13} />
+                      )}
+                      {approvingId === req.request_id ? "Approving..." : "Approve"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {rejectingRequest && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl border border-[#C8922A]/20">
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
+              <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                <XCircle className="text-[#C4541A]" size={18} />
+                Reject Menu Change Request
+              </h3>
+              <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
+                Booking {rejectingRequest.booking_reference || `#${rejectingRequest.booking_id}`}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                  Rejection Reason <span className="text-[#C4541A]">*</span>
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please explain why this menu change cannot be accommodated..."
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                />
+                <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
+                  This reason will be sent to the customer via notification and email.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+              <button
+                onClick={() => {
+                  setRejectingRequest(null);
+                  setRejectionReason("");
+                }}
+                disabled={submittingRejection}
+                className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReject}
+                disabled={submittingRejection || !rejectionReason.trim()}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {submittingRejection && <Loader2 size={14} className="animate-spin" />}
+                {submittingRejection ? "Submitting..." : "Confirm Rejection"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

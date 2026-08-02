@@ -83,7 +83,7 @@ export function Navbar() {
                   Dashboard
                 </Link>
                 <button
-                  className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-sm"
+                  className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-sm cursor-pointer"
                   onClick={logout}
                 >
                   <LogOut size={16} />
@@ -144,7 +144,7 @@ export function Navbar() {
                     setMobileOpen(false);
                     logout();
                   }}
-                  className="flex-1 text-center py-2 bg-red-950/20 border border-red-500/30 text-red-400 rounded-full text-sm font-['Lato']"
+                  className="flex-1 text-center py-2 bg-red-950/20 border border-red-500/30 text-red-400 rounded-full text-sm font-['Lato'] cursor-pointer"
                 >
                   Logout
                 </button>

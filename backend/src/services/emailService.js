@@ -671,3 +671,140 @@ export async function sendFeedbackReminderEmail(email, firstName, bookingDetails
   return sendBrevoEmail(email, `Share Your Feedback – Authentic Flavors by Chef Ramos`, html);
 }
 
+// ──────────────────────────────────────────
+// Menu Change Request Email Notifications
+// ──────────────────────────────────────────
+
+export async function sendMenuChangeRequestedAdminEmail(adminEmail, details) {
+  const { booking_reference, customer_name, event_date, requested_items } = details;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">Admin Portal</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">New Menu Change Request</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Customer <strong>${customer_name}</strong> submitted a menu change request for booking <strong>${booking_reference || ""}</strong>.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            <tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference || ""}</td></tr>
+            <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right;">${formattedDate}</td></tr>
+            <tr><td style="padding: 4px 0;">Requested Items:</td><td style="font-weight: bold; text-align: right;">${Array.isArray(requested_items) ? requested_items.join(", ") : requested_items}</td></tr>
+          </table>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Please log into the Admin Dashboard to review and approve or reject this request.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/admin" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Review Request in Admin Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(adminEmail, `Menu Change Request Pending: ${booking_reference || "Authentic Flavors"}`, html);
+}
+
+export async function sendMenuChangeApprovedCustomerEmail(email, firstName, details) {
+  const { booking_reference, event_date, updated_items } = details;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Menu Change Approved</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Your Menu Change Was Approved!</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Your requested menu changes for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) have been approved and updated in our system.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="font-size: 13px; color: #2C1810; margin: 0 0 8px;"><strong>Updated Menu Selections:</strong></p>
+          <p style="font-size: 13px; color: #7A8C5C; font-weight: bold; margin: 0;">${Array.isArray(updated_items) ? updated_items.join(", ") : updated_items}</p>
+        </div>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Menu Change Approved: ${booking_reference || "Authentic Flavors"}`, html);
+}
+
+export async function sendMenuChangeRejectedCustomerEmail(email, firstName, details, reason) {
+  const { booking_reference, event_date } = details;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #C4541A;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #C4541A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Menu Change Declined</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Menu Change Request Update</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Your menu change request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) could not be approved.
+        </p>
+        ${reason ? `
+        <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${reason}</p>
+        </div>` : ""}
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Go to Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Menu Change Update: Request Declined (${booking_reference || "Authentic Flavors"})`, html);
+}
+
+
