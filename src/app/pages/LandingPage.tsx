@@ -98,6 +98,10 @@ export function LandingPage() {
     null,
   );
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
   // Fetch announcements on mount
   useEffect(() => {
@@ -148,9 +152,15 @@ export function LandingPage() {
           event_date: toLocalDateStr(ev.event_date),
         }));
         setUpcomingEvents(events);
-        // Set selected date to first event if available
+        // Open the calendar on the nearest relevant event month.
         if (events.length > 0) {
-          setSelectedDate(events[0].event_date);
+          const today = new Date();
+          const todayKey = toLocalDateStr(today);
+          const nextEvent =
+            events.find((event) => event.event_date >= todayKey) ??
+            events[events.length - 1];
+          setSelectedDate(nextEvent.event_date);
+          setCalendarMonth(localDateFromStr(nextEvent.event_date));
         }
       } catch (error) {
         setUpcomingEventsError(
@@ -219,16 +229,16 @@ export function LandingPage() {
 
   const currentStats = getStatsDisplay();
 
-  // Calendar logic for upcoming events (dates are already normalized to YYYY-MM-DD)
-  const currentMonth = new Date();
+  // Calendar logic for events (dates are already normalized to YYYY-MM-DD)
+  const calendarAnchorDate = calendarMonth;
   const monthStart = new Date(
-    currentMonth.getFullYear(),
-    currentMonth.getMonth(),
+    calendarAnchorDate.getFullYear(),
+    calendarAnchorDate.getMonth(),
     1,
   );
   const daysInMonth = new Date(
-    currentMonth.getFullYear(),
-    currentMonth.getMonth() + 1,
+    calendarAnchorDate.getFullYear(),
+    calendarAnchorDate.getMonth() + 1,
     0,
   ).getDate();
   const firstDay = monthStart.getDay();
@@ -237,6 +247,19 @@ export function LandingPage() {
     year: "numeric",
   });
 
+  const goToPreviousMonth = () => {
+    setCalendarMonth(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() - 1, 1),
+    );
+  };
+
+  const goToNextMonth = () => {
+    setCalendarMonth(
+      (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
+    );
+  };
+
   // Get unique event dates from upcoming events
   const eventDates = upcomingEvents.map((event) => event.event_date);
 
@@ -244,11 +267,11 @@ export function LandingPage() {
     ...Array.from({ length: firstDay }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => {
       const day = index + 1;
-      const dateKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateKey = `${calendarAnchorDate.getFullYear()}-${String(calendarAnchorDate.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const hasEvent = eventDates.includes(dateKey);
       const dayOfWeek = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
+        calendarAnchorDate.getFullYear(),
+        calendarAnchorDate.getMonth(),
         day,
       ).getDay();
       const isClosed = dayOfWeek === 1;
@@ -606,6 +629,24 @@ export function LandingPage() {
                     {upcomingEvents.length} upcoming
                   </span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={goToPreviousMonth}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60"
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToNextMonth}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60"
+                    aria-label="Next month"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
               </div>
 
               <div className="mt-6 grid grid-cols-7 gap-2 text-center text-[10px] uppercase tracking-[0.25em] text-[#F5F0E8]/60">
@@ -616,13 +657,23 @@ export function LandingPage() {
                 )}
               </div>
 
-                <div className="mt-3 grid grid-cols-7 gap-2">
+              <div className="mt-3 grid grid-cols-7 gap-2">
                 {calendarDays.map((day, index) => (
                   <button
                     key={day ? day.dateKey : `empty-${index}`}
                     type="button"
                     disabled={!day || day.isClosed}
-                    onClick={() => day && !day.isClosed && setSelectedDate(day.dateKey)}
+                    onClick={() => {
+                      if (!day || day.isClosed) return;
+                      setSelectedDate(day.dateKey);
+                      setCalendarMonth(
+                        new Date(
+                          calendarAnchorDate.getFullYear(),
+                          calendarAnchorDate.getMonth(),
+                          1,
+                        ),
+                      );
+                    }}
                     title={day?.isClosed ? "Closed on Mondays" : undefined}
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day

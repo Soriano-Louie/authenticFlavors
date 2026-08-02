@@ -524,7 +524,7 @@ export async function getHomepageStatistics(_req, res) {
   }
 }
 
-// Upcoming Events
+// Upcoming events
 export async function getUpcomingEvents(_req, res) {
   try {
     const [rows] = await pool.query(
