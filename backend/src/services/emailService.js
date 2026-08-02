@@ -315,3 +315,359 @@ export async function sendPaymentOverdueNotice(
     html,
   );
 }
+
+// ──────────────────────────────────────────
+// Booking & Payment Lifecycle Email Notifications
+// ──────────────────────────────────────────
+
+export async function sendBookingSubmittedEmail(email, firstName, bookingDetails) {
+  const { booking_reference, event_date, package_name, guest_count } = bookingDetails;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Booking Request Received</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Thank you for choosing Authentic Flavors! Your booking request <strong>${booking_reference || ""}</strong> has been submitted successfully and is currently under review by our catering team.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            ${booking_reference ? `<tr><td style="padding: 4px 0;">Ref Number:</td><td style="font-weight: bold; text-align: right;">${booking_reference}</td></tr>` : ""}
+            ${package_name ? `<tr><td style="padding: 4px 0;">Package:</td><td style="font-weight: bold; text-align: right;">${package_name}</td></tr>` : ""}
+            <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right;">${formattedDate}</td></tr>
+            ${guest_count ? `<tr><td style="padding: 4px 0;">Guests:</td><td style="font-weight: bold; text-align: right;">${guest_count} pax</td></tr>` : ""}
+          </table>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          We will review your request shortly and notify you once it's confirmed.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Booking Request Received (${booking_reference || "Authentic Flavors"})`, html);
+}
+
+export async function sendBookingConfirmedEmail(email, firstName, bookingDetails) {
+  const { booking_reference, event_date, package_name } = bookingDetails;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Booking Confirmed</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Great news! Your booking is confirmed.</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          We are pleased to inform you that your booking <strong>${booking_reference || ""}</strong> has been officially confirmed by our admin team!
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            ${booking_reference ? `<tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference}</td></tr>` : ""}
+            ${package_name ? `<tr><td style="padding: 4px 0;">Package:</td><td style="font-weight: bold; text-align: right;">${package_name}</td></tr>` : ""}
+            <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right;">${formattedDate}</td></tr>
+          </table>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Please log into your dashboard to check your payment schedule and manage your event details.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Go to Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Booking Confirmed (${booking_reference || "Authentic Flavors"})`, html);
+}
+
+export async function sendBookingRejectedEmail(email, firstName, bookingDetails, reason) {
+  const { booking_reference, event_date } = bookingDetails;
+  const formattedDate = event_date ? new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }) : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #C4541A;">
+        <h2 style="color: #C4541A; font-size: 18px; margin: 0 0 12px;">Booking Status Update</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          We regret to inform you that your booking request <strong>${booking_reference || ""}</strong> could not be accepted at this time.
+        </p>
+        ${reason ? `
+        <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Reason:</strong> ${reason}</p>
+        </div>` : ""}
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          If you have questions or wish to pick an alternative date, please reach out to our team or submit a new request.
+        </p>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Booking Update: Request Declined (${booking_reference || "Authentic Flavors"})`, html);
+}
+
+export async function sendBookingCancelledEmail(email, firstName, bookingDetails, reason) {
+  const { booking_reference } = bookingDetails;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Booking Cancellation Notice</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Your booking <strong>${booking_reference || ""}</strong> has been cancelled.
+        </p>
+        ${reason ? `
+        <div style="background-color: #F5F0E8; padding: 12px 16px; margin: 16px 0; border-radius: 8px;">
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Cancellation Details:</strong> ${reason}</p>
+        </div>` : ""}
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Go to Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Booking Cancelled (${booking_reference || "Authentic Flavors"})`, html);
+}
+
+export async function sendPaymentApprovedEmail(email, firstName, paymentDetails) {
+  const { payment_type, amount, booking_reference } = paymentDetails;
+  const formattedAmount = `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  const paymentTypeLabel =
+    payment_type === "Reservation"
+      ? "Reservation Fee"
+      : payment_type === "DownPayment"
+        ? "Down Payment"
+        : "Final Payment";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Payment Approved</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Payment Received & Verified</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Your payment of <strong>${formattedAmount}</strong> for <strong>${paymentTypeLabel}</strong> has been successfully verified and approved.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            <tr><td style="padding: 4px 0;">Payment Type:</td><td style="font-weight: bold; text-align: right;">${paymentTypeLabel}</td></tr>
+            <tr><td style="padding: 4px 0;">Amount Paid:</td><td style="font-weight: bold; text-align: right; color: #7A8C5C;">${formattedAmount}</td></tr>
+            ${booking_reference ? `<tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference}</td></tr>` : ""}
+          </table>
+        </div>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Account Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `${paymentTypeLabel} Payment Approved – Authentic Flavors`, html);
+}
+
+export async function sendPaymentRejectedEmail(email, firstName, paymentDetails, reason) {
+  const { payment_type, amount, booking_reference } = paymentDetails;
+  const formattedAmount = `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  const paymentTypeLabel =
+    payment_type === "Reservation"
+      ? "Reservation Fee"
+      : payment_type === "DownPayment"
+        ? "Down Payment"
+        : "Final Payment";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #C4541A;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #C4541A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Payment Rejected</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Action Required: Payment Rejected</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Your receipt for <strong>${paymentTypeLabel}</strong> (${formattedAmount}) could not be verified by our team.
+        </p>
+        ${reason ? `
+        <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${reason}</p>
+        </div>` : ""}
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Please log into your dashboard and upload a valid payment proof.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C4541A, #8B3A1A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Re-upload Receipt
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Payment Rejected: ${paymentTypeLabel} – Authentic Flavors`, html);
+}
+
+export async function sendEventReminderEmail(email, firstName, bookingDetails, daysBefore) {
+  const { booking_reference, event_date, package_name } = bookingDetails;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Upcoming Event Reminder</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          This is an exciting reminder that your catering event with Authentic Flavors is coming up in <strong>${daysBefore} day${daysBefore > 1 ? "s" : ""}</strong>!
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            ${booking_reference ? `<tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference}</td></tr>` : ""}
+            ${package_name ? `<tr><td style="padding: 4px 0;">Package:</td><td style="font-weight: bold; text-align: right;">${package_name}</td></tr>` : ""}
+            <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right; color: #C8922A;">${formattedDate}</td></tr>
+          </table>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Our culinary team is preparing to deliver an unforgettable dining experience for you and your guests.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Event Details
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Event Reminder: ${daysBefore} Day${daysBefore > 1 ? "s" : ""} to Go! – Authentic Flavors`, html);
+}
+
+export async function sendFeedbackReminderEmail(email, firstName, bookingDetails) {
+  const { booking_reference, package_name } = bookingDetails;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">How Was Your Catering Experience?</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Hello${firstName ? ` ${firstName}` : ""},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          We hope you and your guests loved the food and service from Authentic Flavors! Your feedback means the world to Chef Ramos and our team.
+        </p>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 16px;">
+          Please take a moment to leave a review and let us know about your experience.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/feedback" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Leave Feedback & Rating
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(email, `Share Your Feedback – Authentic Flavors by Chef Ramos`, html);
+}
+

@@ -8,6 +8,7 @@ import { bookingRouter } from "./routes/bookingRoutes.js";
 import { paymentRouter } from "./routes/paymentRoutes.js";
 import { feedbackRouter } from "./routes/feedbackRoutes.js";
 import { chatbotRouter } from "./routes/chatbotRoutes.js";
+import { notificationRouter } from "./routes/notificationRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -48,6 +49,7 @@ export function createApp() {
   app.use("/api/payments", paymentRouter);
   app.use("/api", feedbackRouter);
   app.use("/api", chatbotRouter);
+  app.use("/api", notificationRouter);
 
   app.use((err, _req, res, _next) => {
     console.error(err);

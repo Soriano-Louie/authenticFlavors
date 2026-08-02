@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { Menu, X, User, LogOut } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationCenter } from "./NotificationCenter";
 
 const NAV_LINKS = [
   { label: "Home", path: "/" },
@@ -73,6 +74,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-3">
             {loggedIn ? (
               <>
+                <NotificationCenter />
                 <Link
                   to={user?.role === "Admin" ? "/admin" : "/dashboard"}
                   className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-sm font-['Lato']"

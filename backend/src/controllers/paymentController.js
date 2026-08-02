@@ -7,7 +7,10 @@ import {
   sendUpcomingPaymentReminder,
   sendPaymentDueToday,
   sendPaymentOverdueNotice,
+  sendPaymentApprovedEmail,
+  sendPaymentRejectedEmail,
 } from "../services/emailService.js";
+import { createNotification } from "../services/notificationService.js";
 
 // ──────────────────────────────────────────
 // Auto-update overdue payments (run on every payment fetch)
@@ -151,6 +154,22 @@ export async function uploadReceiptFile(req, res) {
       [result.secure_url, result.public_id, payment_id],
     );
 
+    const paymentTypeLabel =
+      payment.payment_type === "Reservation"
+        ? "Reservation Fee"
+        : payment.payment_type === "DownPayment"
+          ? "Down Payment"
+          : "Final Payment";
+
+    createNotification({
+      userId,
+      bookingId: payment.booking_id,
+      type: `payment_verification_${payment.payment_type.toLowerCase()}`,
+      title: `${paymentTypeLabel} Received`,
+      message: `Your ${paymentTypeLabel} receipt has been received and is currently under verification by the admin.`,
+      link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+    }).catch((err) => console.error("Notification creation failed:", err));
+
     res.status(200).json({
       message: "Receipt uploaded successfully. Awaiting admin verification.",
       payment_status: "For_Verification",
@@ -237,6 +256,22 @@ export async function uploadReceipt(req, res) {
       [receipt_url, receipt_public_id || null, payment_id],
     );
 
+    const paymentTypeLabel =
+      payment.payment_type === "Reservation"
+        ? "Reservation Fee"
+        : payment.payment_type === "DownPayment"
+          ? "Down Payment"
+          : "Final Payment";
+
+    createNotification({
+      userId,
+      bookingId: payment.booking_id,
+      type: `payment_verification_${payment.payment_type.toLowerCase()}`,
+      title: `${paymentTypeLabel} Received`,
+      message: `Your ${paymentTypeLabel} receipt has been received and is currently under verification by the admin.`,
+      link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+    }).catch((err) => console.error("Notification creation failed:", err));
+
     res.status(200).json({
       message: "Receipt uploaded successfully. Awaiting admin verification.",
       payment_status: "For_Verification",
@@ -285,9 +320,11 @@ export async function verifyReceipt(req, res) {
 
     // Get payment details
     const [payments] = await connection.query(
-      `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status
+      `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status,
+              b.booking_reference, b.ai_booking_reference, u.email, u.first_name
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_id = ?`,
       [paymentId],
     );
@@ -310,6 +347,15 @@ export async function verifyReceipt(req, res) {
         },
       });
     }
+
+    const paymentTypeLabel =
+      payment.payment_type === "Reservation"
+        ? "Reservation Fee"
+        : payment.payment_type === "DownPayment"
+          ? "Down Payment"
+          : "Final Payment";
+    const refStr = payment.booking_reference || (payment.ai_booking_reference ? `#AF-${payment.ai_booking_reference}` : `#BK${String(payment.booking_id).padStart(4, "0")}`);
+    const formattedAmount = `₱${Number(payment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
     if (action === "approve") {
       const now = new Date();
@@ -358,6 +404,43 @@ export async function verifyReceipt(req, res) {
         [newBookingStatus, newAmountPaid, newRemaining, payment.booking_id],
       );
 
+      // 1. Trigger payment approval notification & Brevo email
+      createNotification({
+        userId: payment.booking_user_id,
+        bookingId: payment.booking_id,
+        type: `payment_approved_${payment.payment_type.toLowerCase()}`,
+        title: `${paymentTypeLabel} Approved ✓`,
+        message: `Your payment of ${formattedAmount} for ${paymentTypeLabel} (${refStr}) has been verified and approved.`,
+        link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+        sendEmailFn: () =>
+          sendPaymentApprovedEmail(payment.email, payment.first_name, {
+            payment_type: payment.payment_type,
+            amount: payment.amount,
+            booking_reference: refStr,
+          }),
+      }).catch((err) => console.error("Notification creation failed:", err));
+
+      // 2. Trigger next payment due notification if applicable
+      if (payment.payment_type === "Reservation") {
+        createNotification({
+          userId: payment.booking_user_id,
+          bookingId: payment.booking_id,
+          type: "down_payment_due",
+          title: "Down Payment Is Now Due",
+          message: `Your reservation fee is approved! The down payment for booking ${refStr} is now due. Please view your payment schedule.`,
+          link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+        }).catch((err) => console.error("Notification creation failed:", err));
+      } else if (payment.payment_type === "DownPayment") {
+        createNotification({
+          userId: payment.booking_user_id,
+          bookingId: payment.booking_id,
+          type: "final_payment_due",
+          title: "Final Payment Is Now Due",
+          message: `Your down payment is approved! The final payment for booking ${refStr} is now due. Please view your payment schedule.`,
+          link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+        }).catch((err) => console.error("Notification creation failed:", err));
+      }
+
       res.status(200).json({
         message: "Payment approved successfully.",
         payment_status: "Paid",
@@ -381,6 +464,21 @@ export async function verifyReceipt(req, res) {
           paymentId,
         ],
       );
+
+      createNotification({
+        userId: payment.booking_user_id,
+        bookingId: payment.booking_id,
+        type: `payment_rejected_${payment.payment_type.toLowerCase()}`,
+        title: `${paymentTypeLabel} Rejected`,
+        message: `Your receipt for ${paymentTypeLabel} (${refStr}) was rejected.${admin_remarks ? ` Reason: ${admin_remarks}` : ""}`,
+        link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+        sendEmailFn: () =>
+          sendPaymentRejectedEmail(payment.email, payment.first_name, {
+            payment_type: payment.payment_type,
+            amount: payment.amount,
+            booking_reference: refStr,
+          }, admin_remarks),
+      }).catch((err) => console.error("Notification creation failed:", err));
 
       res.status(200).json({
         message: "Payment rejected. Customer can upload a new receipt.",

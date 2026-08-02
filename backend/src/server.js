@@ -3,6 +3,7 @@ import { env } from "./config/env.js";
 import { testDbConnection } from "./db/pool.js";
 import { seedDatabaseIfEmpty } from "./db/seed.js";
 import { startSessionCleanupScheduler } from "./services/sessionCleanupService.js";
+import { startReminderScheduler } from "./services/reminderSchedulerService.js";
 
 async function startServer() {
   await testDbConnection();
@@ -17,6 +18,10 @@ async function startServer() {
   // Self-healing: auto-cancel stale AI booking sessions/conversations hourly
   startSessionCleanupScheduler();
   console.log("[SessionCleanup] Hourly scheduler started.");
+
+  // Automated notification and email reminder scheduler
+  startReminderScheduler();
+  console.log("[ReminderScheduler] Automated reminder scheduler started.");
 }
 
 startServer().catch((error) => {

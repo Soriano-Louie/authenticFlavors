@@ -10,11 +10,8 @@ import {
   type PaymentInstruction,
 } from "../api/paymentApi";
 import { checkFeedbackExists } from "../api/feedbackApi";
-import {
-  requestCancellation,
-  getCancellationDetails,
-  type CancellationDetails,
-} from "../api/bookingApi";
+import { requestCancellation, getCancellationDetails, type CancellationDetails } from "../api/bookingApi";
+import { NotificationCenter } from "../components/NotificationCenter";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -891,6 +888,9 @@ export function CustomerDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationCenter
+              onSelectTab={(tab) => setActiveTab(tab)}
+            />
             <Link
               to="/package-selection"
               className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"

@@ -3,6 +3,13 @@ import {
   getPhilippineDateString,
   toPhilippineDateString,
 } from "../utils/timezone.js";
+import { createNotification } from "../services/notificationService.js";
+import {
+  sendBookingSubmittedEmail,
+  sendBookingConfirmedEmail,
+  sendBookingRejectedEmail,
+  sendBookingCancelledEmail,
+} from "../services/emailService.js";
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
@@ -283,6 +290,23 @@ export async function createBooking(req, res) {
 
     await connection.commit();
 
+    // Trigger notification and Brevo email
+    const refStr = booking_reference || (ai_booking_reference ? `#AF-${ai_booking_reference}` : `#BK${String(booking_id).padStart(4, "0")}`);
+    createNotification({
+      userId,
+      bookingId: booking_id,
+      type: "booking_submitted",
+      title: "Booking Request Submitted",
+      message: `Your booking request (${refStr}) has been successfully submitted and is under review.`,
+      link: `/dashboard?tab=events&bookingId=${booking_id}`,
+      sendEmailFn: () =>
+        sendBookingSubmittedEmail(contact_email, contact_name, {
+          booking_reference: refStr,
+          event_date,
+          guest_count: number_of_pax,
+        }),
+    }).catch((err) => console.error("Notification creation failed:", err));
+
     res.status(201).json({
       message: "Booking submitted successfully.",
       booking_id,
@@ -477,7 +501,12 @@ export async function verifyBooking(req, res) {
     const { admin_remarks } = req.body;
 
     const [bookings] = await connection.query(
-      "SELECT booking_id, booking_status, amount_paid, remaining_balance, total_price FROM bookings WHERE booking_id = ? LIMIT 1",
+      `SELECT b.booking_id, b.user_id, b.booking_status, b.amount_paid, b.remaining_balance, b.total_price,
+              b.booking_reference, b.ai_booking_reference, b.event_date, u.email, u.first_name, p.package_name
+       FROM bookings b
+       JOIN users u ON b.user_id = u.user_id
+       LEFT JOIN packages p ON b.package_id = p.package_id
+       WHERE b.booking_id = ? LIMIT 1`,
       [bookingId],
     );
 
@@ -516,6 +545,22 @@ export async function verifyBooking(req, res) {
     );
 
     await connection.commit();
+
+    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    createNotification({
+      userId: booking.user_id,
+      bookingId,
+      type: "booking_confirmed",
+      title: "Booking Confirmed! 🎉",
+      message: `Your booking (${refStr}) has been confirmed by the administrator.`,
+      link: `/dashboard?tab=events&bookingId=${bookingId}`,
+      sendEmailFn: () =>
+        sendBookingConfirmedEmail(booking.email, booking.first_name, {
+          booking_reference: refStr,
+          event_date: booking.event_date,
+          package_name: booking.package_name,
+        }),
+    }).catch((err) => console.error("Notification creation failed:", err));
 
     res.status(200).json({
       message: "Booking verified successfully.",
@@ -727,7 +772,10 @@ export async function rejectBooking(req, res) {
     const { admin_remarks } = req.body;
 
     const [bookings] = await connection.query(
-      "SELECT booking_id, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
+      `SELECT b.booking_id, b.user_id, b.booking_status, b.booking_reference, b.ai_booking_reference, b.event_date, u.email, u.first_name
+       FROM bookings b
+       JOIN users u ON b.user_id = u.user_id
+       WHERE b.booking_id = ? LIMIT 1`,
       [bookingId],
     );
 
@@ -758,6 +806,21 @@ export async function rejectBooking(req, res) {
     );
 
     await connection.commit();
+
+    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    createNotification({
+      userId: booking.user_id,
+      bookingId,
+      type: "booking_rejected",
+      title: "Booking Request Rejected",
+      message: `Your booking request (${refStr}) was rejected.${admin_remarks ? ` Reason: ${admin_remarks}` : ""}`,
+      link: `/dashboard?tab=events&bookingId=${bookingId}`,
+      sendEmailFn: () =>
+        sendBookingRejectedEmail(booking.email, booking.first_name, {
+          booking_reference: refStr,
+          event_date: booking.event_date,
+        }, admin_remarks),
+    }).catch((err) => console.error("Notification creation failed:", err));
 
     res.status(200).json({
       message: "Booking rejected successfully.",
@@ -913,6 +976,26 @@ export async function requestCancellation(req, res) {
     }
 
     await connection.commit();
+
+    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    const [userRows] = await pool.query(
+      "SELECT email, first_name FROM users WHERE user_id = ?",
+      [userId],
+    );
+    const user = userRows[0];
+
+    createNotification({
+      userId,
+      bookingId,
+      type: "booking_cancelled",
+      title: "Booking Cancelled",
+      message: `Your booking (${refStr}) has been cancelled.`,
+      link: `/dashboard?tab=events&bookingId=${bookingId}`,
+      sendEmailFn: () =>
+        sendBookingCancelledEmail(user?.email, user?.first_name, {
+          booking_reference: refStr,
+        }, cancellation_reason),
+    }).catch((err) => console.error("Notification creation failed:", err));
 
     // Prepare response
     const responseData = {

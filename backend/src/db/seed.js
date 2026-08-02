@@ -310,6 +310,27 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] password_reset_tokens table ensured.");
 
+    // 0.6 Create notifications table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        notification_id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        booking_id INT NULL,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        link VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at DATETIME NULL,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE,
+        INDEX idx_user_read (user_id, is_read),
+        INDEX idx_user_created (user_id, created_at)
+      )
+    `);
+    console.log("[MIGRATION] notifications table ensured.");
+
     // 0.5 Ensure account_status ENUM includes 'Pending'
     const [accountStatusCol] = await connection.query(
       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",
