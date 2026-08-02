@@ -337,7 +337,7 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 | `GET`  | `/event-types`              | Public | List event types          |
 | `GET`  | `/venue-setups`             | Public | List venue setup options  |
 | `GET`  | `/homepage/statistics`      | Public | Get homepage statistics   |
-| `GET`  | `/homepage/upcoming-events` | Public | Get upcoming events       |
+| `GET`  | `/homepage/upcoming-events` | Public | Get upcoming reserved and confirmed events |
 
 ### Admin Package Endpoints (`/api/admin`)
 
@@ -566,6 +566,7 @@ Set the following on the Render dashboard under the backend service's Environmen
 - [x] Database migration to add `'Overdue'` to `payments.payment_status` ENUM
 - [x] Package browsing and selection
 - [x] Booking creation with menu selection
+- [x] Landing page upcoming events calendar with month navigation and visibility for future Reserved / Confirmed bookings
 - [x] Customer booking cancellation with automated penalty calculation
 - [x] AI-powered chatbot integration
 - [x] Transactional email (Brevo HTTP API)

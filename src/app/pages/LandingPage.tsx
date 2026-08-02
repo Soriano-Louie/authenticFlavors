@@ -249,8 +249,7 @@ export function LandingPage() {
 
   const goToPreviousMonth = () => {
     setCalendarMonth(
-      (current) =>
-        new Date(current.getFullYear(), current.getMonth() - 1, 1),
+      (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
     );
   };
 
