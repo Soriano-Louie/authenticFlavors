@@ -17,12 +17,14 @@ export interface NotificationsResponse {
   total_count: number;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const API_BASE_URL =
+  (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
+  "https://authenticflavors.onrender.com";
 
 export async function fetchNotifications(
   token: string,
 ): Promise<NotificationsResponse> {
-  const response = await fetch(`${API_BASE}/notifications`, {
+  const response = await fetch(`${API_BASE_URL}/api/notifications`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -30,7 +32,28 @@ export async function fetchNotifications(
   });
 
   if (!response.ok) {
+    const text = await response.text();
+    console.error("Failed to fetch notifications:", response.status, text);
     throw new Error("Failed to fetch notifications");
+  }
+
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    const text = await response.text();
+    console.error("Non-JSON response:", text);
+
+    // Check if we're getting HTML (indicates backend is not running or proxy issue)
+    if (
+      text.trim().startsWith("<!DOCTYPE") ||
+      text.trim().startsWith("<html")
+    ) {
+      throw new Error(
+        "Unable to connect to backend server. Please ensure the backend is running on port 4000. " +
+          "Run 'npm run dev:backend' in a separate terminal.",
+      );
+    }
+
+    throw new Error("Invalid response format from server");
   }
 
   return response.json();
@@ -40,13 +63,16 @@ export async function markNotificationRead(
   token: string,
   notificationId: number,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const response = await fetch(
+    `${API_BASE_URL}/api/notifications/${notificationId}/read`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 
   if (!response.ok) {
     throw new Error("Failed to mark notification as read");
@@ -54,7 +80,7 @@ export async function markNotificationRead(
 }
 
 export async function markAllNotificationsRead(token: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/notifications/read-all`, {
+  const response = await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -71,13 +97,16 @@ export async function deleteNotification(
   token: string,
   notificationId: number,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/notifications/${notificationId}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const response = await fetch(
+    `${API_BASE_URL}/api/notifications/${notificationId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 
   if (!response.ok) {
     throw new Error("Failed to delete notification");
