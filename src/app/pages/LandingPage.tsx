@@ -511,7 +511,8 @@ export function LandingPage() {
                       {ann.content}
                     </p>
                     <p className="mt-3 text-xs uppercase tracking-[0.22em] text-[#F5F0E8]/45 font-['Lato']">
-                      Published {new Date(ann.publish_date).toLocaleDateString()}
+                      Published{" "}
+                      {new Date(ann.publish_date).toLocaleDateString()}
                     </p>
                   </div>
                 </div>

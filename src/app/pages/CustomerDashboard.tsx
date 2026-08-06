@@ -223,7 +223,7 @@ const MOCK_PAYMENT_INSTRUCTIONS: PaymentInstruction[] = [
 ];
 
 export function CustomerDashboard() {
-  const { user, accessToken, updateProfile } = useAuth();
+  const { user, accessToken, updateProfile, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
 
@@ -754,7 +754,6 @@ export function CustomerDashboard() {
   const handleConfirmLogout = async () => {
     setLoggingOut(true);
     try {
-      const { logout } = useAuth();
       await logout();
       toast.success("Logged out successfully");
       navigate("/");
