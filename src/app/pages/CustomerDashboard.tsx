@@ -10,13 +10,22 @@ import {
   type PaymentInstruction,
 } from "../api/paymentApi";
 import { checkFeedbackExists } from "../api/feedbackApi";
-import { requestCancellation, getCancellationDetails, type CancellationDetails } from "../api/bookingApi";
+import {
+  requestCancellation,
+  getCancellationDetails,
+  type CancellationDetails,
+} from "../api/bookingApi";
 import {
   submitMenuChangeRequest,
   getBookingMenuChangeRequests,
   type MenuChangeRequest,
 } from "../api/menuChangeApi";
-import { getMenuCategories, getMenuItems, type MenuCategory, type MenuItem } from "../api/packageApi";
+import {
+  getMenuCategories,
+  getMenuItems,
+  type MenuCategory,
+  type MenuItem,
+} from "../api/packageApi";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { toast } from "sonner";
 import {
@@ -36,6 +45,9 @@ import {
   Utensils,
   Edit3,
   Check,
+  LogOut,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 
 const TABS = [
@@ -452,14 +464,18 @@ export function CustomerDashboard() {
 
   // Menu Change Request state
   const [showMenuChangeModal, setShowMenuChangeModal] = useState(false);
-  const [menuChangeBooking, setMenuChangeBooking] = useState<Booking | null>(null);
+  const [menuChangeBooking, setMenuChangeBooking] = useState<Booking | null>(
+    null,
+  );
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedMenuItems, setSelectedMenuItems] = useState<string[]>([]);
   const [menuDietaryNotes, setMenuDietaryNotes] = useState<string>("");
   const [submittingMenuChange, setSubmittingMenuChange] = useState(false);
   const [loadingMenuData, setLoadingMenuData] = useState(false);
-  const [pendingMenuRequests, setPendingMenuRequests] = useState<Record<number, MenuChangeRequest | null>>({});
+  const [pendingMenuRequests, setPendingMenuRequests] = useState<
+    Record<number, MenuChangeRequest | null>
+  >({});
 
   const [uploadingPaymentId, setUploadingPaymentId] = useState<number | null>(
     null,
@@ -472,13 +488,25 @@ export function CustomerDashboard() {
 
   // Cancellation state
   const [showCancellationModal, setShowCancellationModal] = useState(false);
-  const [cancellationBookingId, setCancellationBookingId] = useState<number | null>(null);
+  const [cancellationBookingId, setCancellationBookingId] = useState<
+    number | null
+  >(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancellationDetails, setCancellationDetails] =
     useState<CancellationDetails | null>(null);
   const [loadingCancellationDetails, setLoadingCancellationDetails] =
     useState(false);
   const [processingCancellation, setProcessingCancellation] = useState(false);
+
+  // Receipt viewing state
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(
+    null,
+  );
+
+  // Logout state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handlePayNow = async (paymentId: number, bookingId: number) => {
     try {
@@ -525,7 +553,11 @@ export function CustomerDashboard() {
 
   // Load cancellation details when modal opens
   useEffect(() => {
-    if (showCancellationModal && cancellationBookingId && !cancellationDetails) {
+    if (
+      showCancellationModal &&
+      cancellationBookingId &&
+      !cancellationDetails
+    ) {
       loadCancellationDetails();
     }
   }, [showCancellationModal, cancellationBookingId]);
@@ -554,7 +586,9 @@ export function CustomerDashboard() {
         cancellationReason || undefined,
       );
 
-      toast.success("Booking cancelled successfully. Check your email for details.");
+      toast.success(
+        "Booking cancelled successfully. Check your email for details.",
+      );
 
       // Close modal and refresh bookings
       setShowCancellationModal(false);
@@ -707,6 +741,34 @@ export function CustomerDashboard() {
       setUploadingPaymentId(null);
     }
   };
+
+  const handleViewReceipt = (receiptUrl: string) => {
+    setSelectedReceiptUrl(receiptUrl);
+    setShowReceiptModal(true);
+  };
+
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    try {
+      const { logout } = useAuth();
+      await logout();
+      toast.success("Logged out successfully");
+      navigate("/");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to logout. Please try again.",
+      );
+    } finally {
+      setLoggingOut(false);
+      setShowLogoutConfirm(false);
+    }
+  };
   const renderPaymentSchedule = (booking: Booking) => {
     const payments = paymentsByBooking[booking.booking_id] || [];
     if (payments.length === 0) {
@@ -770,15 +832,19 @@ export function CustomerDashboard() {
         {/* Cancellation Policy Warning */}
         {canCancel && (
           <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl p-3 mb-3 flex items-start gap-3">
-            <AlertTriangle size={18} className="text-[#C8922A] shrink-0 mt-0.5" />
+            <AlertTriangle
+              size={18}
+              className="text-[#C8922A] shrink-0 mt-0.5"
+            />
             <div>
               <p className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
                 Cancellation Policy
               </p>
-              <p className="text-[10px] font-['Lato'] text-[#2C1810]/70 mt-0.5">
-                <strong>≥5 days before event:</strong> Reservation fee (₱5,000) forfeited
+              <p className="text-xs font-['Lato'] text-[#2C1810]/70 mt-0.5">
+                <strong>≥5 days before event:</strong> Reservation fee (₱5,000)
+                forfeited
                 <br />
-                 <strong>&lt;5 days before event:</strong> 50% of total price
+                <strong>&lt;5 days before event:</strong> 50% of total price
                 <br />
                 <strong>1 day before event:</strong> 100% of total price
               </p>
@@ -794,7 +860,7 @@ export function CustomerDashboard() {
               <p className="text-xs font-['Lato'] font-semibold text-[#C4541A]">
                 Overdue Payment Alert
               </p>
-              <p className="text-[10px] font-['Lato'] text-[#C4541A]/80 mt-0.5">
+              <p className="text-xs font-['Lato'] text-[#C4541A]/80 mt-0.5">
                 One or more payments are overdue. Please settle immediately to
                 avoid cancellation of your booking.
               </p>
@@ -826,7 +892,7 @@ export function CustomerDashboard() {
                     </div>
                     <div className="flex items-center gap-2 self-start sm:self-auto">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                        className={`px-2.5 py-0.5 rounded-full text-xs ${statusInfo.colorClass}`}
                       >
                         {statusInfo.label}
                       </span>
@@ -838,7 +904,7 @@ export function CustomerDashboard() {
                               booking.booking_id,
                             )
                           }
-                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
                         >
                           Pay Now
                         </button>
@@ -847,10 +913,37 @@ export function CustomerDashboard() {
                   </div>
                   {statusInfo.message && (
                     <p
-                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                      className={`text-xs font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
                     >
                       {statusInfo.message}
                     </p>
+                  )}
+                  {/* Receipt Thumbnail - Show if receipt exists */}
+                  {reservation.receipt_url && (
+                    <div className="mt-2 pt-2 border-t border-[#C8922A]/10">
+                      <p className="text-xs font-['Lato'] text-[#2C1810]/60 mb-1.5">
+                        Uploaded Receipt:
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={reservation.receipt_url}
+                          alt="Payment Receipt"
+                          className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"
+                          onClick={() =>
+                            handleViewReceipt(reservation.receipt_url!)
+                          }
+                        />
+                        <button
+                          onClick={() =>
+                            handleViewReceipt(reservation.receipt_url!)
+                          }
+                          className="flex items-center gap-1 px-3 py-1.5 bg-[#C8922A]/10 hover:bg-[#C8922A]/20 text-[#C8922A] rounded-full text-xs font-['Lato'] transition-colors cursor-pointer"
+                        >
+                          <Eye size={12} />
+                          View Full Size
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               );
@@ -880,7 +973,7 @@ export function CustomerDashboard() {
                     </div>
                     <div className="flex items-center gap-2 self-start sm:self-auto">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                        className={`px-2.5 py-0.5 rounded-full text-xs ${statusInfo.colorClass}`}
                       >
                         {statusInfo.label}
                       </span>
@@ -893,7 +986,7 @@ export function CustomerDashboard() {
                               booking.booking_id,
                             )
                           }
-                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                         >
                           Pay Now
                         </button>
@@ -902,7 +995,7 @@ export function CustomerDashboard() {
                   </div>
                   {statusInfo.message && (
                     <p
-                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                      className={`text-xs font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
                     >
                       {statusInfo.message}
                     </p>
@@ -935,7 +1028,7 @@ export function CustomerDashboard() {
                     </div>
                     <div className="flex items-center gap-2 self-start sm:self-auto">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${statusInfo.colorClass}`}
+                        className={`px-2.5 py-0.5 rounded-full text-xs ${statusInfo.colorClass}`}
                       >
                         {statusInfo.label}
                       </span>
@@ -948,7 +1041,7 @@ export function CustomerDashboard() {
                               booking.booking_id,
                             )
                           }
-                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                         >
                           Pay Now
                         </button>
@@ -957,7 +1050,7 @@ export function CustomerDashboard() {
                   </div>
                   {statusInfo.message && (
                     <p
-                      className={`text-[10px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                      className={`text-xs font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
                     >
                       {statusInfo.message}
                     </p>
@@ -982,8 +1075,10 @@ export function CustomerDashboard() {
             eventDate.setHours(0, 0, 0, 0);
             const diffTime = eventDate.getTime() - today.getTime();
             const daysBeforeEvent = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            const isEligibleForMenuChange = isConfirmed && daysBeforeEvent >= 14;
-            const existingPendingRequest = pendingMenuRequests[booking.booking_id];
+            const isEligibleForMenuChange =
+              isConfirmed && daysBeforeEvent >= 14;
+            const existingPendingRequest =
+              pendingMenuRequests[booking.booking_id];
 
             return (
               <div className="mt-4 pt-4 border-t border-[#C8922A]/10 space-y-2">
@@ -992,12 +1087,57 @@ export function CustomerDashboard() {
                     <span className="flex items-center gap-1.5 font-semibold">
                       <Clock size={14} /> Menu Change Request Pending Approval
                     </span>
-                    <span className="text-[10px] text-[#2C1810]/60">
-                      Requested on {new Date(existingPendingRequest.created_at).toLocaleDateString()}
+                    <span className="text-xs text-[#2C1810]/60">
+                      Requested on{" "}
+                      {new Date(
+                        existingPendingRequest.created_at,
+                      ).toLocaleDateString()}
                     </span>
                   </div>
                 ) : (
                   <div>
+                    {/* Eligibility Info Box */}
+                    {!isEligibleForMenuChange && (
+                      <div className="mb-2 p-3 bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl">
+                        <p className="text-xs font-['Lato'] text-[#2C1810]/70 mb-1.5">
+                          <strong>Menu Change Requirements:</strong>
+                        </p>
+                        <ul className="text-xs font-['Lato'] text-[#2C1810]/60 space-y-1 ml-3 list-disc">
+                          <li
+                            className={
+                              isConfirmed ? "text-[#7A8C5C]" : "text-[#C4541A]"
+                            }
+                          >
+                            Booking status:{" "}
+                            <strong>{booking.booking_status}</strong>
+                            {!isConfirmed && " (must be Confirmed)"}
+                          </li>
+                          <li
+                            className={
+                              daysBeforeEvent >= 14
+                                ? "text-[#7A8C5C]"
+                                : "text-[#C4541A]"
+                            }
+                          >
+                            Days until event:{" "}
+                            <strong>{daysBeforeEvent} days</strong>
+                            {daysBeforeEvent < 14 && " (must be 14+ days)"}
+                          </li>
+                        </ul>
+                        {!isConfirmed && (
+                          <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 italic">
+                            Note: Menu changes are only available for Confirmed
+                            bookings. Complete your down payment to confirm your
+                            booking.
+                          </p>
+                        )}
+                        {isConfirmed && daysBeforeEvent < 14 && (
+                          <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 italic">
+                            Note: The 14-day window for menu changes has passed.
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <button
                       disabled={!isEligibleForMenuChange}
                       onClick={() => handleOpenMenuChangeModal(booking)}
@@ -1011,8 +1151,9 @@ export function CustomerDashboard() {
                       Request Menu Change
                     </button>
                     {!isEligibleForMenuChange && isConfirmed && (
-                      <p className="text-[11px] font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
-                        Menu changes are only allowed until 14 days before the scheduled event.
+                      <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
+                        Menu changes are only allowed until 14 days before the
+                        scheduled event.
                       </p>
                     )}
                   </div>
@@ -1059,9 +1200,7 @@ export function CustomerDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <NotificationCenter
-              onSelectTab={(tab) => setActiveTab(tab)}
-            />
+            <NotificationCenter onSelectTab={(tab) => setActiveTab(tab)} />
             <Link
               to="/package-selection"
               className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"
@@ -1223,8 +1362,9 @@ export function CustomerDashboard() {
                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} · {formatTime(ev.start_time)} ·{" "}
-                              {ev.number_of_pax} guests
+                              {formatDate(ev.event_date)} ·{" "}
+                              {formatTime(ev.start_time)} · {ev.number_of_pax}{" "}
+                              guests
                             </p>
                           </div>
                           <span
@@ -1272,7 +1412,8 @@ export function CustomerDashboard() {
                               {ev.package_name || getBookingReference(ev)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} at {formatTime(ev.start_time)}
+                              {formatDate(ev.event_date)} at{" "}
+                              {formatTime(ev.start_time)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                               {ev.number_of_pax} guests ·{" "}
@@ -1712,6 +1853,15 @@ export function CustomerDashboard() {
                   "Save Changes"
                 )}
               </button>
+
+              {/* Logout Button */}
+              <button
+                onClick={handleLogoutClick}
+                className="mt-4 w-full px-6 py-2.5 border border-[#C4541A]/40 text-[#C4541A] hover:bg-[#C4541A]/10 rounded-full text-sm font-['Lato'] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <LogOut size={16} />
+                Logout
+              </button>
             </div>
           </div>
         )}
@@ -1757,13 +1907,13 @@ export function CustomerDashboard() {
                   >
                     <div className="flex items-center gap-2">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-['Lato'] ${statusInfo.colorClass}`}
+                        className={`px-2.5 py-0.5 rounded-full text-xs font-['Lato'] ${statusInfo.colorClass}`}
                       >
                         {statusInfo.label}
                       </span>
                     </div>
                     <p
-                      className={`text-[11px] font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : statusInfo.colorClass === "bg-[#7A8C5C]/15 text-[#7A8C5C]" ? "text-[#7A8C5C]" : "text-[#2C1810]/60"}`}
+                      className={`text-xs font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : statusInfo.colorClass === "bg-[#7A8C5C]/15 text-[#7A8C5C]" ? "text-[#7A8C5C]" : "text-[#2C1810]/60"}`}
                     >
                       {statusInfo.message}
                     </p>
@@ -1771,7 +1921,7 @@ export function CustomerDashboard() {
                     {currentPayment?.payment_status === "Rejected" &&
                       currentPayment?.admin_remarks && (
                         <div className="mt-2 p-2.5 bg-[#C4541A]/10 rounded-lg border border-[#C4541A]/20">
-                          <p className="text-[10px] font-['Lato'] font-semibold text-[#C4541A] uppercase tracking-wider">
+                          <p className="text-xs font-['Lato'] font-semibold text-[#C4541A] uppercase tracking-wider">
                             Admin Rejection Reason
                           </p>
                           <p className="text-xs font-['Lato'] text-[#C4541A] mt-0.5">
@@ -1858,7 +2008,7 @@ export function CustomerDashboard() {
                         "Upload Receipt"
                       )}
                     </button>
-                    <p className="text-[10px] text-[#2C1810]/40 text-center mt-2 font-['Lato']">
+                    <p className="text-xs text-[#2C1810]/40 text-center mt-2 font-['Lato']">
                       Accepted formats: JPEG, PNG, GIF, WebP (max 5MB)
                     </p>
                   </div>
@@ -1961,7 +2111,8 @@ export function CustomerDashboard() {
                       Booking Reference
                     </p>
                     <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                      {cancellationDetails.booking_reference || `#BK${String(cancellationDetails.booking_id).padStart(4, "0")}`}
+                      {cancellationDetails.booking_reference ||
+                        `#BK${String(cancellationDetails.booking_id).padStart(4, "0")}`}
                     </p>
                     <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">
                       {cancellationDetails.package_name}
@@ -1970,7 +2121,8 @@ export function CustomerDashboard() {
                       Event Date: {formatDate(cancellationDetails.event_date)}
                     </p>
                     <p className="text-xs text-[#2C1810]/60 font-['Lato']">
-                      Days Until Event: {cancellationDetails.days_before_event} days
+                      Days Until Event: {cancellationDetails.days_before_event}{" "}
+                      days
                     </p>
                   </div>
 
@@ -1981,11 +2133,17 @@ export function CustomerDashboard() {
                         Cancellation Policy Applied
                       </p>
                       {(() => {
-                        const policy = cancellationDetails.estimated_cancellation.policy_would_apply;
-                        const policyText = policy === "standard" ? "≥5 days before event"
-                          : policy === "5_days_penalty" ? "<5 days before event"
-                          : policy === "1_day_penalty" ? "1 day or less before event"
-                          : "";
+                        const policy =
+                          cancellationDetails.estimated_cancellation
+                            .policy_would_apply;
+                        const policyText =
+                          policy === "standard"
+                            ? "≥5 days before event"
+                            : policy === "5_days_penalty"
+                              ? "<5 days before event"
+                              : policy === "1_day_penalty"
+                                ? "1 day or less before event"
+                                : "";
                         return (
                           <p className="text-xs font-['Lato'] text-[#2C1810]/70 mb-2">
                             {policyText}
@@ -1994,28 +2152,53 @@ export function CustomerDashboard() {
                       })()}
                       <div className="space-y-1 text-xs font-['Lato']">
                         <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">Total Package Price:</span>
+                          <span className="text-[#2C1810]/60">
+                            Total Package Price:
+                          </span>
                           <span className="font-semibold text-[#2C1810]">
-                            ₱{cancellationDetails.total_price.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            ₱
+                            {cancellationDetails.total_price.toLocaleString(
+                              "en-PH",
+                              { minimumFractionDigits: 2 },
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">Amount Already Paid:</span>
+                          <span className="text-[#2C1810]/60">
+                            Amount Already Paid:
+                          </span>
                           <span className="font-semibold text-[#7A8C5C]">
-                            ₱{cancellationDetails.amount_already_paid.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            ₱
+                            {cancellationDetails.amount_already_paid.toLocaleString(
+                              "en-PH",
+                              { minimumFractionDigits: 2 },
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">Amount Due on Cancellation:</span>
+                          <span className="text-[#2C1810]/60">
+                            Amount Due on Cancellation:
+                          </span>
                           <span className="font-semibold text-[#C4541A]">
-                            ₱{cancellationDetails.estimated_cancellation.estimated_amount_due.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            ₱
+                            {cancellationDetails.estimated_cancellation.estimated_amount_due.toLocaleString(
+                              "en-PH",
+                              { minimumFractionDigits: 2 },
+                            )}
                           </span>
                         </div>
-                        {cancellationDetails.estimated_cancellation.estimated_additional_due > 0 && (
+                        {cancellationDetails.estimated_cancellation
+                          .estimated_additional_due > 0 && (
                           <div className="flex justify-between pt-1 border-t border-[#C8922A]/20">
-                            <span className="text-[#2C1810]/80 font-semibold">Additional Payment Required:</span>
+                            <span className="text-[#2C1810]/80 font-semibold">
+                              Additional Payment Required:
+                            </span>
                             <span className="font-bold text-[#C4541A]">
-                              ₱{cancellationDetails.estimated_cancellation.estimated_additional_due.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                              ₱
+                              {cancellationDetails.estimated_cancellation.estimated_additional_due.toLocaleString(
+                                "en-PH",
+                                { minimumFractionDigits: 2 },
+                              )}
                             </span>
                           </div>
                         )}
@@ -2023,26 +2206,38 @@ export function CustomerDashboard() {
                     </div>
                   )}
 
-                  {/* Cancellation Reason */}
+                  {/* Cancellation Reason - Now Required */}
                   <div>
                     <label className="block text-xs font-semibold text-[#2C1810]/70 font-['Lato'] mb-2">
-                      Reason for Cancellation (Optional)
+                      Reason for Cancellation{" "}
+                      <span className="text-[#C4541A]">*</span>
                     </label>
                     <textarea
                       value={cancellationReason}
                       onChange={(e) => setCancellationReason(e.target.value)}
-                      placeholder="Please let us know why you're cancelling..."
+                      placeholder="Please provide a reason for cancellation..."
                       rows={3}
                       className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
                     />
+                    {!cancellationReason.trim() && (
+                      <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                        Please provide a reason for cancellation
+                      </p>
+                    )}
                   </div>
 
                   {/* Warning Message */}
                   <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle size={16} className="text-[#C4541A] shrink-0 mt-0.5" />
-                      <p className="text-[10px] font-['Lato'] text-[#C4541A]">
-                        By confirming this cancellation, you agree to the cancellation policy. The reservation fee of ₱5,000 is non-refundable. Additional charges may apply based on the policy above.
+                      <AlertTriangle
+                        size={16}
+                        className="text-[#C4541A] shrink-0 mt-0.5"
+                      />
+                      <p className="text-xs font-['Lato'] text-[#C4541A]">
+                        By confirming this cancellation, you agree to the
+                        cancellation policy. The reservation fee of ₱5,000 is
+                        non-refundable. Additional charges may apply based on
+                        the policy above.
                       </p>
                     </div>
                   </div>
@@ -2063,12 +2258,15 @@ export function CustomerDashboard() {
                     </button>
                     <button
                       onClick={handleConfirmCancellation}
-                      disabled={processingCancellation}
+                      disabled={
+                        processingCancellation || !cancellationReason.trim()
+                      }
                       className="flex-1 px-4 py-2.5 bg-[#C4541A] hover:bg-[#C4541A]/90 text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
                       {processingCancellation ? (
                         <>
-                          <Loader2 size={16} className="animate-spin" /> Processing...
+                          <Loader2 size={16} className="animate-spin" />{" "}
+                          Processing...
                         </>
                       ) : (
                         "Confirm Cancellation"
@@ -2079,7 +2277,7 @@ export function CustomerDashboard() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
-Failed to load cancellation details.
+                    Failed to load cancellation details.
                   </p>
                   <button
                     onClick={() => {
@@ -2109,7 +2307,9 @@ Failed to load cancellation details.
                   Request Menu Change
                 </h3>
                 <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
-                  Booking Reference: {menuChangeBooking.booking_reference || `#${menuChangeBooking.booking_id}`}
+                  Booking Reference:{" "}
+                  {menuChangeBooking.booking_reference ||
+                    `#${menuChangeBooking.booking_id}`}
                 </p>
               </div>
               <button
@@ -2127,7 +2327,10 @@ Failed to load cancellation details.
             <div className="p-6 space-y-6">
               {loadingMenuData ? (
                 <div className="py-16 text-center">
-                  <Loader2 size={32} className="animate-spin text-[#C8922A] mx-auto mb-3" />
+                  <Loader2
+                    size={32}
+                    className="animate-spin text-[#C8922A] mx-auto mb-3"
+                  />
                   <p className="text-[#2C1810]/60 font-['Lato'] text-sm">
                     Loading menu options...
                   </p>
@@ -2136,11 +2339,17 @@ Failed to load cancellation details.
                 <>
                   {/* Notice banner */}
                   <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex items-start gap-3">
-                    <Edit3 size={18} className="text-[#C8922A] shrink-0 mt-0.5" />
+                    <Edit3
+                      size={18}
+                      className="text-[#C8922A] shrink-0 mt-0.5"
+                    />
                     <div className="text-xs font-['Lato'] text-[#2C1810]">
-                      <p className="font-semibold text-[#C8922A] mb-0.5">Menu Selection Policy</p>
+                      <p className="font-semibold text-[#C8922A] mb-0.5">
+                        Menu Selection Policy
+                      </p>
                       <p className="text-[#2C1810]/70">
-                        Select your preferred dishes below. All menu changes are submitted to Chef Ramos for approval.
+                        Select your preferred dishes below. All menu changes are
+                        submitted to Chef Ramos for approval.
                       </p>
                     </div>
                   </div>
@@ -2163,12 +2372,16 @@ Failed to load cancellation details.
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {categoryItems.map((item) => {
-                              const isSelected = selectedMenuItems.includes(item.item_name);
+                              const isSelected = selectedMenuItems.includes(
+                                item.item_name,
+                              );
                               return (
                                 <button
                                   key={item.menu_item_id}
                                   type="button"
-                                  onClick={() => handleToggleMenuItem(item.item_name)}
+                                  onClick={() =>
+                                    handleToggleMenuItem(item.item_name)
+                                  }
                                   className={`p-3 rounded-xl border text-left text-xs font-['Lato'] transition-all flex items-center justify-between cursor-pointer ${
                                     isSelected
                                       ? "bg-[#C8922A]/15 border-[#C8922A] text-[#2C1810] font-semibold shadow-xs"
@@ -2176,9 +2389,11 @@ Failed to load cancellation details.
                                   }`}
                                 >
                                   <div>
-                                    <p className="font-medium text-[#2C1810]">{item.item_name}</p>
+                                    <p className="font-medium text-[#2C1810]">
+                                      {item.item_name}
+                                    </p>
                                     {item.description && (
-                                      <p className="text-[10px] text-[#2C1810]/50 line-clamp-1 mt-0.5">
+                                      <p className="text-xs text-[#2C1810]/50 line-clamp-1 mt-0.5">
                                         {item.description}
                                       </p>
                                     )}
@@ -2214,7 +2429,8 @@ Failed to load cancellation details.
                   {/* Updated Menu Review Summary */}
                   <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-2">
                     <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] uppercase tracking-wider">
-                      Updated Menu Review Summary ({selectedMenuItems.length} items)
+                      Updated Menu Review Summary ({selectedMenuItems.length}{" "}
+                      items)
                     </h5>
                     {selectedMenuItems.length === 0 ? (
                       <p className="text-xs text-[#C4541A] font-['Lato'] italic">
@@ -2253,12 +2469,89 @@ Failed to load cancellation details.
               <button
                 type="button"
                 onClick={handleSubmitMenuChange}
-                disabled={submittingMenuChange || selectedMenuItems.length === 0}
+                disabled={
+                  submittingMenuChange || selectedMenuItems.length === 0
+                }
                 className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
               >
-                {submittingMenuChange && <Loader2 size={14} className="animate-spin" />}
-                {submittingMenuChange ? "Submitting..." : "Submit Menu Change Request"}
+                {submittingMenuChange && (
+                  <Loader2 size={14} className="animate-spin" />
+                )}
+                {submittingMenuChange
+                  ? "Submitting..."
+                  : "Submit Menu Change Request"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt View Modal */}
+      {showReceiptModal && selectedReceiptUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowReceiptModal(false)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowReceiptModal(false)}
+              className="absolute top-4 right-4 bg-white/90 hover:bg-white text-[#2C1810] rounded-full p-2 z-10 transition-colors cursor-pointer"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={selectedReceiptUrl}
+              alt="Payment Receipt"
+              className="w-full h-full object-contain rounded-lg"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-xl">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#C4541A]/10 mx-auto mb-4">
+                <LogOut className="text-[#C4541A]" size={24} />
+              </div>
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold text-center mb-2">
+                Confirm Logout
+              </h3>
+              <p className="text-sm text-[#2C1810]/60 font-['Lato'] text-center mb-6">
+                Are you sure you want to logout? You'll need to sign in again to
+                access your account.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  disabled={loggingOut}
+                  className="flex-1 px-4 py-2.5 border border-[#2C1810]/20 text-[#2C1810] rounded-full text-sm font-['Lato'] hover:bg-[#F5F0E8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmLogout}
+                  disabled={loggingOut}
+                  className="flex-1 px-4 py-2.5 bg-[#C4541A] hover:bg-[#C4541A]/90 text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {loggingOut ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Logging out...
+                    </>
+                  ) : (
+                    <>
+                      <LogOut size={16} />
+                      Logout
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

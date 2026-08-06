@@ -2242,8 +2242,9 @@ function AnnouncementsSection() {
   const [editingAnn, setEditingAnn] = useState<Announcement | null>(null);
   const [deletingAnn, setDeletingAnn] = useState<Announcement | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [formData, setFormData] =
-    useState<AnnouncementFormData>(emptyAnnouncementForm);
+  const [formData, setFormData] = useState<AnnouncementFormData>(
+    emptyAnnouncementForm,
+  );
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<
@@ -2325,6 +2326,15 @@ function AnnouncementsSection() {
       toast.error("Publish date is required.");
       return false;
     }
+
+    // Validate publish_date is not in the past
+    const publishDateTime = new Date(formData.publish_date);
+    const currentDateTime = new Date();
+    if (publishDateTime < currentDateTime) {
+      toast.error("Publish date cannot be in the past.");
+      return false;
+    }
+
     if (
       formData.expiration_date &&
       new Date(formData.expiration_date) <= new Date(formData.publish_date)
@@ -2475,7 +2485,13 @@ function AnnouncementsSection() {
                 : "bg-white text-[#2C1810]/60 hover:bg-[#2C1810]/5 border border-[#2C1810]/10"
             }`}
           >
-            {f} ({f === "all" ? announcements.length : f === "published" ? publishedCount : draftCount})
+            {f} (
+            {f === "all"
+              ? announcements.length
+              : f === "published"
+                ? publishedCount
+                : draftCount}
+            )
           </button>
         ))}
       </div>
@@ -2487,10 +2503,7 @@ function AnnouncementsSection() {
         </div>
       ) : filteredAnnouncements.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-[#2C1810]/5">
-          <Megaphone
-            size={40}
-            className="text-[#2C1810]/20 mx-auto mb-3"
-          />
+          <Megaphone size={40} className="text-[#2C1810]/20 mx-auto mb-3" />
           <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
             No announcements found.
           </p>
@@ -2556,6 +2569,34 @@ function AnnouncementsSection() {
                       )}
                     </span>
                   )}
+                  {(() => {
+                    const now = new Date();
+                    const publishDate = new Date(ann.publish_date);
+                    const expirationDate = ann.expiration_date
+                      ? new Date(ann.expiration_date)
+                      : null;
+
+                    if (ann.status === "draft") {
+                      return (
+                        <span className="px-2 py-0.5 rounded-full bg-[#C8922A]/15 text-[#C8922A] font-semibold">
+                          Draft
+                        </span>
+                      );
+                    } else if (publishDate > now) {
+                      return (
+                        <span className="px-2 py-0.5 rounded-full bg-[#4A8C9C]/15 text-[#4A8C9C] font-semibold">
+                          Scheduled
+                        </span>
+                      );
+                    } else if (expirationDate && expirationDate < now) {
+                      return (
+                        <span className="px-2 py-0.5 rounded-full bg-[#C4541A]/15 text-[#C4541A] font-semibold">
+                          Expired
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 
@@ -2563,9 +2604,7 @@ function AnnouncementsSection() {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   onClick={() => handleToggleStatus(ann)}
-                  title={
-                    ann.status === "published" ? "Unpublish" : "Publish"
-                  }
+                  title={ann.status === "published" ? "Unpublish" : "Publish"}
                   className={`p-2 rounded-lg transition-colors ${
                     ann.status === "published"
                       ? "bg-[#7A8C5C]/10 text-[#7A8C5C] hover:bg-[#7A8C5C]/20"
@@ -2762,10 +2801,7 @@ function AnnouncementsSection() {
                   </div>
                 ) : (
                   <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-[#2C1810]/15 rounded-xl cursor-pointer hover:border-[#C8922A]/40 transition-colors bg-white">
-                    <ImagePlus
-                      size={24}
-                      className="text-[#2C1810]/25 mb-1"
-                    />
+                    <ImagePlus size={24} className="text-[#2C1810]/25 mb-1" />
                     <span className="text-xs text-[#2C1810]/40 font-['Lato']">
                       Click to upload image
                     </span>
@@ -2881,13 +2917,16 @@ function MenuChangeRequestsSection() {
   const { accessToken } = useAuth();
   const [requests, setRequests] = useState<MenuChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<"All" | "Pending" | "Approved" | "Rejected">("Pending");
+  const [filterStatus, setFilterStatus] = useState<
+    "All" | "Pending" | "Approved" | "Rejected"
+  >("Pending");
 
   // Approve state
   const [approvingId, setApprovingId] = useState<number | null>(null);
 
   // Reject modal state
-  const [rejectingRequest, setRejectingRequest] = useState<MenuChangeRequest | null>(null);
+  const [rejectingRequest, setRejectingRequest] =
+    useState<MenuChangeRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [submittingRejection, setSubmittingRejection] = useState(false);
 
@@ -2917,7 +2956,9 @@ function MenuChangeRequestsSection() {
     setApprovingId(requestId);
     try {
       await approveMenuChangeRequest(accessToken, requestId);
-      toast.success("Menu change request approved. The customer has been notified.");
+      toast.success(
+        "Menu change request approved. The customer has been notified.",
+      );
       await loadRequests();
     } catch (err) {
       toast.error(
@@ -2946,7 +2987,9 @@ function MenuChangeRequestsSection() {
         rejectingRequest.request_id,
         rejectionReason.trim(),
       );
-      toast.success("Menu change request rejected. The customer has been notified.");
+      toast.success(
+        "Menu change request rejected. The customer has been notified.",
+      );
       setRejectingRequest(null);
       setRejectionReason("");
       await loadRequests();
@@ -3069,9 +3112,12 @@ function MenuChangeRequestsSection() {
                   <div>
                     <div className="flex items-center gap-3">
                       <span className="font-['Playfair_Display'] text-[#2C1810] font-semibold">
-                        {req.booking_reference || `#BK${String(req.booking_id).padStart(4, "0")}`}
+                        {req.booking_reference ||
+                          `#BK${String(req.booking_id).padStart(4, "0")}`}
                       </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-['Lato'] ${statusBadge(req.status)}`}>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-['Lato'] ${statusBadge(req.status)}`}
+                      >
                         {req.status}
                       </span>
                     </div>
@@ -3080,7 +3126,12 @@ function MenuChangeRequestsSection() {
                     </p>
                   </div>
                   <div className="text-right text-xs font-['Lato'] text-[#2C1810]/50">
-                    <p>Event: <span className="text-[#2C1810] font-semibold">{formatDate(req.event_date ?? "")}</span></p>
+                    <p>
+                      Event:{" "}
+                      <span className="text-[#2C1810] font-semibold">
+                        {formatDate(req.event_date ?? "")}
+                      </span>
+                    </p>
                     <p>Requested: {formatDate(req.created_at)}</p>
                   </div>
                 </div>
@@ -3092,7 +3143,9 @@ function MenuChangeRequestsSection() {
                     <div className="flex items-center gap-2 text-xs font-['Lato']">
                       <Package size={13} className="text-[#C8922A]" />
                       <span className="text-[#2C1810]/50">Package:</span>
-                      <span className="text-[#2C1810] font-semibold">{req.package_name}</span>
+                      <span className="text-[#2C1810] font-semibold">
+                        {req.package_name}
+                      </span>
                     </div>
                   )}
 
@@ -3114,23 +3167,33 @@ function MenuChangeRequestsSection() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-[#2C1810]/40 font-['Lato'] italic">No items specified.</p>
+                      <p className="text-xs text-[#2C1810]/40 font-['Lato'] italic">
+                        No items specified.
+                      </p>
                     )}
                   </div>
 
                   {/* Dietary Notes */}
                   {req.dietary_notes && (
                     <div className="p-3 bg-[#F5F0E8] rounded-xl border border-[#C8922A]/15">
-                      <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] mb-1 uppercase tracking-wider">Dietary / Allergy Notes</p>
-                      <p className="text-xs text-[#2C1810] font-['Lato']">{req.dietary_notes}</p>
+                      <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] mb-1 uppercase tracking-wider">
+                        Dietary / Allergy Notes
+                      </p>
+                      <p className="text-xs text-[#2C1810] font-['Lato']">
+                        {req.dietary_notes}
+                      </p>
                     </div>
                   )}
 
                   {/* Rejection Reason (if rejected) */}
                   {req.status === "Rejected" && req.rejection_reason && (
                     <div className="p-3 bg-[#C4541A]/5 border border-[#C4541A]/20 rounded-xl">
-                      <p className="text-[10px] text-[#C4541A] font-['Lato'] uppercase tracking-wider mb-1">Rejection Reason</p>
-                      <p className="text-xs text-[#C4541A] font-['Lato']">{req.rejection_reason}</p>
+                      <p className="text-[10px] text-[#C4541A] font-['Lato'] uppercase tracking-wider mb-1">
+                        Rejection Reason
+                      </p>
+                      <p className="text-xs text-[#C4541A] font-['Lato']">
+                        {req.rejection_reason}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -3156,7 +3219,9 @@ function MenuChangeRequestsSection() {
                       ) : (
                         <CheckCircle size={13} />
                       )}
-                      {approvingId === req.request_id ? "Approving..." : "Approve"}
+                      {approvingId === req.request_id
+                        ? "Approving..."
+                        : "Approve"}
                     </button>
                   </div>
                 )}
@@ -3176,7 +3241,9 @@ function MenuChangeRequestsSection() {
                 Reject Menu Change Request
               </h3>
               <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
-                Booking {rejectingRequest.booking_reference || `#${rejectingRequest.booking_id}`}
+                Booking{" "}
+                {rejectingRequest.booking_reference ||
+                  `#${rejectingRequest.booking_id}`}
               </p>
             </div>
             <div className="p-6 space-y-4">
@@ -3192,7 +3259,8 @@ function MenuChangeRequestsSection() {
                   className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
                 />
                 <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
-                  This reason will be sent to the customer via notification and email.
+                  This reason will be sent to the customer via notification and
+                  email.
                 </p>
               </div>
             </div>
@@ -3212,7 +3280,9 @@ function MenuChangeRequestsSection() {
                 disabled={submittingRejection || !rejectionReason.trim()}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                {submittingRejection && <Loader2 size={14} className="animate-spin" />}
+                {submittingRejection && (
+                  <Loader2 size={14} className="animate-spin" />
+                )}
                 {submittingRejection ? "Submitting..." : "Confirm Rejection"}
               </button>
             </div>

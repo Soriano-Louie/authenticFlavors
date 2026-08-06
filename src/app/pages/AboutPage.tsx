@@ -168,7 +168,7 @@ export function AboutPage() {
                   { label: "Venue Capacity", value: "Maximum of 70 guests" },
                   {
                     label: "Location",
-                    value: "35 ML Quezon St. New Lower Bicutan, Taguig City",
+                    value: "45 ML Quezon St. New Lower Bicutan, Taguig City",
                   },
                   {
                     label: "Operating Hours",

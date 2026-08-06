@@ -15,6 +15,7 @@ import {
   Briefcase,
   Loader2,
   Megaphone,
+  X,
 } from "lucide-react";
 import { IMAGES, TESTIMONIALS } from "../data/mockData";
 import { getHomepageStatistics, getUpcomingEvents } from "../api/packageApi";
@@ -23,6 +24,10 @@ import {
   getPublicAnnouncements,
   type Announcement,
 } from "../api/announcementApi";
+import {
+  getPublicFeedbacks,
+  type PublicFeedback,
+} from "../api/publicFeedbackApi";
 
 const CAROUSEL_EVENTS = [
   {
@@ -77,6 +82,14 @@ function localDateFromStr(ymd: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** Convert 24-hour time string (e.g., "18:00:00") to 12-hour format (e.g., "6:00 PM") */
+function to12HourFormat(time24: string): string {
+  const [hours, minutes] = time24.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const hours12 = hours % 12 || 12;
+  return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
 export function LandingPage() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -85,6 +98,21 @@ export function LandingPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [showMoreAnnouncements, setShowMoreAnnouncements] = useState(false);
+  const [selectedAnnouncementImage, setSelectedAnnouncementImage] = useState<
+    string | null
+  >(null);
+
+  // Disable body scroll when image modal is open
+  useEffect(() => {
+    if (selectedAnnouncementImage) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, [selectedAnnouncementImage]);
 
   // Statistics state
   const [statistics, setStatistics] = useState<HomepageStatistics | null>(null);
@@ -102,6 +130,10 @@ export function LandingPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+
+  // Real feedback state
+  const [realFeedbacks, setRealFeedbacks] = useState<PublicFeedback[]>([]);
+  const [feedbacksLoading, setFeedbacksLoading] = useState(true);
 
   // Fetch announcements on mount
   useEffect(() => {
@@ -174,6 +206,26 @@ export function LandingPage() {
     }
 
     fetchUpcomingEvents();
+  }, []);
+
+  // Fetch real feedbacks on mount
+  useEffect(() => {
+    async function fetchFeedbacks() {
+      try {
+        setFeedbacksLoading(true);
+        const data = await getPublicFeedbacks();
+        // Sort by rating (highest first) to highlight positive feedbacks
+        const sorted = data.feedbacks.sort((a, b) => b.rating - a.rating);
+        setRealFeedbacks(sorted);
+      } catch (error) {
+        console.error("Failed to load feedbacks:", error);
+        setRealFeedbacks([]);
+      } finally {
+        setFeedbacksLoading(false);
+      }
+    }
+
+    fetchFeedbacks();
   }, []);
 
   const prevSlide = () =>
@@ -392,98 +444,101 @@ export function LandingPage() {
       </section>
 
       {/* ─── Announcements ─── */}
-      <section className="bg-[#2C1810] border-y border-[#C8922A]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <section className="bg-[#2C1810] py-6 border-y border-[#C8922A]/20">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           {announcementsLoading ? (
-            <div className="flex items-center justify-center py-3">
+            <div className="flex items-center justify-center rounded-3xl border border-[#C8922A]/20 bg-[#1A0E08]/70 py-6 px-4 shadow-lg shadow-black/10">
               <Loader2 size={18} className="animate-spin text-[#C8922A]" />
               <span className="ml-2 text-sm font-['Lato'] text-[#F5F0E8]/60">
                 Loading announcements...
               </span>
             </div>
           ) : announcements.length === 0 ? (
-            <div className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="rounded-3xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-5 shadow-lg shadow-black/10">
               <div className="flex items-center gap-3">
-                <Megaphone size={18} className="text-[#C8922A] flex-shrink-0" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#C8922A]/10 border border-[#C8922A]/20 flex-shrink-0">
+                  <Megaphone size={22} className="text-[#C8922A]" />
+                </div>
                 <div>
-                  <p className="text-[11px] font-['Lato'] uppercase tracking-[0.3em] text-[#C8922A]">
+                  <p className="text-xs font-['Lato'] uppercase tracking-[0.28em] text-[#C8922A]">
                     Announcements
                   </p>
-                  <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8]/60 italic">
+                  <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8]/70 italic">
                     No announcements available at this time.
                   </p>
                 </div>
               </div>
-              <Link
-                to="/package-selection"
-                className="inline-flex items-center justify-center rounded-full bg-[#C8922A] px-4 py-2 text-sm font-['Lato'] text-[#F5F0E8] hover:bg-[#C4541A] transition-colors"
-              >
-                Reserve Now
-              </Link>
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Primary (latest) announcement */}
-              {(() => {
-                const visibleAnnouncements = showMoreAnnouncements
-                  ? announcements
-                  : [announcements[0]];
-                return visibleAnnouncements.map((ann) => (
-                  <div
-                    key={ann.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/20 bg-[#1A0E08]/70 px-4 py-4 md:flex-row md:items-center md:justify-between transition-all duration-300"
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      {ann.image_url ? (
-                        <img
-                          src={ann.image_url}
-                          alt={ann.title}
-                          className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[#C8922A]/20"
-                        />
-                      ) : (
-                        <Megaphone
-                          size={18}
-                          className="text-[#C8922A] flex-shrink-0 mt-1"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-['Lato'] uppercase tracking-[0.3em] text-[#C8922A]">
-                          {ann.title}
-                        </p>
-                        <p className="mt-1 text-sm font-['Lato'] text-[#F5F0E8] line-clamp-2">
-                          {ann.content}
-                        </p>
-                      </div>
-                    </div>
-                    <Link
-                      to="/package-selection"
-                      className="inline-flex items-center justify-center rounded-full bg-[#C8922A] px-4 py-2 text-sm font-['Lato'] text-[#F5F0E8] hover:bg-[#C4541A] transition-colors flex-shrink-0"
-                    >
-                      Reserve Now
-                    </Link>
-                  </div>
-                ));
-              })()}
-
-              {/* Show more / Show less toggle */}
-              {announcements.length > 1 && (
-                <button
-                  onClick={() => setShowMoreAnnouncements((prev) => !prev)}
-                  className="flex items-center gap-1.5 mx-auto text-xs font-['Lato'] text-[#C8922A] hover:text-[#F5F0E8] transition-colors py-1"
+              {announcements.map((ann) => (
+                <div
+                  key={ann.id}
+                  className="grid gap-4 rounded-3xl border border-[#C8922A]/20 bg-[#1A0E08]/70 p-4 shadow-lg shadow-black/10 transition-all duration-300 hover:border-[#C8922A]/40 md:grid-cols-[96px_minmax(0,1fr)] md:items-center"
                 >
-                  {showMoreAnnouncements ? (
-                    <>
-                      Show less <ChevronUp size={14} />
-                    </>
+                  {ann.image_url ? (
+                    <img
+                      src={ann.image_url}
+                      alt={ann.title}
+                      onClick={() =>
+                        setSelectedAnnouncementImage(ann.image_url)
+                      }
+                      className="h-24 w-full rounded-2xl object-cover border border-[#C8922A]/20 cursor-pointer hover:border-[#C8922A] hover:scale-[1.02] transition-all md:h-24"
+                    />
                   ) : (
-                    <>
-                      {announcements.length - 1} more announcement
-                      {announcements.length - 1 > 1 ? "s" : ""}{" "}
-                      <ChevronDown size={14} />
-                    </>
+                    <div className="h-24 w-full rounded-2xl bg-[#C8922A]/10 border border-[#C8922A]/20 flex items-center justify-center">
+                      <Megaphone size={28} className="text-[#C8922A]" />
+                    </div>
                   )}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-['Playfair_Display'] text-[#F5F0E8] font-semibold">
+                        {ann.title}
+                      </h3>
+                      <span className="rounded-full border border-[#C8922A]/20 bg-[#C8922A]/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-[#C8922A] font-['Lato']">
+                        Announcement
+                      </span>
+                    </div>
+                    <p
+                      className="mt-2 text-sm leading-relaxed text-[#F5F0E8]/72 font-['Lato']"
+                      style={{
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: 2,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {ann.content}
+                    </p>
+                    <p className="mt-3 text-xs uppercase tracking-[0.22em] text-[#F5F0E8]/45 font-['Lato']">
+                      Published {new Date(ann.publish_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Image Modal */}
+          {selectedAnnouncementImage && (
+            <div
+              className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+              onClick={() => setSelectedAnnouncementImage(null)}
+            >
+              <div className="relative max-w-4xl w-full">
+                <button
+                  onClick={() => setSelectedAnnouncementImage(null)}
+                  className="absolute -top-10 right-0 text-white hover:text-[#C8922A] transition-colors"
+                >
+                  <X size={32} />
                 </button>
-              )}
+                <img
+                  src={selectedAnnouncementImage}
+                  alt="Announcement"
+                  className="w-full h-auto max-h-[85vh] object-contain rounded-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -777,7 +832,7 @@ export function LandingPage() {
                               })()}
                             </p>
                             <p className="text-xs font-['Lato'] text-[#2C1810]/60">
-                              {event.start_time}
+                              {to12HourFormat(event.start_time)}
                             </p>
                           </div>
                         </div>
@@ -904,46 +959,85 @@ export function LandingPage() {
               What Our Guests Say
             </h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {TESTIMONIALS.slice(0, 3).map((t) => (
-              <div
-                key={t.id}
-                className="bg-[#1A0E08] rounded-2xl p-6 border border-[#C8922A]/10 hover:border-[#C8922A]/30 transition-colors"
-              >
-                <div className="flex gap-1 mb-4">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={14}
-                      className={
-                        i < t.rating
-                          ? "text-[#C8922A] fill-[#C8922A]"
-                          : "text-[#C8922A]/20"
-                      }
-                    />
-                  ))}
-                </div>
-                <p className="text-[#F5F0E8]/75 text-sm font-['Lato'] leading-relaxed mb-5 italic">
-                  "{t.text}"
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-                    <span className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
-                      {t.avatar}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
-                      {t.name}
+          {feedbacksLoading ? (
+            <div className="text-center py-12">
+              <Loader2
+                size={40}
+                className="animate-spin text-[#C8922A] mx-auto mb-4"
+              />
+              <p className="text-[#F5F0E8]/60 text-sm font-['Lato']">
+                Loading testimonials...
+              </p>
+            </div>
+          ) : realFeedbacks.length > 0 ? (
+            <div className="grid md:grid-cols-3 gap-6">
+              {realFeedbacks.slice(0, 3).map((feedback) => {
+                const isPositive = feedback.rating === 5;
+                return (
+                  <div
+                    key={feedback.feedback_id}
+                    className={`bg-[#1A0E08] rounded-2xl p-6 border transition-all ${
+                      isPositive
+                        ? "border-[#C8922A] shadow-lg shadow-[#C8922A]/20"
+                        : "border-[#C8922A]/10 hover:border-[#C8922A]/30"
+                    }`}
+                  >
+                    {isPositive && (
+                      <div className="mb-3 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#C8922A]/20 border border-[#C8922A]/40">
+                        <Star
+                          size={12}
+                          className="text-[#C8922A] fill-[#C8922A]"
+                        />
+                        <span className="text-xs font-['Lato'] text-[#C8922A] font-semibold">
+                          Excellent
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex gap-1 mb-4">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          size={14}
+                          className={
+                            i < feedback.rating
+                              ? "text-[#C8922A] fill-[#C8922A]"
+                              : "text-[#C8922A]/20"
+                          }
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[#F5F0E8]/75 text-sm font-['Lato'] leading-relaxed mb-5 italic">
+                      "{feedback.comment}"
                     </p>
-                    <p className="text-[#C8922A]/70 text-xs font-['Lato']">
-                      {t.event}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
+                        <span className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
+                          {feedback.customer_name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
+                          {feedback.customer_name}
+                        </p>
+                        <p className="text-[#C8922A]/70 text-xs font-['Lato']">
+                          {feedback.package_name}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-[#F5F0E8]/60 text-sm font-['Lato']">
+                No testimonials available at this time.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 

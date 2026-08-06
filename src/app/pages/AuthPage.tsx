@@ -31,6 +31,60 @@ export function AuthPage() {
     password: "",
   });
 
+  // Password strength validation
+  const getPasswordStrength = (password: string) => {
+    let strength = 0;
+    const checks = {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[@$!%*?&]/.test(password),
+    };
+
+    strength = Object.values(checks).filter(Boolean).length;
+    return { strength, checks };
+  };
+
+  const passwordStrength = registerForm.password
+    ? getPasswordStrength(registerForm.password)
+    : null;
+
+  // Philippine phone number validation
+  const validatePhilippinePhone = (phone: string) => {
+    // Remove all non-numeric characters
+    const cleaned = phone.replace(/\D/g, "");
+
+    // Check if it matches Philippine mobile number format
+    // Valid formats: 09171234567, 639171234567, +639171234567
+    if (cleaned.length === 0)
+      return { valid: false, error: "Phone number is required" };
+
+    // Check if starts with 09 and has 11 digits
+    if (cleaned.startsWith("09") && cleaned.length === 11) {
+      return { valid: true, formatted: cleaned, error: null };
+    }
+
+    // Check if starts with 639 and has 12 digits
+    if (cleaned.startsWith("639") && cleaned.length === 12) {
+      return { valid: true, formatted: "0" + cleaned.slice(2), error: null };
+    }
+
+    // Check if starts with +639 and has 13 digits (with +)
+    if (phone.startsWith("+639") && cleaned.length === 12) {
+      return { valid: true, formatted: "0" + cleaned.slice(2), error: null };
+    }
+
+    return {
+      valid: false,
+      error: "Invalid format. Use: 09171234567 (11 digits starting with 09)",
+    };
+  };
+
+  const phoneValidation = registerForm.phone_number
+    ? validatePhilippinePhone(registerForm.phone_number)
+    : null;
+
   const redirectPath = useMemo(() => {
     const state = location.state as { from?: string } | null;
     if (state?.from && state.from !== "/auth") {
@@ -102,12 +156,22 @@ export function AuthPage() {
     if (!registerForm.last_name.trim())
       nextErrors.last_name = "Last name is required.";
     if (!registerForm.email.trim()) nextErrors.email = "Email is required.";
-    if (!registerForm.phone_number.trim())
-      nextErrors.phone_number = "Phone number is required.";
+
+    // Validate Philippine phone number
+    const phoneValid = validatePhilippinePhone(registerForm.phone_number);
+    if (!phoneValid.valid) {
+      nextErrors.phone_number = phoneValid.error || "Invalid phone number";
+    }
+
+    // Validate password strength
     if (!registerForm.password) {
       nextErrors.password = "Password is required.";
-    } else if (registerForm.password.length < 8) {
-      nextErrors.password = "Password must be at least 8 characters.";
+    } else {
+      const strength = getPasswordStrength(registerForm.password);
+      if (strength.strength < 3) {
+        nextErrors.password =
+          "Password is too weak. Please meet at least 3 requirements.";
+      }
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -156,7 +220,7 @@ export function AuthPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#1A0E08]/90 via-[#1A0E08]/70 to-[#C8922A]/30" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-10 text-center">
-          <div className="w-16 h-16 rounded-full overflow-hidden shadow-2xl mb-4">
+          <div className="w-48 h-48 rounded-full overflow-hidden shadow-2xl mb-4">
             <img
               src="/authentic_flavor_logo.png"
               alt="Authentic Flavors"
@@ -194,7 +258,7 @@ export function AuthPage() {
         <div className="w-full max-w-md my-auto">
           {/* Logo (mobile) */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-full overflow-hidden">
+            <div className="w-32 h-32 rounded-full overflow-hidden">
               <img
                 src="/authentic_flavor_logo.png"
                 alt="Authentic Flavors"
@@ -327,8 +391,17 @@ export function AuthPage() {
                         }))
                       }
                       placeholder="09171234567"
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
+                      className={`w-full px-4 py-2.5 rounded-xl border bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 ${
+                        phoneValidation &&
+                        !phoneValidation.valid &&
+                        registerForm.phone_number
+                          ? "border-[#C4541A]"
+                          : "border-[#C8922A]/20"
+                      }`}
                     />
+                    <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] mt-1">
+                      Format: 09171234567 (11 digits starting with 09)
+                    </p>
                     {fieldErrors.phone_number && (
                       <p className="text-xs text-[#C4541A] mt-1">
                         {fieldErrors.phone_number}
@@ -390,7 +463,11 @@ export function AuthPage() {
                           }))
                     }
                     placeholder="••••••••"
-                    className="w-full px-4 py-2.5 pr-12 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
+                    className={`w-full px-4 py-2.5 pr-12 rounded-xl border bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 ${
+                      tab === "register" && fieldErrors.password
+                        ? "border-[#C4541A]"
+                        : "border-[#C8922A]/20"
+                    }`}
                   />
                   <button
                     type="button"
@@ -400,6 +477,96 @@ export function AuthPage() {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+
+                {/* Password requirements - only show during registration */}
+                {tab === "register" && registerForm.password && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[10px] text-[#2C1810]/60 font-['Lato']">
+                      Password must contain:
+                    </p>
+                    <div className="grid grid-cols-2 gap-1">
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-['Lato'] ${passwordStrength?.checks.length ? "text-[#7A8C5C]" : "text-[#2C1810]/40"}`}
+                      >
+                        <span>
+                          {passwordStrength?.checks.length ? "✓" : "○"}
+                        </span>
+                        <span>8+ characters</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-['Lato'] ${passwordStrength?.checks.uppercase ? "text-[#7A8C5C]" : "text-[#2C1810]/40"}`}
+                      >
+                        <span>
+                          {passwordStrength?.checks.uppercase ? "✓" : "○"}
+                        </span>
+                        <span>Uppercase letter</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-['Lato'] ${passwordStrength?.checks.lowercase ? "text-[#7A8C5C]" : "text-[#2C1810]/40"}`}
+                      >
+                        <span>
+                          {passwordStrength?.checks.lowercase ? "✓" : "○"}
+                        </span>
+                        <span>Lowercase letter</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-['Lato'] ${passwordStrength?.checks.number ? "text-[#7A8C5C]" : "text-[#2C1810]/40"}`}
+                      >
+                        <span>
+                          {passwordStrength?.checks.number ? "✓" : "○"}
+                        </span>
+                        <span>Number</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-['Lato'] ${passwordStrength?.checks.special ? "text-[#7A8C5C]" : "text-[#2C1810]/40"}`}
+                      >
+                        <span>
+                          {passwordStrength?.checks.special ? "✓" : "○"}
+                        </span>
+                        <span>Special char (@$!%*?&)</span>
+                      </div>
+                    </div>
+                    {passwordStrength && (
+                      <div className="mt-2">
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((level) => (
+                            <div
+                              key={level}
+                              className={`h-1 flex-1 rounded-full ${
+                                level <= passwordStrength.strength
+                                  ? passwordStrength.strength <= 2
+                                    ? "bg-[#C4541A]"
+                                    : passwordStrength.strength <= 3
+                                      ? "bg-[#C8922A]"
+                                      : "bg-[#7A8C5C]"
+                                  : "bg-[#EDE8DF]"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-[#2C1810]/60 font-['Lato'] mt-1">
+                          Strength:{" "}
+                          <span
+                            className={`font-semibold ${
+                              passwordStrength.strength <= 2
+                                ? "text-[#C4541A]"
+                                : passwordStrength.strength <= 3
+                                  ? "text-[#C8922A]"
+                                  : "text-[#7A8C5C]"
+                            }`}
+                          >
+                            {passwordStrength.strength <= 2
+                              ? "Weak"
+                              : passwordStrength.strength <= 3
+                                ? "Medium"
+                                : "Strong"}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {fieldErrors.password && (
                   <p className="text-xs text-[#C4541A] mt-1">
                     {fieldErrors.password}

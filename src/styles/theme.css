@@ -135,6 +135,7 @@
 
   html {
     font-size: var(--font-size);
+    transition: font-size 0.2s ease;
   }
 
   h1 {
@@ -211,4 +212,3 @@
     cursor: not-allowed !important;
   }
 }
-

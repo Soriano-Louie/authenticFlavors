@@ -16,8 +16,7 @@ export async function getPublicAnnouncements(req, res, next) {
        WHERE status = 'published'
          AND publish_date <= NOW()
          AND (expiration_date IS NULL OR expiration_date >= NOW())
-       ORDER BY publish_date DESC, created_at DESC
-       LIMIT 10`,
+       ORDER BY publish_date DESC, created_at DESC`,
     );
 
     res.json({ announcements });
@@ -55,9 +54,7 @@ export async function createAnnouncement(req, res, next) {
 
     // Validation
     if (!title || !title.trim()) {
-      return res
-        .status(400)
-        .json({ error: { message: "Title is required." } });
+      return res.status(400).json({ error: { message: "Title is required." } });
     }
     if (!content || !content.trim()) {
       return res
@@ -69,14 +66,31 @@ export async function createAnnouncement(req, res, next) {
         .status(400)
         .json({ error: { message: "Publish date is required." } });
     }
-    if (
-      status &&
-      status !== "draft" &&
-      status !== "published"
-    ) {
+    if (status && status !== "draft" && status !== "published") {
       return res
         .status(400)
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
+    }
+
+    // Validate publish_date is not in the past
+    const publishDateTime = new Date(publish_date);
+    const currentDateTime = new Date();
+    if (publishDateTime < currentDateTime) {
+      return res
+        .status(400)
+        .json({ error: { message: "Publish date cannot be in the past." } });
+    }
+
+    // Validate expiration_date is after publish_date
+    if (expiration_date) {
+      const expirationDateTime = new Date(expiration_date);
+      if (expirationDateTime <= publishDateTime) {
+        return res
+          .status(400)
+          .json({
+            error: { message: "Expiration date must be after publish date." },
+          });
+      }
     }
 
     let imageUrl = null;
@@ -84,10 +98,7 @@ export async function createAnnouncement(req, res, next) {
 
     // Handle image upload if file provided
     if (req.file) {
-      const result = await uploadToCloudinary(
-        req.file.buffer,
-        "announcements",
-      );
+      const result = await uploadToCloudinary(req.file.buffer, "announcements");
       imageUrl = result.secure_url;
       imagePublicId = result.public_id;
     }
@@ -127,7 +138,14 @@ export async function createAnnouncement(req, res, next) {
 export async function updateAnnouncement(req, res, next) {
   try {
     const { id } = req.params;
-    const { title, content, status, publish_date, expiration_date, remove_image } = req.body;
+    const {
+      title,
+      content,
+      status,
+      publish_date,
+      expiration_date,
+      remove_image,
+    } = req.body;
 
     // Check if announcement exists
     const [existing] = await pool.query(
@@ -152,14 +170,34 @@ export async function updateAnnouncement(req, res, next) {
         .status(400)
         .json({ error: { message: "Content cannot be empty." } });
     }
-    if (
-      status &&
-      status !== "draft" &&
-      status !== "published"
-    ) {
+    if (status && status !== "draft" && status !== "published") {
       return res
         .status(400)
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
+    }
+
+    // Validate publish_date is not in the past
+    if (publish_date) {
+      const publishDateTime = new Date(publish_date);
+      const currentDateTime = new Date();
+      if (publishDateTime < currentDateTime) {
+        return res
+          .status(400)
+          .json({ error: { message: "Publish date cannot be in the past." } });
+      }
+    }
+
+    // Validate expiration_date is after publish_date
+    if (expiration_date && publish_date) {
+      const expirationDateTime = new Date(expiration_date);
+      const publishDateTime = new Date(publish_date);
+      if (expirationDateTime <= publishDateTime) {
+        return res
+          .status(400)
+          .json({
+            error: { message: "Expiration date must be after publish date." },
+          });
+      }
     }
 
     const current = existing[0];
@@ -181,10 +219,7 @@ export async function updateAnnouncement(req, res, next) {
       if (current.image_public_id) {
         await deleteFromCloudinary(current.image_public_id);
       }
-      const result = await uploadToCloudinary(
-        req.file.buffer,
-        "announcements",
-      );
+      const result = await uploadToCloudinary(req.file.buffer, "announcements");
       imageUrl = result.secure_url;
       imagePublicId = result.public_id;
     }
@@ -199,7 +234,9 @@ export async function updateAnnouncement(req, res, next) {
         (content || current.content).trim(),
         status || current.status,
         publish_date || current.publish_date,
-        expiration_date !== undefined ? (expiration_date || null) : current.expiration_date,
+        expiration_date !== undefined
+          ? expiration_date || null
+          : current.expiration_date,
         imageUrl,
         imagePublicId,
         id,

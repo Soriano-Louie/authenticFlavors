@@ -56,7 +56,7 @@ export function Footer() {
               {[
                 { label: "Home", path: "/" },
                 { label: "About Chef Ramos", path: "/about" },
-                { label: "Book an Event", path: "/packages" },
+                { label: "Book an Event", path: "/package-selection" },
                 { label: "Feedback & Reviews", path: "/feedback" },
               ].map((link) => (
                 <li key={link.path}>
@@ -99,7 +99,7 @@ export function Footer() {
             <ul className="space-y-3 font-['Lato'] text-sm">
               <li className="flex items-start gap-2">
                 <MapPin size={15} className="text-[#C8922A] mt-0.5 shrink-0" />
-                <span>35 ML Quezon St. New Lower Bicutan, Taguig City</span>
+                <span>45 ML Quezon St. New Lower Bicutan, Taguig City</span>
               </li>
               <li className="flex items-center gap-2">
                 <a
@@ -123,12 +123,18 @@ export function Footer() {
         <div className="border-t border-[#C8922A]/20 pt-6 flex flex-col md:flex-row items-center justify-between gap-2 text-xs font-['Lato']">
           <p>© 2026 Authentic Flavors by Chef Ramos. All rights reserved.</p>
           <div className="flex gap-4">
-            <a href="#" className="hover:text-[#C8922A] transition-colors">
+            <Link
+              to="/privacy-policy"
+              className="hover:text-[#C8922A] transition-colors"
+            >
               Privacy Policy
-            </a>
-            <a href="#" className="hover:text-[#C8922A] transition-colors">
+            </Link>
+            <Link
+              to="/terms-of-service"
+              className="hover:text-[#C8922A] transition-colors"
+            >
               Terms of Service
-            </a>
+            </Link>
           </div>
         </div>
       </div>

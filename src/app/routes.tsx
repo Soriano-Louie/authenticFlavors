@@ -2,6 +2,8 @@ import { createBrowserRouter } from "react-router";
 import { Root } from "./components/Root";
 import { LandingPage } from "./pages/LandingPage";
 import { AboutPage } from "./pages/AboutPage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { TermsOfServicePage } from "./pages/TermsOfServicePage";
 import { PackagesPage } from "./pages/PackagesPage";
 import { PackageDetailPage } from "./pages/PackageDetailPage";
 import { PackageSelectionPage } from "./pages/PackageSelectionPage";
@@ -54,6 +56,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: LandingPage },
       { path: "about", Component: AboutPage },
+      { path: "privacy-policy", Component: PrivacyPolicyPage },
+      { path: "terms-of-service", Component: TermsOfServicePage },
       { path: "feedback", Component: PublicFeedbackPage },
       { path: "packages", Component: PackagesPage },
       { path: "packages/:id", Component: PackageDetailPage },

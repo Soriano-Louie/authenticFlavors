@@ -481,38 +481,142 @@ export async function seedDatabaseIfEmpty() {
     if (kbCount[0].count === 0) {
       const kbEntries = [
         // Hours & Location
-        ["Hours & Location", "What are your operating hours?", "We are open Tuesday to Sunday from 11:00 AM to 10:00 PM. We are closed on Mondays."],
-        ["Hours & Location", "Where are you located?", "Authentic Flavors is located at 35 ML Quezon St. New Lower Bicutan, Taguig City, Philippines."],
-        ["Hours & Location", "Do you have parking available?", "Yes, we have dedicated event parking available for our guests."],
-        ["Hours & Location", "Are you open on holidays?", "We are open on most holidays except Christmas Day, New Year's Day, and Mondays (our regular rest day)."],
-        ["Hours & Location", "Why are you closed on Mondays?", "We are closed on Mondays to give our team a rest day and to prepare fresh ingredients for the week ahead. We look forward to serving you Tuesday through Sunday!"],
+        [
+          "Hours & Location",
+          "What are your operating hours?",
+          "We are open Tuesday to Sunday from 11:00 AM to 10:00 PM. We are closed on Mondays.",
+        ],
+        [
+          "Hours & Location",
+          "Where are you located?",
+          "Authentic Flavors is located at 45 ML Quezon St. New Lower Bicutan, Taguig City, Philippines.",
+        ],
+        [
+          "Hours & Location",
+          "Do you have parking available?",
+          "Yes, we have dedicated event parking available for our guests.",
+        ],
+        [
+          "Hours & Location",
+          "Are you open on holidays?",
+          "We are open on most holidays except Christmas Day, New Year's Day, and Mondays (our regular rest day).",
+        ],
+        [
+          "Hours & Location",
+          "Why are you closed on Mondays?",
+          "We are closed on Mondays to give our team a rest day and to prepare fresh ingredients for the week ahead. We look forward to serving you Tuesday through Sunday!",
+        ],
         // Reservations
-        ["Reservations", "How do I make a reservation?", "You can make a reservation by visiting our Book a Package page on our website. We recommend booking at least 24 hours in advance."],
-        ["Reservations", "What is your cancellation policy?", "You may cancel or modify your reservation free of charge up to 4 hours before your scheduled time. Late cancellations or no-shows may be charged a fee of ₱500 per person."],
-        ["Reservations", "Do you accept walk-ins?", "Yes, we welcome walk-ins! However, table availability is subject to the current occupancy. Reservations are recommended, especially on weekends and holidays."],
-        ["Reservations", "Is there a dress code?", "We maintain a smart casual dress code. We kindly ask guests to refrain from wearing slippers, swimwear, or sleeveless shirts for gentlemen."],
-        ["Reservations", "Can I book the entire restaurant for a private event?", "Absolutely! Our venue can accommodate a maximum of 70 guests for private events. Please contact our events team at events@authenticflavors.com or call (02) 8123-4567 for more details."],
-        ["Reservations", "What is the maximum number of guests you can accommodate?", "Our venue can accommodate a maximum of 70 guests for seated events."],
+        [
+          "Reservations",
+          "How do I make a reservation?",
+          "You can make a reservation by visiting our Book a Package page on our website. We recommend booking at least 24 hours in advance.",
+        ],
+        [
+          "Reservations",
+          "What is your cancellation policy?",
+          "You may cancel or modify your reservation free of charge up to 4 hours before your scheduled time. Late cancellations or no-shows may be charged a fee of ₱500 per person.",
+        ],
+        [
+          "Reservations",
+          "Do you accept walk-ins?",
+          "Yes, we welcome walk-ins! However, table availability is subject to the current occupancy. Reservations are recommended, especially on weekends and holidays.",
+        ],
+        [
+          "Reservations",
+          "Is there a dress code?",
+          "We maintain a smart casual dress code. We kindly ask guests to refrain from wearing slippers, swimwear, or sleeveless shirts for gentlemen.",
+        ],
+        [
+          "Reservations",
+          "Can I book the entire restaurant for a private event?",
+          "Absolutely! Our venue can accommodate a maximum of 70 guests for private events. Please contact our events team at events@authenticflavors.com or call (02) 8123-4567 for more details.",
+        ],
+        [
+          "Reservations",
+          "What is the maximum number of guests you can accommodate?",
+          "Our venue can accommodate a maximum of 70 guests for seated events.",
+        ],
         // Menu & Food
-        ["Menu & Food", "What type of cuisine do you serve?", "Authentic Flavors serves modern Filipino cuisine with a contemporary twist. Chef Ramos started the business during the pandemic with sisig and chicken wings, and has since expanded into a full-service restaurant offering a wide variety of dishes."],
-        ["Menu & Food", "Do you accommodate food allergies?", "Yes, we take food allergies seriously. Please input in the booking information any allergies when ordering, and our kitchen will take the necessary precautions. However, please note that our kitchen handles common allergens."],
-        ["Menu & Food", "Are your dishes halal-certified?", "Our restaurant is not fully halal-certified. Please speak with our manager for more details."],
-        ["Menu & Food", "Do you serve alcoholic beverages?", "Yes, we have a selection of local and imported wines, beers, and signature cocktails. We also offer non-alcoholic mocktails for guests who prefer them."],
+        [
+          "Menu & Food",
+          "What type of cuisine do you serve?",
+          "Authentic Flavors serves modern Filipino cuisine with a contemporary twist. Chef Ramos started the business during the pandemic with sisig and chicken wings, and has since expanded into a full-service restaurant offering a wide variety of dishes.",
+        ],
+        [
+          "Menu & Food",
+          "Do you accommodate food allergies?",
+          "Yes, we take food allergies seriously. Please input in the booking information any allergies when ordering, and our kitchen will take the necessary precautions. However, please note that our kitchen handles common allergens.",
+        ],
+        [
+          "Menu & Food",
+          "Are your dishes halal-certified?",
+          "Our restaurant is not fully halal-certified. Please speak with our manager for more details.",
+        ],
+        [
+          "Menu & Food",
+          "Do you serve alcoholic beverages?",
+          "Yes, we have a selection of local and imported wines, beers, and signature cocktails. We also offer non-alcoholic mocktails for guests who prefer them.",
+        ],
         // Pricing & Payment
-        ["Pricing & Payment", "What payment methods do you accept?", "We accept cash, GCash, Maya, and online banking transfers."],
-        ["Pricing & Payment", "Can I split the bill?", "Yes, we allow bill splitting for groups. Each split payment can be made via cash or card for your convenience."],
+        [
+          "Pricing & Payment",
+          "What payment methods do you accept?",
+          "We accept cash, GCash, Maya, and online banking transfers.",
+        ],
+        [
+          "Pricing & Payment",
+          "Can I split the bill?",
+          "Yes, we allow bill splitting for groups. Each split payment can be made via cash or card for your convenience.",
+        ],
         // Catering & Events
-        ["Catering & Events", "How far in advance should I book for an event?", "We recommend booking at least 2 weeks in advance for small events and 1 month in advance for large events to ensure availability and proper preparations."],
-        ["Catering & Events", "Do you provide event setup and decoration?", "Yes, our events team provides basic setup and decoration as part of our packages."],
+        [
+          "Catering & Events",
+          "How far in advance should I book for an event?",
+          "We recommend booking at least 2 weeks in advance for small events and 1 month in advance for large events to ensure availability and proper preparations.",
+        ],
+        [
+          "Catering & Events",
+          "Do you provide event setup and decoration?",
+          "Yes, our events team provides basic setup and decoration as part of our packages.",
+        ],
         // About the Restaurant
-        ["About the Restaurant", "When was the restaurant established?", "Authentic Flavors was officially established in November 2023. It started as a home-based online food business during the pandemic, initially selling sisig and chicken wings, before growing into a full-service dining restaurant."],
-        ["About the Restaurant", "Who is Chef Ramos?", "Chef Ramos is the Executive Chef and Founder of Authentic Flavors. He started the business during the pandemic as a home-based online food service, selling sisig and chicken wings. Through quality food, excellent service, and online promotion, the business grew into the restaurant it is today."],
-        ["About the Restaurant", "What is the venue capacity?", "Our venue can accommodate a maximum of 70 guests. It offers an exclusive, intimate setting perfect for birthdays, weddings, corporate dinners, and other milestones."],
+        [
+          "About the Restaurant",
+          "When was the restaurant established?",
+          "Authentic Flavors was officially established in November 2023. It started as a home-based online food business during the pandemic, initially selling sisig and chicken wings, before growing into a full-service dining restaurant.",
+        ],
+        [
+          "About the Restaurant",
+          "Who is Chef Ramos?",
+          "Chef Ramos is the Executive Chef and Founder of Authentic Flavors. He started the business during the pandemic as a home-based online food service, selling sisig and chicken wings. Through quality food, excellent service, and online promotion, the business grew into the restaurant it is today.",
+        ],
+        [
+          "About the Restaurant",
+          "What is the venue capacity?",
+          "Our venue can accommodate a maximum of 70 guests. It offers an exclusive, intimate setting perfect for birthdays, weddings, corporate dinners, and other milestones.",
+        ],
         // Contact & Support
-        ["Contact & Support", "How can I contact the restaurant?", "You can reach us via email at ramosauthenticflavors@gmail.com, or through our Facebook page."],
-        ["Contact & Support", "Is Wi-Fi available?", "Yes, free Wi-Fi is available for all guests. Ask your server for the password upon arrival."],
-        ["Contact & Support", "Are you available on social media?", "Yes, follow us on Facebook and Instagram for updates, promos, and behind-the-scenes content."],
-        ["Contact & Support", "How do I provide feedback about my experience?", "We value your feedback! You can fill out our feedback form on the website, leave us a review on Google or Facebook, or speak directly with our manager during your visit."],
+        [
+          "Contact & Support",
+          "How can I contact the restaurant?",
+          "You can reach us via email at ramosauthenticflavors@gmail.com, or through our Facebook page.",
+        ],
+        [
+          "Contact & Support",
+          "Is Wi-Fi available?",
+          "Yes, free Wi-Fi is available for all guests. Ask your server for the password upon arrival.",
+        ],
+        [
+          "Contact & Support",
+          "Are you available on social media?",
+          "Yes, follow us on Facebook and Instagram for updates, promos, and behind-the-scenes content.",
+        ],
+        [
+          "Contact & Support",
+          "How do I provide feedback about my experience?",
+          "We value your feedback! You can fill out our feedback form on the website, leave us a review on Google or Facebook, or speak directly with our manager during your visit.",
+        ],
       ];
 
       for (const [category, question, answer] of kbEntries) {
@@ -521,13 +625,13 @@ export async function seedDatabaseIfEmpty() {
           [category, question, answer],
         );
       }
-      console.log(`[SEED] knowledge_base seeded with ${kbEntries.length} FAQ entries.`);
+      console.log(
+        `[SEED] knowledge_base seeded with ${kbEntries.length} FAQ entries.`,
+      );
     }
-
   } catch (error) {
     console.error("[SEED] Error seeding database:", error);
   } finally {
     connection.release();
   }
 }
-

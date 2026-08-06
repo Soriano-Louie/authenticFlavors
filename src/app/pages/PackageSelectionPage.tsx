@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
-import { ArrowRight, Check, CheckCircle, Loader2 } from "lucide-react";
+import { ArrowRight, Check, CheckCircle, Loader2, Search } from "lucide-react";
 import { BookingRules } from "../components/BookingRules";
 import {
   Dialog,
@@ -93,6 +93,12 @@ export function PackageSelectionPage() {
     useState<string>(selectedPackageQuery);
   const [selectedPax, setSelectedPax] = useState<number>(initialPax);
   const [showRulesModal, setShowRulesModal] = useState(true);
+  const [canContinueBooking, setCanContinueBooking] = useState(false);
+
+  // Search and pagination state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(6);
 
   // Data fetching state
   const [packages, setPackages] = useState<Package[]>([]);
@@ -129,6 +135,50 @@ export function PackageSelectionPage() {
     return packages.map((pkg) => transformPackage(pkg, categories, items));
   }, [packages, categories, items]);
 
+  // Filter packages based on search query
+  const filteredPackages = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return transformedPackages;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return transformedPackages.filter((pkg) => {
+      return (
+        pkg.title.toLowerCase().includes(query) ||
+        pkg.description.toLowerCase().includes(query) ||
+        pkg.summary.toLowerCase().includes(query)
+      );
+    });
+  }, [transformedPackages, searchQuery]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredPackages.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedPackages = filteredPackages.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  // Update items per page based on screen size
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setItemsPerPage(4);
+      } else if (window.innerWidth < 1024) {
+        setItemsPerPage(6);
+      } else {
+        setItemsPerPage(6);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const selectedPackage = useMemo(
     () =>
       transformedPackages.find((pkg) => pkg.id === selectedPackageId) ??
@@ -155,6 +205,17 @@ export function PackageSelectionPage() {
     }
   }, [paxOptions, selectedPax]);
 
+  // Enable continue button after 10 seconds when modal opens
+  useEffect(() => {
+    if (showRulesModal) {
+      setCanContinueBooking(false);
+      const timer = setTimeout(() => {
+        setCanContinueBooking(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [showRulesModal]);
+
   const handleProceedToBooking = () => {
     const targetUrl = `/booking?event=${encodeURIComponent(eventType)}&package=${selectedPackage.id}&pax=${selectedPax}`;
     if (!user) {
@@ -162,6 +223,11 @@ export function PackageSelectionPage() {
     } else {
       navigate(targetUrl);
     }
+  };
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 250, behavior: "smooth" });
   };
 
   if (loading) {
@@ -197,8 +263,13 @@ export function PackageSelectionPage() {
   return (
     <div className="bg-[#F5F0E8] min-h-screen">
       {/* Rules Popup Modal */}
-      <Dialog open={showRulesModal} onOpenChange={setShowRulesModal}>
-        <DialogContent className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto">
+      <Dialog open={showRulesModal}>
+        <DialogContent
+          showCloseButton={false}
+          className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="font-['Playfair_Display'] text-[#C8922A] text-xl">
               Booking Policies & Rules
@@ -212,24 +283,25 @@ export function PackageSelectionPage() {
           <DialogFooter>
             <button
               onClick={() => setShowRulesModal(false)}
-              className="w-full px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md"
+              disabled={!canContinueBooking}
+              className="w-full px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <CheckCircle size={16} /> I Understand, Continue Booking
+              {!canContinueBooking && (
+                <Loader2 size={16} className="animate-spin" />
+              )}
+              {canContinueBooking ? (
+                <>
+                  <CheckCircle size={16} /> I Understand, Continue Booking
+                </>
+              ) : (
+                "Please read the policies..."
+              )}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="mb-8">
-          <Link
-            to="/packages"
-            className="inline-flex items-center gap-2 text-[#C8922A] text-sm font-['Lato'] hover:underline"
-          >
-            ← Back to Packages
-          </Link>
-        </div>
-
         <div
           className="relative overflow-hidden rounded-[32px] p-10 text-center text-white"
           style={{
@@ -244,7 +316,7 @@ export function PackageSelectionPage() {
               Package Details
             </p>
             <h1 className="font-['Playfair_Display'] text-4xl mb-4">
-              View Package Menus for {eventType}
+              View Packages Menus
             </h1>
             <p className="max-w-2xl mx-auto text-sm text-[#F5F0E8]/75 font-['Lato']">
               Review the complete food inclusions here. You can make your food
@@ -253,43 +325,139 @@ export function PackageSelectionPage() {
           </div>
         </div>
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-4">
-          {transformedPackages.map((pkg) => (
-            <button
-              key={pkg.id}
-              type="button"
-              onClick={() => setSelectedPackageId(pkg.id)}
-              className={`rounded-3xl border p-6 text-left transition-all ${
-                selectedPackageId === pkg.id
-                  ? "border-[#C8922A] bg-[#C8922A]/10 shadow-lg"
-                  : "border-[#C8922A]/20 bg-white hover:border-[#C8922A]/40"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A] font-['Lato']">
-                    {getPackageLabel(pkg.title)}
-                  </p>
-                  <h2 className="mt-2 text-lg font-['Playfair_Display'] text-[#2C1810]">
-                    {pkg.title}
-                  </h2>
-                </div>
-                {selectedPackageId === pkg.id ? (
-                  <span className="inline-flex items-center justify-center rounded-full bg-[#C8922A] p-2 text-white">
-                    <Check size={16} />
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-sm text-[#2C1810]/70 font-['Lato'] mb-6">
-                {pkg.summary}
-              </p>
-              <div className="flex items-center justify-between text-sm font-['Lato'] text-[#2C1810]/60">
-                <span>{pkg.serving}</span>
-                <span>{pkg.priceLabel}</span>
-              </div>
-            </button>
-          ))}
+        {/* Search Bar */}
+        <div className="mt-8 mb-6">
+          <div className="relative max-w-2xl mx-auto">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2C1810]/40"
+              size={20}
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search packages by name or description..."
+              className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
+            />
+          </div>
+          {searchQuery && (
+            <p className="text-center text-sm text-[#2C1810]/60 font-['Lato'] mt-2">
+              {filteredPackages.length === 0
+                ? "No packages found"
+                : `Found ${filteredPackages.length} package${filteredPackages.length !== 1 ? "s" : ""}`}
+            </p>
+          )}
         </div>
+
+        {/* Package Grid */}
+        {filteredPackages.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-[#2C1810]/60 font-['Lato'] text-lg">
+              No packages found
+            </p>
+            <p className="text-[#2C1810]/40 font-['Lato'] text-sm mt-2">
+              Try adjusting your search terms
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {paginatedPackages.map((pkg) => (
+                <button
+                  key={pkg.id}
+                  type="button"
+                  onClick={() => setSelectedPackageId(pkg.id)}
+                  className={`rounded-3xl border p-6 text-left transition-all ${
+                    selectedPackageId === pkg.id
+                      ? "border-[#C8922A] bg-[#C8922A]/10 shadow-lg"
+                      : "border-[#C8922A]/20 bg-white hover:border-[#C8922A]/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A] font-['Lato']">
+                        {getPackageLabel(pkg.title)}
+                      </p>
+                      <h2 className="mt-2 text-lg font-['Playfair_Display'] text-[#2C1810]">
+                        {pkg.title}
+                      </h2>
+                    </div>
+                    {selectedPackageId === pkg.id ? (
+                      <span className="inline-flex items-center justify-center rounded-full bg-[#C8922A] p-2 text-white">
+                        <Check size={16} />
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-[#2C1810]/70 font-['Lato'] mb-6">
+                    {pkg.summary}
+                  </p>
+                  <div className="flex items-center justify-between text-sm font-['Lato'] text-[#2C1810]/60">
+                    <span>{pkg.serving}</span>
+                    <span>{pkg.priceLabel}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="mt-10 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 rounded-full border border-[#C8922A]/30 text-[#2C1810] text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => {
+                      // Show first page, last page, current page, and pages around current
+                      if (
+                        page === 1 ||
+                        page === totalPages ||
+                        (page >= currentPage - 1 && page <= currentPage + 1)
+                      ) {
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => goToPage(page)}
+                            className={`w-10 h-10 rounded-full text-sm font-['Lato'] transition-colors ${
+                              currentPage === page
+                                ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8]"
+                                : "border border-[#C8922A]/30 text-[#2C1810] hover:border-[#C8922A] hover:text-[#C8922A]"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      } else if (
+                        page === currentPage - 2 ||
+                        page === currentPage + 2
+                      ) {
+                        return (
+                          <span key={page} className="text-[#2C1810]/40 px-1">
+                            ...
+                          </span>
+                        );
+                      }
+                      return null;
+                    },
+                  )}
+                </div>
+
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 rounded-full border border-[#C8922A]/30 text-[#2C1810] text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
+        )}
 
         <div className="mt-12 grid gap-10 lg:grid-cols-[2fr_1fr]">
           <section className="rounded-[32px] bg-white p-8 shadow-sm">
@@ -348,7 +516,7 @@ export function PackageSelectionPage() {
 
               <div>
                 <h3 className="text-lg font-semibold text-[#2C1810] mb-4">
-                  What’s Included
+                  What's Included
                 </h3>
                 <ul className="grid gap-3 text-[#2C1810]/75 text-sm font-['Lato']">
                   {selectedPackage.inclusions.map((item) => (
@@ -370,12 +538,6 @@ export function PackageSelectionPage() {
               Continue to the booking form to add event details, choose one food
               item from each category, and confirm your estimated total.
             </p>
-            <div className="rounded-3xl bg-[#1A0E08]/80 p-5 mb-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A]/90 font-['Lato'] mb-3">
-                Event Type
-              </p>
-              <p className="text-lg font-semibold">{eventType}</p>
-            </div>
             <div className="rounded-3xl bg-[#1A0E08]/80 p-5 mb-6">
               <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A]/90 font-['Lato'] mb-3">
                 Selected Package

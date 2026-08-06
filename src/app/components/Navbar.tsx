@@ -7,9 +7,8 @@ import { NotificationCenter } from "./NotificationCenter";
 const NAV_LINKS = [
   { label: "Home", path: "/" },
   { label: "About", path: "/about" },
-  { label: "Packages", path: "/packages" },
   {
-    label: "Book Now",
+    label: "Packages",
     path: "/package-selection",
     activePaths: ["/package-selection", "/booking"],
   },
@@ -41,13 +40,13 @@ export function Navbar() {
             <img
               src="/authentic_flavor_logo.png"
               alt="Authentic Flavors"
-              className="h-10 w-auto object-contain"
+              className="h-12 w-auto object-contain"
             />
             <div className="leading-none">
-              <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] tracking-wide">
+              <p className="text-[#F5F0E8] text-base font-['Playfair_Display'] tracking-wide">
                 Authentic Flavors
               </p>
-              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">
+              <p className="text-[#C8922A] text-xs tracking-widest uppercase">
                 by Chef Ramos
               </p>
             </div>
@@ -59,7 +58,7 @@ export function Navbar() {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`text-sm transition-colors duration-200 font-['Lato'] tracking-wide ${
+                className={`text-base transition-colors duration-200 font-['Lato'] tracking-wide ${
                   isActive(link.path, link.activePaths)
                     ? "text-[#C8922A]"
                     : "text-[#F5F0E8]/80 hover:text-[#C8922A]"
@@ -77,16 +76,16 @@ export function Navbar() {
                 <NotificationCenter />
                 <Link
                   to={user?.role === "Admin" ? "/admin" : "/dashboard"}
-                  className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-sm font-['Lato']"
+                  className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-base font-['Lato']"
                 >
-                  <User size={16} />
+                  <User size={18} />
                   Dashboard
                 </Link>
                 <button
-                  className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-sm cursor-pointer"
+                  className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-base cursor-pointer"
                   onClick={logout}
                 >
-                  <LogOut size={16} />
+                  <LogOut size={18} />
                   Logout
                 </button>
               </>
@@ -94,7 +93,7 @@ export function Navbar() {
               <>
                 <Link
                   to="/auth"
-                  className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm hover:opacity-90 transition-opacity shadow-md font-['Lato']"
+                  className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-base hover:opacity-90 transition-opacity shadow-md font-['Lato']"
                 >
                   Sign in
                 </Link>
@@ -107,7 +106,7 @@ export function Navbar() {
             className="md:hidden text-[#F5F0E8] p-1"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
-            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+            {mobileOpen ? <X size={28} /> : <Menu size={28} />}
           </button>
         </div>
       </div>

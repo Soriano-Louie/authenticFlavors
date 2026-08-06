@@ -291,7 +291,11 @@ export async function createBooking(req, res) {
     await connection.commit();
 
     // Trigger notification and Brevo email
-    const refStr = booking_reference || (ai_booking_reference ? `#AF-${ai_booking_reference}` : `#BK${String(booking_id).padStart(4, "0")}`);
+    const refStr =
+      booking_reference ||
+      (ai_booking_reference
+        ? `#AF-${ai_booking_reference}`
+        : `#BK${String(booking_id).padStart(4, "0")}`);
     createNotification({
       userId,
       bookingId: booking_id,
@@ -546,7 +550,11 @@ export async function verifyBooking(req, res) {
 
     await connection.commit();
 
-    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    const refStr =
+      booking.booking_reference ||
+      (booking.ai_booking_reference
+        ? `#AF-${booking.ai_booking_reference}`
+        : `#BK${String(bookingId).padStart(4, "0")}`);
     createNotification({
       userId: booking.user_id,
       bookingId,
@@ -807,7 +815,11 @@ export async function rejectBooking(req, res) {
 
     await connection.commit();
 
-    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    const refStr =
+      booking.booking_reference ||
+      (booking.ai_booking_reference
+        ? `#AF-${booking.ai_booking_reference}`
+        : `#BK${String(bookingId).padStart(4, "0")}`);
     createNotification({
       userId: booking.user_id,
       bookingId,
@@ -816,10 +828,15 @@ export async function rejectBooking(req, res) {
       message: `Your booking request (${refStr}) was rejected.${admin_remarks ? ` Reason: ${admin_remarks}` : ""}`,
       link: `/dashboard?tab=events&bookingId=${bookingId}`,
       sendEmailFn: () =>
-        sendBookingRejectedEmail(booking.email, booking.first_name, {
-          booking_reference: refStr,
-          event_date: booking.event_date,
-        }, admin_remarks),
+        sendBookingRejectedEmail(
+          booking.email,
+          booking.first_name,
+          {
+            booking_reference: refStr,
+            event_date: booking.event_date,
+          },
+          admin_remarks,
+        ),
     }).catch((err) => console.error("Notification creation failed:", err));
 
     res.status(200).json({
@@ -849,6 +866,17 @@ export async function requestCancellation(req, res) {
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
     const { cancellation_reason } = req.body;
+
+    // Validate cancellation reason is provided
+    if (!cancellation_reason || !cancellation_reason.trim()) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message:
+            "Cancellation reason is required. Please provide a reason for your cancellation.",
+        },
+      });
+    }
 
     // Get booking details
     const [bookings] = await connection.query(
@@ -977,7 +1005,11 @@ export async function requestCancellation(req, res) {
 
     await connection.commit();
 
-    const refStr = booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`);
+    const refStr =
+      booking.booking_reference ||
+      (booking.ai_booking_reference
+        ? `#AF-${booking.ai_booking_reference}`
+        : `#BK${String(bookingId).padStart(4, "0")}`);
     const [userRows] = await pool.query(
       "SELECT email, first_name FROM users WHERE user_id = ?",
       [userId],
@@ -992,9 +1024,14 @@ export async function requestCancellation(req, res) {
       message: `Your booking (${refStr}) has been cancelled.`,
       link: `/dashboard?tab=events&bookingId=${bookingId}`,
       sendEmailFn: () =>
-        sendBookingCancelledEmail(user?.email, user?.first_name, {
-          booking_reference: refStr,
-        }, cancellation_reason),
+        sendBookingCancelledEmail(
+          user?.email,
+          user?.first_name,
+          {
+            booking_reference: refStr,
+          },
+          cancellation_reason,
+        ),
     }).catch((err) => console.error("Notification creation failed:", err));
 
     // Prepare response
