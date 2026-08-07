@@ -69,6 +69,30 @@ const TIME_SLOTS = [
   "8:00 PM",
 ];
 
+const OPERATING_HOURS = {
+  openHour: 11,
+  closeHour: 22,
+};
+
+function validateTimeAgainstOperatingHours(time12: string): string | null {
+  if (!time12) return null;
+  const [timePart, meridiem] = time12.split(" ");
+  if (!timePart || !meridiem) return null;
+  let [hours, minutes] = timePart.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  if (meridiem === "PM" && hours !== 12) hours += 12;
+  if (meridiem === "AM" && hours === 12) hours = 0;
+  const totalMinutes = hours * 60 + minutes;
+  const openMinutes = OPERATING_HOURS.openHour * 60;
+  const closeMinutes = OPERATING_HOURS.closeHour * 60;
+  if (totalMinutes < openMinutes || totalMinutes > closeMinutes) {
+    const openLabel = `${OPERATING_HOURS.openHour}:00 ${OPERATING_HOURS.openHour >= 12 ? "PM" : "AM"}`;
+    const closeLabel = `${OPERATING_HOURS.closeHour}:00 ${OPERATING_HOURS.closeHour >= 12 ? "PM" : "AM"}`;
+    return `Start time must be between ${openLabel} and ${closeLabel} (Tuesday to Sunday).`;
+  }
+  return null;
+}
+
 // Convert 12-hour display time to MySQL-compatible 24-hour HH:MM:SS format
 const to24Hour = (time12: string): string => {
   const [timePart, meridiem] = time12.split(" ");
@@ -421,6 +445,13 @@ export function ChatBot() {
 
   // 5. Select Time Slot
   const handleSelectTime = (time: string) => {
+    const timeError = validateTimeAgainstOperatingHours(time);
+    if (timeError) {
+      addBotMessage(
+        `⚠️ ${timeError} Please choose another time:`,
+      );
+      return;
+    }
     setWizard((prev) => ({ ...prev, eventTime: time, step: "VENUE" }));
     addBotMessage(
       `Time set for **${time}**. 🏛️ Please select your preferred **Venue / Setup Option**:`,
@@ -1405,6 +1436,16 @@ export function ChatBot() {
                       {wizard.dietaryNotes || "None"}
                     </p>
                   </div>
+                  {wizard.notes && (
+                    <div className="border-t border-[#C8922A]/10 pt-1.5">
+                      <span className="text-[#2C1810]/60 block text-[10px]">
+                        Special Requests / Venue Notes:
+                      </span>
+                      <p className="font-semibold text-[11px] text-[#2C1810]">
+                        {wizard.notes}
+                      </p>
+                    </div>
+                  )}
                   <div className="border-t border-[#C8922A]/15 pt-2 flex justify-between items-center">
                     <div>
                       <span className="text-[#2C1810]/60 text-[10px] block">

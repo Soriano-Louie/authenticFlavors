@@ -57,6 +57,33 @@ const ALLERGY_OPTIONS = [
   { key: "soy", label: "Soy", color: "#C8922A" },
 ];
 
+const OPERATING_HOURS = {
+  openHour: 11,
+  closeHour: 22,
+};
+
+function validateTimeAgainstOperatingHours(time: string): string | null {
+  if (!time) return null;
+  const [hours, minutes] = time.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  const totalMinutes = hours * 60 + minutes;
+  const openMinutes = OPERATING_HOURS.openHour * 60;
+  const closeMinutes = OPERATING_HOURS.closeHour * 60;
+  if (totalMinutes < openMinutes || totalMinutes > closeMinutes) {
+    const openLabel = `${OPERATING_HOURS.openHour}:00 ${OPERATING_HOURS.openHour >= 12 ? "PM" : "AM"}`;
+    const closeLabel = `${OPERATING_HOURS.closeHour}:00 ${OPERATING_HOURS.closeHour >= 12 ? "PM" : "AM"}`;
+    return `Start time must be between ${openLabel} and ${closeLabel} (Tuesday to Sunday).`;
+  }
+  return null;
+}
+
+function formatTimeTo12Hour(time24: string): string {
+  const [hours, minutes] = time24.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 || 12;
+  return `${h12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
 const STEPS = [
   { num: 1, label: "Event Details", icon: Calendar },
   { num: 2, label: "Food Package", icon: Utensils },
@@ -162,6 +189,7 @@ export function BookingPage() {
   // Step 1
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("18:00");
+  const [timeError, setTimeError] = useState<string | null>(null);
   const [guestCount, setGuestCount] = useState(normalizedInitialPax);
   const [eventType, setEventType] = useState(preselectedEventType);
   const [customEventType, setCustomEventType] = useState("");
@@ -332,6 +360,10 @@ export function BookingPage() {
     }
     if (eventType === "Other" && !customEventType.trim()) {
       toast.error("Please specify your event type.");
+      return;
+    }
+    if (timeError) {
+      toast.error(timeError);
       return;
     }
 
@@ -591,9 +623,19 @@ export function BookingPage() {
                   <input
                     type="time"
                     value={eventTime}
-                    onChange={(e) => setEventTime(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setEventTime(value);
+                      const error = validateTimeAgainstOperatingHours(value);
+                      setTimeError(error);
+                    }}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
+                  {timeError && (
+                    <p className="text-xs text-[#C4541A] font-['Lato'] mt-1">
+                      {timeError}
+                    </p>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
@@ -880,7 +922,7 @@ export function BookingPage() {
                       ["Phone", contactPhone || "—"],
                       ["Event Type", eventType],
                       ["Date", eventDate],
-                      ["Time", eventTime],
+                      ["Time", formatTimeTo12Hour(eventTime)],
                       ["Guests", `${guestCount} pax`],
                     ].map(([k, v]) => (
                       <div
@@ -993,6 +1035,18 @@ export function BookingPage() {
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Special Requests */}
+                {specialRequests && (
+                  <div className="bg-[#F5F0E8] rounded-xl p-5">
+                    <h4 className="text-[#C8922A] text-xs uppercase tracking-widest font-['Lato'] mb-3">
+                      Special Requests / Venue Notes
+                    </h4>
+                    <p className="text-sm text-[#2C1810]/70 font-['Lato'] whitespace-pre-wrap">
+                      {specialRequests}
+                    </p>
                   </div>
                 )}
 

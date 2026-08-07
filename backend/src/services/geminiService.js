@@ -1,5 +1,9 @@
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
+import {
+  getOperatingHoursDisplay,
+  getOperatingHoursMessage,
+} from "../utils/operatingHours.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gemini Service — Centralized AI Integration Layer
@@ -340,9 +344,10 @@ async function buildRestaurantContext() {
   const sections = [];
 
   // 1. Business information (static, as it's not stored in DB)
+  const operatingHoursDisplay = getOperatingHoursDisplay();
   sections.push(
     "BUSINESS INFORMATION:\n" +
-      "- Operating Hours: Tuesday to Sunday, 11:00 AM – 10:00 PM\n" +
+      `- Operating Hours: Tuesday to Sunday, ${operatingHoursDisplay}\n` +
       "- Closed on: Mondays\n" +
       "- Contact Email: events@authenticflavors.ph\n" +
       "- Contact Phone: +63 (2) 8888-RAMOS\n" +
@@ -566,6 +571,7 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     ? `LOGGED IN USER CONTEXT:\n- Name: ${userProfile.name}\n- Email: ${userProfile.email}\n- Saved Dietary Preferences: ${userProfile.dietaryPreferences || "None"}\n(You may auto-fill and confirm these contact details when making a booking. If saved dietary preferences exist, inform the user that their saved preference has been applied and ask if they wish to keep or adjust it for this booking.)`
     : "LOGGED IN USER CONTEXT: User is not logged in. (You must ask for Customer Name, Email, and Contact Number during booking.)";
 
+  const operatingHoursDisplay = getOperatingHoursDisplay();
   const systemPrompt =
     "You are a friendly, professional customer support and conversational booking assistant for " +
     '"Authentic Flavors by Chef Ramos", a premium catering and event services company.\n\n' +
@@ -573,7 +579,7 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     "1. When the user wants to make a booking (or is in the middle of a booking flow), guide them conversationally through collecting ALL required booking details:\n" +
     "   - Event Type (e.g. Birthday, Wedding, Corporate Dinner, Anniversary)\n" +
     "   - Event Date (YYYY-MM-DD format, must NOT be in the past, and NOT a Monday as the store is closed on Mondays)\n" +
-    "   - Event Time / Start Time (e.g., 12:00 PM, 6:00 PM - operating hours 11:00 AM - 10:00 PM)\n" +
+    `   - Event Time / Start Time (e.g., 12:00 PM, 6:00 PM - operating hours ${operatingHoursDisplay})\n` +
     "   - Number of Guests / Pax (must fit within the selected package's supported guest counts)\n" +
     "   - Catering Package Name (e.g., Signature Buffet, Elegance Plated, Deluxe Celebration)\n" +
     "   - Venue / Event Location & Setup (e.g., Standard Setup, Garden Pavilion Setup, Indoor Private Dining)\n" +

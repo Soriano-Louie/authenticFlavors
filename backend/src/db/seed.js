@@ -1,4 +1,5 @@
 import { pool } from "./pool.js";
+import { getOperatingHoursDisplay } from "../utils/operatingHours.js";
 
 export async function seedDatabaseIfEmpty() {
   const connection = await pool.getConnection();
@@ -497,7 +498,7 @@ export async function seedDatabaseIfEmpty() {
         [
           "Hours & Location",
           "What are your operating hours?",
-          "We are open Tuesday to Sunday from 11:00 AM to 10:00 PM. We are closed on Mondays.",
+          `We are open Tuesday to Sunday from ${getOperatingHoursDisplay()}. We are closed on Mondays.`,
         ],
         [
           "Hours & Location",

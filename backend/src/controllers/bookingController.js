@@ -3,6 +3,11 @@ import {
   getPhilippineDateString,
   toPhilippineDateString,
 } from "../utils/timezone.js";
+import {
+  isOperatingDay,
+  isWithinOperatingHours,
+  getOperatingHoursMessage,
+} from "../utils/operatingHours.js";
 import { createNotification } from "../services/notificationService.js";
 import {
   sendBookingSubmittedEmail,
@@ -135,6 +140,28 @@ export async function createBooking(req, res) {
           },
         });
       }
+    }
+
+    // 3b. Validate booking start time against operating hours
+    if (!isOperatingDay(event_date)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message:
+            "The store is closed on Mondays. Please choose another date.",
+        },
+      });
+    }
+
+    if (!isWithinOperatingHours(start_time)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: getOperatingHoursMessage(),
+        },
+      });
     }
 
     // 4. Resolve venue_setup_id
