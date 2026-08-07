@@ -15,6 +15,7 @@ import {
   refreshSession,
   register as apiRegister,
   updateProfile as apiUpdateProfile,
+  uploadProfilePhoto as apiUploadProfilePhoto,
   type AuthUser,
   type LoginPayload,
   type RegisterPayload,
@@ -30,6 +31,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
+  changeProfilePhoto: (file: File) => Promise<AuthUser>;
   setAuth: (accessToken: string, user: AuthUser) => void;
 }
 
@@ -100,6 +102,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [accessToken],
   );
 
+  const changeProfilePhoto = useCallback(
+    async (file: File) => {
+      if (!accessToken) {
+        throw new Error("No access token available");
+      }
+      const result = await apiUploadProfilePhoto(accessToken, file);
+      setUser(result.user);
+      return result.user;
+    },
+    [accessToken],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -110,6 +124,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refreshUser,
       updateProfile,
+      changeProfilePhoto,
       setAuth,
     }),
     [
@@ -121,6 +136,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refreshUser,
       updateProfile,
+      changeProfilePhoto,
       setAuth,
     ],
   );

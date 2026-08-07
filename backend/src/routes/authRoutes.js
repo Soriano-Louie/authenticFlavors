@@ -10,8 +10,10 @@ import {
   forgotPassword,
   resetPassword,
   updateProfile,
+  uploadProfilePhoto,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
+import { uploadProfilePhoto as uploadProfilePhotoMiddleware } from "../middleware/upload.js";
 
 export const authRouter = Router();
 
@@ -21,6 +23,12 @@ authRouter.get("/me", requireAuth, me);
 authRouter.post("/refresh", refresh);
 authRouter.post("/logout", logout);
 authRouter.put("/profile", requireAuth, updateProfile);
+authRouter.post(
+  "/profile/photo",
+  requireAuth,
+  uploadProfilePhotoMiddleware.single("photo"),
+  uploadProfilePhoto,
+);
 
 // Email verification
 authRouter.post("/send-verification", sendVerification);

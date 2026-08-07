@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
@@ -48,6 +48,7 @@ import {
   LogOut,
   Eye,
   ExternalLink,
+  Camera,
 } from "lucide-react";
 
 const TABS = [
@@ -223,9 +224,15 @@ const MOCK_PAYMENT_INSTRUCTIONS: PaymentInstruction[] = [
 ];
 
 export function CustomerDashboard() {
-  const { user, accessToken, updateProfile, logout } = useAuth();
+  const { user, accessToken, updateProfile, changeProfilePhoto, logout } =
+    useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
+
+  // Profile photo upload state
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Dietary Preferences state
   const [dietaryText, setDietaryText] = useState("");
@@ -260,6 +267,26 @@ export function CustomerDashboard() {
   const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>(
     {},
   );
+
+  // Booking details modal state
+  const [showBookingDetailsModal, setShowBookingDetailsModal] = useState(false);
+  const [selectedBookingId, setSelectedBookingId] = useState<number | null>(
+    null,
+  );
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  const openBookingDetails = (bookingId: number) => {
+    const b = bookings.find((x) => x.booking_id === bookingId) || null;
+    setSelectedBookingId(bookingId);
+    setSelectedBooking(b);
+    setShowBookingDetailsModal(true);
+  };
+
+  const closeBookingDetails = () => {
+    setShowBookingDetailsModal(false);
+    setSelectedBookingId(null);
+    setSelectedBooking(null);
+  };
 
   // Fetch bookings
   useEffect(() => {
@@ -439,6 +466,44 @@ export function CustomerDashboard() {
     return new Date(user.created_at).getFullYear().toString();
   };
 
+  const validatePhotoFile = (file: File): string | null => {
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png"];
+    if (!allowedTypes.includes(file.type)) {
+      return "Invalid file type. Only JPG, JPEG, and PNG images are allowed.";
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return "File size exceeds the 5MB limit.";
+    }
+    return null;
+  };
+
+  const handlePhotoFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const validationError = validatePhotoFile(file);
+    if (validationError) {
+      setPhotoError(validationError);
+      toast.error(validationError);
+      return;
+    }
+
+    setPhotoError(null);
+    setPhotoUploading(true);
+    try {
+      await changeProfilePhoto(file);
+      toast.success("Profile photo updated successfully!");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to upload profile photo.";
+      setPhotoError(message);
+      toast.error(message);
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   // Handle settings form submission
   const handleSettingsSave = async () => {
     setSettingsSaving(true);
@@ -507,6 +572,32 @@ export function CustomerDashboard() {
   // Logout state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Lock background scrolling while any modal is open
+  useEffect(() => {
+    const isModalOpen =
+      showBookingDetailsModal ||
+      showMenuChangeModal ||
+      showCancellationModal ||
+      showReceiptModal ||
+      showLogoutConfirm;
+
+    if (isModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [
+    showBookingDetailsModal,
+    showMenuChangeModal,
+    showCancellationModal,
+    showReceiptModal,
+    showLogoutConfirm,
+  ]);
 
   const handlePayNow = async (paymentId: number, bookingId: number) => {
     try {
@@ -832,7 +923,7 @@ export function CustomerDashboard() {
         {canCancel && (
           <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl p-3 mb-3 flex items-start gap-3">
             <AlertTriangle
-              size={18}
+              size={16}
               className="text-[#C8922A] shrink-0 mt-0.5"
             />
             <div>
@@ -854,7 +945,7 @@ export function CustomerDashboard() {
         {/* Overdue Warning Banner */}
         {payments.some((p) => p.payment_status === "Overdue") && (
           <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3 mb-3 flex items-start gap-3">
-            <AlertCircle size={18} className="text-[#C4541A] shrink-0 mt-0.5" />
+            <AlertCircle size={20} className="text-[#C4541A] shrink-0 mt-0.5" />
             <div>
               <p className="text-xs font-['Lato'] font-semibold text-[#C4541A]">
                 Overdue Payment Alert
@@ -1084,7 +1175,7 @@ export function CustomerDashboard() {
                 {existingPendingRequest ? (
                   <div className="p-3 bg-[#C8922A]/10 rounded-xl border border-[#C8922A]/30 flex items-center justify-between text-xs font-['Lato'] text-[#C8922A]">
                     <span className="flex items-center gap-1.5 font-semibold">
-                      <Clock size={14} /> Menu Change Request Pending Approval
+                      <Clock size={16} /> Menu Change Request Pending Approval
                     </span>
                     <span className="text-xs text-[#2C1810]/60">
                       Requested on{" "}
@@ -1146,7 +1237,7 @@ export function CustomerDashboard() {
                           : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
                       }`}
                     >
-                      <Utensils size={14} />
+                      <Utensils size={16} />
                       Request Menu Change
                     </button>
                     {!isEligibleForMenuChange && isConfirmed && (
@@ -1168,7 +1259,7 @@ export function CustomerDashboard() {
                 onClick={() => handleCancelBookingClick(booking.booking_id)}
                 className="w-full px-4 py-2.5 bg-[#C4541A]/10 hover:bg-[#C4541A]/20 text-[#C4541A] rounded-full text-xs font-['Lato'] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
               >
-                <AlertTriangle size={14} />
+                <AlertTriangle size={16} />
                 Cancel Booking
               </button>
             </div>
@@ -1179,15 +1270,23 @@ export function CustomerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F0E8]">
+    <div className="min-h-screen bg-[#F5F0E8]" data-text-scale="large">
       {/* Top Bar */}
       <div className="bg-[#2C1810] px-6 py-5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-              <span className="text-[#F5F0E8] font-['Playfair_Display'] text-lg">
-                {getUserInitials()}
-              </span>
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center overflow-hidden">
+              {user?.profile_photo_url ? (
+                <img
+                  src={user.profile_photo_url}
+                  alt={getFullName()}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[#F5F0E8] font-['Playfair_Display'] text-lg">
+                  {getUserInitials()}
+                </span>
+              )}
             </div>
             <div>
               <p className="text-[#F5F0E8] font-['Playfair_Display']">
@@ -1204,7 +1303,7 @@ export function CustomerDashboard() {
               to="/package-selection"
               className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"
             >
-              <Plus size={14} /> New Booking
+              <Plus size={16} /> New Booking
             </Link>
             <Link
               to="/"
@@ -1306,7 +1405,7 @@ export function CustomerDashboard() {
                     className="w-10 h-10 rounded-full mb-3 flex items-center justify-center"
                     style={{ backgroundColor: color + "15" }}
                   >
-                    <Icon size={18} style={{ color }} />
+                    <Icon size={20} style={{ color }} />
                   </div>
                   <p className="font-['Playfair_Display'] text-[#2C1810] text-2xl">
                     {value}
@@ -1333,7 +1432,7 @@ export function CustomerDashboard() {
               </div>
               {bookingsLoading ? (
                 <div className="flex justify-center py-8">
-                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : upcomingBookings.length === 0 ? (
                 <div className="text-center py-8">
@@ -1391,7 +1490,7 @@ export function CustomerDashboard() {
               </h3>
               {bookingsLoading ? (
                 <div className="flex justify-center py-6">
-                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : upcomingBookings.length === 0 ? (
                 <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
@@ -1444,7 +1543,7 @@ export function CustomerDashboard() {
               </h3>
               {bookingsLoading ? (
                 <div className="flex justify-center py-6">
-                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : pastBookings.length === 0 ? (
                 <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
@@ -1454,7 +1553,8 @@ export function CustomerDashboard() {
                 pastBookings.map((ev) => (
                   <div
                     key={ev.booking_id}
-                    className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3"
+                    onClick={() => openBookingDetails(ev.booking_id)}
+                    className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3 cursor-pointer hover:bg-[#F5F0E8]/60 transition-colors"
                   >
                     <div>
                       <p className="font-['Playfair_Display'] text-[#2C1810]">
@@ -1464,11 +1564,16 @@ export function CustomerDashboard() {
                         {formatDate(ev.event_date)} · {ev.number_of_pax} guests
                       </p>
                     </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-['Lato'] self-start ${getStatusStyle(ev.booking_status)}`}
-                    >
-                      {ev.booking_status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                      >
+                        {ev.booking_status}
+                      </span>
+                      <span className="text-xs text-[#C8922A] font-['Lato'] hover:underline">
+                        View Details
+                      </span>
+                    </div>
                   </div>
                 ))
               )}
@@ -1489,7 +1594,7 @@ export function CustomerDashboard() {
 
             {dietarySaved && (
               <div className="mb-5 p-4 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl flex items-center gap-3">
-                <CheckCircle size={20} className="text-[#7A8C5C]" />
+                <CheckCircle size={22} className="text-[#7A8C5C]" />
                 <p className="text-[#7A8C5C] text-sm font-['Lato']">
                   Dietary preferences saved successfully!
                 </p>
@@ -1498,7 +1603,7 @@ export function CustomerDashboard() {
 
             {dietaryError && (
               <div className="mb-5 p-4 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl flex items-center gap-3">
-                <AlertCircle size={20} className="text-[#C4541A]" />
+                <AlertCircle size={22} className="text-[#C4541A]" />
                 <p className="text-[#C4541A] text-sm font-['Lato']">
                   {dietaryError}
                 </p>
@@ -1577,7 +1682,7 @@ export function CustomerDashboard() {
               >
                 {dietarySaving ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" /> Saving...
+                    <Loader2 size={18} className="animate-spin" /> Saving...
                   </>
                 ) : (
                   "Save Preferences"
@@ -1691,7 +1796,7 @@ export function CustomerDashboard() {
 
             {settingsSaved && (
               <div className="mb-6 p-4 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl flex items-center gap-3">
-                <CheckCircle size={20} className="text-[#7A8C5C]" />
+                <CheckCircle size={22} className="text-[#7A8C5C]" />
                 <p className="text-[#7A8C5C] text-sm font-['Lato']">
                   Profile updated successfully!
                 </p>
@@ -1700,29 +1805,54 @@ export function CustomerDashboard() {
 
             {settingsErrors.general && (
               <div className="mb-6 p-4 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl flex items-center gap-3">
-                <AlertCircle size={20} className="text-[#C4541A]" />
+                <AlertCircle size={22} className="text-[#C4541A]" />
                 <p className="text-[#C4541A] text-sm font-['Lato']">
                   {settingsErrors.general}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center gap-5 mb-7">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-                <span className="text-[#F5F0E8] text-xl font-['Playfair_Display']">
-                  {getUserInitials()}
-                </span>
+            <div className="flex flex-col sm:flex-row items-center gap-5 mb-7">
+              <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center overflow-hidden shrink-0">
+                {photoUploading ? (
+                  <Loader2 size={24} className="animate-spin text-[#F5F0E8]" />
+                ) : user?.profile_photo_url ? (
+                  <img
+                    src={user.profile_photo_url}
+                    alt={getFullName()}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#F5F0E8] text-xl font-['Playfair_Display']">
+                    {getUserInitials()}
+                  </span>
+                )}
               </div>
-              <div>
+              <div className="text-center sm:text-left">
                 <p className="font-['Playfair_Display'] text-[#2C1810]">
                   {getFullName()}
                 </p>
                 <p className="text-[#2C1810]/50 text-sm font-['Lato']">
                   {user?.email || "No email"}
                 </p>
-                <button className="text-[#C8922A] text-xs font-['Lato'] mt-1 hover:underline">
-                  Change Photo
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={photoUploading}
+                  className="inline-flex items-center gap-1.5 text-[#C8922A] text-xs font-['Lato'] mt-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Camera size={14} />
+                  {photoUploading ? "Uploading..." : "Change Photo"}
                 </button>
+                <p className="text-[#2C1810]/40 text-[10px] font-['Lato'] mt-0.5">
+                  JPG, JPEG, or PNG (max 5MB)
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png"
+                  className="hidden"
+                  onChange={handlePhotoFileChange}
+                />
               </div>
             </div>
             <div className="space-y-4">
@@ -1846,7 +1976,7 @@ export function CustomerDashboard() {
               >
                 {settingsSaving ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" /> Saving...
+                    <Loader2 size={18} className="animate-spin" /> Saving...
                   </>
                 ) : (
                   "Save Changes"
@@ -1858,7 +1988,7 @@ export function CustomerDashboard() {
                 onClick={handleLogoutClick}
                 className="mt-4 w-full px-6 py-2.5 border border-[#C4541A]/40 text-[#C4541A] hover:bg-[#C4541A]/10 rounded-full text-sm font-['Lato'] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
               >
-                <LogOut size={16} />
+                <LogOut size={18} />
                 Logout
               </button>
             </div>
@@ -1895,7 +2025,7 @@ export function CustomerDashboard() {
                     }}
                     className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
                   >
-                    <X size={20} />
+                    <X size={22} />
                   </button>
                 </div>
 
@@ -2000,7 +2130,7 @@ export function CustomerDashboard() {
                     >
                       {uploadingPaymentId === showInstructions ? (
                         <>
-                          <Loader2 size={16} className="animate-spin" />{" "}
+                          <Loader2 size={18} className="animate-spin" />{" "}
                           Uploading...
                         </>
                       ) : (
@@ -2026,7 +2156,7 @@ export function CustomerDashboard() {
                       {currentPayment?.payment_status === "Paid" ? (
                         <>
                           <CheckCircle
-                            size={24}
+                            size={26}
                             className="text-[#7A8C5C] mx-auto mb-2"
                           />
                           <p className="text-sm font-['Lato'] text-[#7A8C5C] font-semibold">
@@ -2041,7 +2171,7 @@ export function CustomerDashboard() {
                         "For_Verification" ? (
                         <>
                           <Loader2
-                            size={24}
+                            size={26}
                             className="animate-spin text-[#C8922A] mx-auto mb-2"
                           />
                           <p className="text-sm font-['Lato'] text-[#C8922A] font-semibold">
@@ -2056,7 +2186,7 @@ export function CustomerDashboard() {
                       ) : (
                         <>
                           <AlertCircle
-                            size={24}
+                            size={26}
                             className="text-[#2C1810]/40 mx-auto mb-2"
                           />
                           <p className="text-sm font-['Lato'] text-[#2C1810]/60 font-semibold">
@@ -2093,14 +2223,14 @@ export function CustomerDashboard() {
                 }}
                 className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer"
               >
-                <X size={20} />
+                <X size={22} />
               </button>
             </div>
 
             <div className="p-5">
               {loadingCancellationDetails ? (
                 <div className="flex justify-center py-8">
-                  <Loader2 size={24} className="animate-spin text-[#C8922A]" />
+                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
                 </div>
               ) : cancellationDetails ? (
                 <div className="space-y-4">
@@ -2128,7 +2258,7 @@ export function CustomerDashboard() {
                   {/* Cancellation Policy Applied */}
                   {cancellationDetails.estimated_cancellation && (
                     <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-xl p-4">
-                      <p className="text-xs font-['Lato'] font-semibold text-[#C8922A] uppercase tracking-wider mb-2">
+                      <p className="text-xs font-['Lato'] font-semibold text-[#C8922A] uppercase tracking-wider mb-3">
                         Cancellation Policy Applied
                       </p>
                       {(() => {
@@ -2144,9 +2274,11 @@ export function CustomerDashboard() {
                                 ? "1 day or less before event"
                                 : "";
                         return (
-                          <p className="text-xs font-['Lato'] text-[#2C1810]/70 mb-2">
-                            {policyText}
-                          </p>
+                          <div className="flex w-fit px-3 py-1.5 rounded-full bg-[#C4541A]/15 border border-[#C4541A]/30 mt-1 mb-4">
+                            <span className="text-sm font-['Lato'] font-bold text-[#C4541A]">
+                              {policyText}
+                            </span>
+                          </div>
                         );
                       })()}
                       <div className="space-y-1 text-xs font-['Lato']">
@@ -2156,10 +2288,11 @@ export function CustomerDashboard() {
                           </span>
                           <span className="font-semibold text-[#2C1810]">
                             ₱
-                            {cancellationDetails.total_price.toLocaleString(
-                              "en-PH",
-                              { minimumFractionDigits: 2 },
-                            )}
+                            {Number(
+                              cancellationDetails.total_price,
+                            ).toLocaleString("en-PH", {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -2168,10 +2301,11 @@ export function CustomerDashboard() {
                           </span>
                           <span className="font-semibold text-[#7A8C5C]">
                             ₱
-                            {cancellationDetails.amount_already_paid.toLocaleString(
-                              "en-PH",
-                              { minimumFractionDigits: 2 },
-                            )}
+                            {Number(
+                              cancellationDetails.amount_already_paid,
+                            ).toLocaleString("en-PH", {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -2180,10 +2314,12 @@ export function CustomerDashboard() {
                           </span>
                           <span className="font-semibold text-[#C4541A]">
                             ₱
-                            {cancellationDetails.estimated_cancellation.estimated_amount_due.toLocaleString(
-                              "en-PH",
-                              { minimumFractionDigits: 2 },
-                            )}
+                            {Number(
+                              cancellationDetails.estimated_cancellation
+                                .estimated_amount_due,
+                            ).toLocaleString("en-PH", {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                         {cancellationDetails.estimated_cancellation
@@ -2194,10 +2330,12 @@ export function CustomerDashboard() {
                             </span>
                             <span className="font-bold text-[#C4541A]">
                               ₱
-                              {cancellationDetails.estimated_cancellation.estimated_additional_due.toLocaleString(
-                                "en-PH",
-                                { minimumFractionDigits: 2 },
-                              )}
+                              {Number(
+                                cancellationDetails.estimated_cancellation
+                                  .estimated_additional_due,
+                              ).toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                              })}
                             </span>
                           </div>
                         )}
@@ -2229,7 +2367,7 @@ export function CustomerDashboard() {
                   <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3">
                     <div className="flex items-start gap-2">
                       <AlertTriangle
-                        size={16}
+                        size={18}
                         className="text-[#C4541A] shrink-0 mt-0.5"
                       />
                       <p className="text-xs font-['Lato'] text-[#C4541A]">
@@ -2264,7 +2402,7 @@ export function CustomerDashboard() {
                     >
                       {processingCancellation ? (
                         <>
-                          <Loader2 size={16} className="animate-spin" />{" "}
+                          <Loader2 size={18} className="animate-spin" />{" "}
                           Processing...
                         </>
                       ) : (
@@ -2302,7 +2440,7 @@ export function CustomerDashboard() {
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between">
               <div>
                 <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8] flex items-center gap-2">
-                  <Utensils className="text-[#C8922A]" size={20} />
+                  <Utensils className="text-[#C8922A]" size={22} />
                   Request Menu Change
                 </h3>
                 <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
@@ -2318,7 +2456,7 @@ export function CustomerDashboard() {
                 }}
                 className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1"
               >
-                <X size={20} />
+                <X size={22} />
               </button>
             </div>
 
@@ -2339,7 +2477,7 @@ export function CustomerDashboard() {
                   {/* Notice banner */}
                   <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex items-start gap-3">
                     <Edit3
-                      size={18}
+                      size={20}
                       className="text-[#C8922A] shrink-0 mt-0.5"
                     />
                     <div className="text-xs font-['Lato'] text-[#2C1810]">
@@ -2474,7 +2612,7 @@ export function CustomerDashboard() {
                 className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
               >
                 {submittingMenuChange && (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 size={22} className="animate-spin" />
                 )}
                 {submittingMenuChange
                   ? "Submitting..."
@@ -2499,7 +2637,7 @@ export function CustomerDashboard() {
               onClick={() => setShowReceiptModal(false)}
               className="absolute top-4 right-4 bg-white/90 hover:bg-white text-[#2C1810] rounded-full p-2 z-10 transition-colors cursor-pointer"
             >
-              <X size={24} />
+              <X size={26} />
             </button>
             <img
               src={selectedReceiptUrl}
@@ -2516,7 +2654,7 @@ export function CustomerDashboard() {
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-xl">
             <div className="p-6">
               <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#C4541A]/10 mx-auto mb-4">
-                <LogOut className="text-[#C4541A]" size={24} />
+                <LogOut className="text-[#C4541A]" size={26} />
               </div>
               <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold text-center mb-2">
                 Confirm Logout
@@ -2540,17 +2678,372 @@ export function CustomerDashboard() {
                 >
                   {loggingOut ? (
                     <>
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={18} className="animate-spin" />
                       Logging out...
                     </>
                   ) : (
                     <>
-                      <LogOut size={16} />
+                      <LogOut size={18} />
                       Logout
                     </>
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Booking Details Modal */}
+      {showBookingDetailsModal && selectedBooking && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeBookingDetails}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#C8922A]/20 af-modal-scroll"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8] flex items-center gap-2">
+                  Booking Details
+                </h3>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                  {selectedBooking.booking_reference ||
+                    `#BK${String(selectedBooking.booking_id).padStart(4, "0")}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(selectedBooking.booking_status)}`}
+                >
+                  {selectedBooking.booking_status}
+                </span>
+                <button
+                  onClick={closeBookingDetails}
+                  className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Event Information */}
+              <div className="bg-[#F5F0E8] rounded-xl p-4 border border-[#C8922A]/10">
+                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold mb-3">
+                  Event Information
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm font-['Lato']">
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Event Type
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.type_name ||
+                        selectedBooking.event_type_id}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Event Date & Time
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {formatDate(selectedBooking.event_date)} ·{" "}
+                      {formatTime(selectedBooking.start_time)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Number of Guests
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.number_of_pax}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Selected Package
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.package_name}
+                    </span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Venue Setup
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.setup_name || "Standard Setup"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu Selections */}
+              <div>
+                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold mb-3">
+                  Menu Selections
+                </h4>
+                {selectedBooking.menu_selections &&
+                selectedBooking.menu_selections.length > 0 ? (
+                  <div className="space-y-2">
+                    {(() => {
+                      const grouped: Record<string, string[]> = {};
+                      selectedBooking.menu_selections!.forEach((sel) => {
+                        const cat = sel.category_name || "Other";
+                        if (!grouped[cat]) grouped[cat] = [];
+                        grouped[cat].push(sel.item_name);
+                      });
+                      return Object.entries(grouped).map(([cat, items]) => (
+                        <div
+                          key={cat}
+                          className="bg-[#F5F0E8] rounded-lg p-3 border border-[#C8922A]/10"
+                        >
+                          <p className="text-xs font-['Lato'] font-semibold text-[#C8922A] mb-1">
+                            {cat}
+                          </p>
+                          <ul className="text-xs font-['Lato'] text-[#2C1810]/70 list-disc list-inside space-y-0.5">
+                            {items.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#2C1810]/40 font-['Lato']">
+                    No menu selections recorded.
+                  </p>
+                )}
+              </div>
+
+              {/* Special Requests */}
+              {(selectedBooking.allergy_notes ||
+                selectedBooking.dietary_notes) && (
+                <div>
+                  <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold mb-3">
+                    Special Requests
+                  </h4>
+                  <div className="space-y-2 text-sm font-['Lato']">
+                    {selectedBooking.allergy_notes && (
+                      <div className="bg-[#C8922A]/5 border border-[#C8922A]/20 rounded-lg p-3">
+                        <span className="text-xs font-semibold text-[#C8922A] block mb-1">
+                          Allergy Notes
+                        </span>
+                        <span className="text-[#2C1810]/70">
+                          {selectedBooking.allergy_notes}
+                        </span>
+                      </div>
+                    )}
+                    {selectedBooking.dietary_notes && (
+                      <div className="bg-[#7A8C5C]/5 border border-[#7A8C5C]/20 rounded-lg p-3">
+                        <span className="text-xs font-semibold text-[#7A8C5C] block mb-1">
+                          Dietary Notes
+                        </span>
+                        <span className="text-[#2C1810]/70">
+                          {selectedBooking.dietary_notes}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Customer Information */}
+              <div>
+                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold mb-3">
+                  Customer Information
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm font-['Lato']">
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Contact Name
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.contact_name}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Contact Email
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.contact_email}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#2C1810]/50 block text-xs">
+                      Contact Phone
+                    </span>
+                    <span className="text-[#2C1810] font-medium">
+                      {selectedBooking.contact_phone || "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Summary */}
+              {(() => {
+                const payments =
+                  paymentsByBooking[selectedBooking.booking_id] || [];
+                const reservation = payments.find(
+                  (p) => p.payment_type === "Reservation",
+                );
+                const downPayment = payments.find(
+                  (p) => p.payment_type === "DownPayment",
+                );
+                const finalPayment = payments.find(
+                  (p) => p.payment_type === "FinalPayment",
+                );
+
+                if (payments.length === 0) {
+                  return (
+                    <p className="text-sm text-[#2C1810]/40 font-['Lato']">
+                      No payment records found.
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {/* Financial Info */}
+                    <div className="grid grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 text-xs font-['Lato']">
+                      <div>
+                        <span className="text-[#2C1810]/50 block">
+                          Total Price
+                        </span>
+                        <span className="text-[#2C1810] font-semibold">
+                          ₱
+                          {Number(selectedBooking.total_price).toLocaleString(
+                            "en-PH",
+                            { minimumFractionDigits: 2 },
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#2C1810]/50 block">
+                          Amount Paid
+                        </span>
+                        <span className="text-[#7A8C5C] font-semibold">
+                          ₱
+                          {Number(
+                            selectedBooking.amount_paid || 0,
+                          ).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#2C1810]/50 block">
+                          Remaining
+                        </span>
+                        <span className="text-[#C4541A] font-semibold">
+                          ₱
+                          {Number(
+                            selectedBooking.remaining_balance ??
+                              selectedBooking.total_price,
+                          ).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Completed banner */}
+                    {selectedBooking.booking_status === "Completed" && (
+                      <div className="bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl p-3 flex items-center gap-2">
+                        <CheckCircle size={16} className="text-[#7A8C5C]" />
+                        <p className="text-xs font-['Lato'] text-[#7A8C5C]">
+                          Event Completed — Payments are final.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Payment cards */}
+                    {[reservation, downPayment, finalPayment]
+                      .filter(Boolean)
+                      .map((payment) => {
+                        const statusInfo = getPaymentStatusInfo(payment!);
+                        return (
+                          <div
+                            key={payment!.payment_id}
+                            className="bg-white/50 p-3 rounded-xl border border-[#C8922A]/5"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <span className="font-semibold text-[#2C1810] block text-xs">
+                                  {payment!.payment_type}
+                                </span>
+                                <span className="text-[#2C1810]/50 block text-xs">
+                                  Due: {formatDate(payment!.due_date)}
+                                </span>
+                                <span className="text-[#C8922A] font-medium block text-xs">
+                                  ₱
+                                  {Number(payment!.amount).toLocaleString(
+                                    "en-PH",
+                                    {
+                                      minimumFractionDigits: 2,
+                                    },
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-xs ${statusInfo.colorClass}`}
+                                >
+                                  {statusInfo.label}
+                                </span>
+                              </div>
+                            </div>
+                            {statusInfo.message && (
+                              <p
+                                className={`text-xs font-['Lato'] mt-1 ${
+                                  statusInfo.colorClass ===
+                                  "bg-[#C4541A]/10 text-[#C4541A]"
+                                    ? "text-[#C4541A]"
+                                    : "text-[#2C1810]/50"
+                                }`}
+                              >
+                                {statusInfo.message}
+                              </p>
+                            )}
+                            {payment!.receipt_url && (
+                              <div className="mt-2 pt-2 border-t border-[#C8922A]/10">
+                                <p className="text-xs font-['Lato'] text-[#2C1810]/60 mb-1.5">
+                                  Uploaded Receipt:
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <img
+                                    src={payment!.receipt_url}
+                                    alt="Payment Receipt"
+                                    className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"
+                                    onClick={() =>
+                                      handleViewReceipt(payment!.receipt_url!)
+                                    }
+                                  />
+                                  <button
+                                    onClick={() =>
+                                      handleViewReceipt(payment!.receipt_url!)
+                                    }
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-[#C8922A]/10 hover:bg-[#C8922A]/20 text-[#C8922A] rounded-full text-xs font-['Lato'] transition-colors cursor-pointer"
+                                  >
+                                    <Eye size={12} />
+                                    View Full Size
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

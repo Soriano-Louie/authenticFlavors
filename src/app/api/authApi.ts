@@ -10,6 +10,8 @@ export interface AuthUser {
   created_at: string;
   updated_at: string;
   dietary_preferences?: string | null;
+  profile_photo_url?: string | null;
+  profile_photo_public_id?: string | null;
 }
 
 interface AuthSuccessResponse {
@@ -160,6 +162,37 @@ export function updateProfile(
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(payload),
+  });
+}
+
+// Upload a new profile photo (multipart/form-data)
+export function uploadProfilePhoto(
+  accessToken: string,
+  file: File,
+): Promise<AuthMeResponse> {
+  const formData = new FormData();
+  formData.append("photo", file);
+
+  return fetch(`${API_BASE_URL}/api/auth/profile/photo`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        payload.error?.message ?? "Failed to upload profile photo.";
+      throw new ApiError(
+        response.status,
+        message,
+        payload.error?.code,
+        payload.error?.fieldErrors,
+        payload.error?.email,
+      );
+    }
+    return payload;
   });
 }
 

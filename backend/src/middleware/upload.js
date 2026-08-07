@@ -24,9 +24,33 @@ const fileFilter = (_req, file, cb) => {
   }
 };
 
+// Profile photo upload — stricter: only JPG, JPEG, PNG
+const profilePhotoFilter = (_req, file, cb) => {
+  const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png"];
+
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "Invalid file type. Only JPG, JPEG, and PNG images are allowed.",
+      ),
+      false,
+    );
+  }
+};
+
 export const upload = multer({
   storage,
   fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
+});
+
+export const uploadProfilePhoto = multer({
+  storage,
+  fileFilter: profilePhotoFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB max
   },

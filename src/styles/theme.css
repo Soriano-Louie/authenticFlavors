@@ -212,3 +212,47 @@
     cursor: not-allowed !important;
   }
 }
+
+/* Dashboard-only text + spacing scale */
+[data-text-scale="large"] {
+  --text-xs: 0.875rem;
+  --text-sm: 1rem;
+  --text-base: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: 2.625rem;
+
+  --spacing-3: 0.875rem;
+  --spacing-4: 1.125rem;
+  --spacing-5: 1.375rem;
+  --spacing-6: 1.75rem;
+  --spacing-7: 2rem;
+  --spacing-8: 2.25rem;
+  --spacing-9: 2.625rem;
+  --spacing-10: 2.875rem;
+  --spacing-12: 3.5rem;
+  --spacing-16: 4.5rem;
+
+  --radius: 0.7rem;
+}
+
+/* Custom scrollbar for modals */
+.af-modal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.af-modal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.af-modal-scroll::-webkit-scrollbar-thumb {
+  background: #C8922A40;
+  border-radius: 999px;
+}
+.af-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #C8922A80;
+}
+.af-modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #C8922A40 transparent;
+}

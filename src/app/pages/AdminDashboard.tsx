@@ -174,7 +174,7 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F0E8] flex">
+    <div className="min-h-screen bg-[#F5F0E8] flex" data-text-scale="large">
       {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#1A0E08] transform transition-transform duration-300 ${
@@ -184,7 +184,7 @@ export function AdminDashboard() {
         <div className="p-5 border-b border-[#C8922A]/15">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-              <ChefHat size={18} className="text-[#F5F0E8]" />
+              <ChefHat size={20} className="text-[#F5F0E8]" />
             </div>
             <div>
               <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
@@ -198,7 +198,7 @@ export function AdminDashboard() {
               className="lg:hidden ml-auto text-[#F5F0E8]/50"
               onClick={() => setSidebarOpen(false)}
             >
-              <X size={18} />
+              <X size={22} />
             </button>
           </div>
         </div>
@@ -353,7 +353,7 @@ function OverviewSection() {
                         {Icon}
                       </span>
                     ) : (
-                      <Icon size={20} style={{ color: stat.color }} />
+                      <Icon size={22} style={{ color: stat.color }} />
                     )}
                   </div>
                 </div>
@@ -377,7 +377,7 @@ function OverviewSection() {
           </h3>
           {loading ? (
             <div className="flex justify-center py-6">
-              <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+              <Loader2 className="animate-spin text-[#C8922A]" size={26} />
             </div>
           ) : stats && stats.sentimentBreakdown.length > 0 ? (
             <div className="space-y-3">
@@ -442,7 +442,7 @@ function RecentActivityList({ limit }: { limit?: number }) {
   if (loading) {
     return (
       <div className="flex justify-center py-6">
-        <Loader2 className="animate-spin text-[#C8922A]" size={24} />
+        <Loader2 className="animate-spin text-[#C8922A]" size={26} />
       </div>
     );
   }
@@ -467,7 +467,7 @@ function RecentActivityList({ limit }: { limit?: number }) {
             className="flex items-start gap-3 pb-3 border-b border-[#C8922A]/5 last:border-0 last:pb-0"
           >
             <div className="w-8 h-8 rounded-lg bg-[#C8922A]/10 flex items-center justify-center shrink-0">
-              <IconComponent size={14} className="text-[#C8922A]" />
+              <IconComponent size={16} className="text-[#C8922A]" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-['Lato'] text-[#2C1810]">
@@ -611,9 +611,9 @@ function FeedbackSection({
             className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#2C1810] border border-[#C8922A]/30 hover:border-[#C8922A] rounded-xl text-sm font-['Lato'] transition-all shadow-sm disabled:opacity-50"
           >
             {reanalyzingAll ? (
-              <Loader2 size={16} className="animate-spin text-[#C8922A]" />
+              <Loader2 size={18} className="animate-spin text-[#C8922A]" />
             ) : (
-              <Sparkles size={16} className="text-[#C8922A]" />
+              <Sparkles size={18} className="text-[#C8922A]" />
             )}
             {reanalyzingAll ? "Analyzing All..." : "Re-analyze All"}
           </button>
@@ -624,7 +624,7 @@ function FeedbackSection({
             }
             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            <Download size={16} />
+            <Download size={18} />
             {isGenerating ? "Generating..." : "Export Report"}
           </button>
         </div>
@@ -633,7 +633,7 @@ function FeedbackSection({
       {/* AI Service Fallback Notice if Error Occurred */}
       {data?.ai_service_error && (
         <div className="bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-xl p-4 flex items-start gap-3 text-sm text-[#2C1810]">
-          <AlertCircle size={20} className="text-[#C8922A] shrink-0 mt-0.5" />
+          <AlertCircle size={22} className="text-[#C8922A] shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold font-['Lato']">AI Service Notice</p>
             <p className="text-xs text-[#2C1810]/80 mt-0.5">
@@ -678,7 +678,7 @@ function FeedbackSection({
           {/* Sentiment Breakdown Cards */}
           <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
             <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4 flex items-center gap-2">
-              <Sparkles size={20} className="text-[#C8922A]" />
+              <Sparkles size={18} className="text-[#C8922A]" />
               Sentiment Breakdown
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -733,7 +733,7 @@ function FeedbackSection({
                 <Sparkles size={120} />
               </div>
               <div className="flex items-center gap-2 mb-3">
-                <Sparkles size={20} className="text-[#C8922A]" />
+                <Sparkles size={18} className="text-[#C8922A]" />
                 <h3 className="text-lg font-['Playfair_Display'] text-[#F5F0E8]">
                   AI Executive Summary
                 </h3>
@@ -904,7 +904,7 @@ function FeedbackSection({
                                 className="animate-spin text-[#C8922A]"
                               />
                             ) : (
-                              <Sparkles size={16} />
+                              <Sparkles size={22} />
                             )}
                           </button>
 
@@ -920,7 +920,7 @@ function FeedbackSection({
                                 className="animate-spin text-[#C4541A]"
                               />
                             ) : (
-                              <Trash2 size={16} />
+                              <Trash2 size={22} />
                             )}
                           </button>
                         </div>
@@ -956,7 +956,7 @@ function FeedbackSection({
                       {fb.sentiment_summary && (
                         <div className="text-xs font-['Lato'] text-[#2C1810]/80 bg-[#C8922A]/05 p-2.5 rounded-lg border border-[#C8922A]/10 flex items-start gap-2">
                           <Sparkles
-                            size={14}
+                            size={16}
                             className="text-[#C8922A] shrink-0 mt-0.5"
                           />
                           <span>
@@ -1233,7 +1233,7 @@ function BookingsSection() {
           <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <AlertCircle size={18} className="text-[#C4541A]" />
+                <AlertCircle size={20} className="text-[#C4541A]" />
                 <p className="text-sm font-['Lato'] text-[#C4541A] font-semibold">
                   {overduePayments.length} overdue payment(s) requiring
                   attention
@@ -1867,7 +1867,7 @@ function PackagesSection() {
             onClick={handleAdd}
             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Add Package
           </button>
         </div>
@@ -1988,7 +1988,7 @@ function PackagesSection() {
                 onClick={closeModal}
                 className="p-1 rounded-lg hover:bg-[#C8922A]/10 text-[#2C1810]/50 transition-colors"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
@@ -2066,7 +2066,7 @@ function PackagesSection() {
                     </div>
                   ) : (
                     <label className="w-24 h-24 rounded-xl border-2 border-dashed border-[#C8922A]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#C8922A] transition-colors">
-                      <ImagePlus size={20} className="text-[#C8922A]/50" />
+                      <ImagePlus size={22} className="text-[#C8922A]/50" />
                       <span className="text-[10px] font-['Lato'] text-[#C8922A]/50 mt-1">
                         Upload
                       </span>
@@ -2155,7 +2155,7 @@ function PackagesSection() {
                 disabled={submitting}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting && <Loader2 size={22} className="animate-spin" />}
                 {submitting
                   ? "Saving..."
                   : editingPkg
@@ -2177,7 +2177,7 @@ function PackagesSection() {
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle size={24} className="text-[#C4541A]" />
+                <AlertCircle size={26} className="text-[#C4541A]" />
               </div>
               <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
                 Delete Package
@@ -2202,7 +2202,7 @@ function PackagesSection() {
                   disabled={submitting}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting && <Loader2 size={16} className="animate-spin" />}
                   {submitting ? "Deleting..." : "Delete Package"}
                 </button>
               </div>
@@ -2468,7 +2468,7 @@ function AnnouncementsSection() {
           onClick={handleAdd}
           className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shadow-lg shadow-[#C8922A]/20"
         >
-          <Plus size={16} />
+          <Plus size={18} />
           New Announcement
         </button>
       </div>
@@ -2650,7 +2650,7 @@ function AnnouncementsSection() {
                   onClick={closeModal}
                   className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors"
                 >
-                  <X size={20} />
+              <X size={20} />
                 </button>
               </div>
             </div>
@@ -2801,7 +2801,7 @@ function AnnouncementsSection() {
                   </div>
                 ) : (
                   <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-[#2C1810]/15 rounded-xl cursor-pointer hover:border-[#C8922A]/40 transition-colors bg-white">
-                    <ImagePlus size={24} className="text-[#2C1810]/25 mb-1" />
+                    <ImagePlus size={26} className="text-[#2C1810]/25 mb-1" />
                     <span className="text-xs text-[#2C1810]/40 font-['Lato']">
                       Click to upload image
                     </span>
@@ -2829,7 +2829,7 @@ function AnnouncementsSection() {
                 disabled={submitting}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50 shadow-lg shadow-[#C8922A]/20"
               >
-                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting && <Loader2 size={16} className="animate-spin" />}
                 {submitting
                   ? "Saving..."
                   : editingAnn
@@ -2848,7 +2848,7 @@ function AnnouncementsSection() {
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-[#C4541A]/10 flex items-center justify-center">
-                  <AlertCircle size={20} className="text-[#C4541A]" />
+                  <AlertCircle size={22} className="text-[#C4541A]" />
                 </div>
                 <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg">
                   Delete Announcement
@@ -2875,7 +2875,7 @@ function AnnouncementsSection() {
                 disabled={submitting}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                {submitting && <Loader2 size={14} className="animate-spin" />}
+                {submitting && <Loader2 size={16} className="animate-spin" />}
                 {submitting ? "Deleting..." : "Delete"}
               </button>
             </div>
@@ -3044,7 +3044,7 @@ function MenuChangeRequestsSection() {
         </div>
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 bg-[#C8922A]/10 border border-[#C8922A]/30 px-4 py-2 rounded-full">
-            <Clock size={14} className="text-[#C8922A]" />
+            <Clock size={16} className="text-[#C8922A]" />
             <span className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
               {pendingCount} pending review
             </span>
@@ -3082,7 +3082,7 @@ function MenuChangeRequestsSection() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-3xl border border-[#C8922A]/10 p-12 text-center">
           <div className="w-14 h-14 rounded-full bg-[#C8922A]/10 flex items-center justify-center mx-auto mb-4">
-            <ChefHat size={24} className="text-[#C8922A]" />
+            <ChefHat size={26} className="text-[#C8922A]" />
           </div>
           <p className="font-['Playfair_Display'] text-[#2C1810] text-lg">
             No {filterStatus === "All" ? "" : filterStatus.toLowerCase()}{" "}
@@ -3206,7 +3206,7 @@ function MenuChangeRequestsSection() {
                       disabled={approvingId === req.request_id}
                       className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <XCircle size={14} />
+                      <XCircle size={16} />
                       Reject
                     </button>
                     <button
@@ -3237,7 +3237,7 @@ function MenuChangeRequestsSection() {
           <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl border border-[#C8922A]/20">
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
               <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
-                <XCircle className="text-[#C4541A]" size={18} />
+                <XCircle className="text-[#C4541A]" size={20} />
                 Reject Menu Change Request
               </h3>
               <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
@@ -3281,7 +3281,7 @@ function MenuChangeRequestsSection() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {submittingRejection && (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 size={16} className="animate-spin" />
                 )}
                 {submittingRejection ? "Submitting..." : "Confirm Rejection"}
               </button>

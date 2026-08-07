@@ -20,6 +20,10 @@ import {
   generateResetToken,
   hashResetToken,
 } from "../utils/tokens.js";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinaryService.js";
 
 // Package Controller Functions
 export async function getPackages(_req, res) {
@@ -169,6 +173,8 @@ function normalizeUserRow(row) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     dietary_preferences: row.dietary_preferences ?? null,
+    profile_photo_url: row.profile_photo_url ?? null,
+    profile_photo_public_id: row.profile_photo_public_id ?? null,
   };
 }
 
@@ -444,7 +450,7 @@ export async function verifyEmail(req, res) {
 
   // Fetch the user and issue tokens
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE email = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE email = ? LIMIT 1",
     [email],
   );
 
@@ -483,7 +489,7 @@ export async function login(req, res) {
   const { email, password } = parsed.data;
 
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, password_hash, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE email = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, password_hash, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE email = ? LIMIT 1",
     [email],
   );
 
@@ -649,18 +655,16 @@ export async function resetPassword(req, res) {
     [resetRecord.id],
   );
 
-  return res
-    .status(200)
-    .json({
-      message: "Password has been reset successfully. You can now sign in.",
-    });
+  return res.status(200).json({
+    message: "Password has been reset successfully. You can now sign in.",
+  });
 }
 
 export async function me(req, res) {
   const userId = Number(req.auth.sub);
 
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
     [userId],
   );
 
@@ -686,11 +690,9 @@ export async function refresh(req, res) {
   const refreshToken = req.cookies?.[env.refreshCookieName];
 
   if (!refreshToken) {
-    return res
-      .status(401)
-      .json({
-        error: { code: "UNAUTHORIZED", message: "Missing refresh token." },
-      });
+    return res.status(401).json({
+      error: { code: "UNAUTHORIZED", message: "Missing refresh token." },
+    });
   }
 
   try {
@@ -698,19 +700,17 @@ export async function refresh(req, res) {
     const userId = Number(decoded.sub);
 
     const [rows] = await pool.query(
-      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
+      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
       [userId],
     );
 
     if (rows.length === 0 || rows[0].account_status !== "Active") {
-      return res
-        .status(401)
-        .json({
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Session is no longer valid.",
-          },
-        });
+      return res.status(401).json({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Session is no longer valid.",
+        },
+      });
     }
 
     const user = normalizeUserRow(rows[0]);
@@ -720,11 +720,9 @@ export async function refresh(req, res) {
 
     return res.status(200).json({ user, accessToken });
   } catch {
-    return res
-      .status(401)
-      .json({
-        error: { code: "UNAUTHORIZED", message: "Invalid refresh token." },
-      });
+    return res.status(401).json({
+      error: { code: "UNAUTHORIZED", message: "Invalid refresh token." },
+    });
   }
 }
 
@@ -792,7 +790,7 @@ export async function updateProfile(req, res) {
 
   // Fetch updated user data
   const [rows] = await pool.query(
-    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences FROM users WHERE user_id = ? LIMIT 1",
+    "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
     [userId],
   );
 
@@ -804,4 +802,70 @@ export async function updateProfile(req, res) {
 
   const user = normalizeUserRow(rows[0]);
   return res.status(200).json({ user });
+}
+
+export async function uploadProfilePhoto(req, res) {
+  const userId = Number(req.auth.sub);
+
+  if (!req.file) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Profile photo image file is required.",
+      },
+    });
+  }
+
+  try {
+    // Fetch current user to get existing photo public_id for cleanup
+    const [users] = await pool.query(
+      "SELECT user_id, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
+      [userId],
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "User not found." },
+      });
+    }
+
+    const currentUser = users[0];
+
+    // Upload new photo to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, "profile_photos");
+
+    // Delete old photo from Cloudinary if it exists
+    if (currentUser.profile_photo_public_id) {
+      await deleteFromCloudinary(currentUser.profile_photo_public_id);
+    }
+
+    // Update user record with new photo
+    await pool.query(
+      "UPDATE users SET profile_photo_url = ?, profile_photo_public_id = ? WHERE user_id = ?",
+      [result.secure_url, result.public_id, userId],
+    );
+
+    // Fetch updated user data
+    const [rows] = await pool.query(
+      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
+      [userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "User not found." },
+      });
+    }
+
+    const user = normalizeUserRow(rows[0]);
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error("Upload profile photo failed:", error);
+    return res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to upload profile photo. Please try again.",
+      },
+    });
+  }
 }

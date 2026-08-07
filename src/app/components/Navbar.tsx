@@ -78,7 +78,15 @@ export function Navbar() {
                   to={user?.role === "Admin" ? "/admin" : "/dashboard"}
                   className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-base font-['Lato']"
                 >
-                  <User size={18} />
+                  {user?.profile_photo_url ? (
+                    <img
+                      src={user.profile_photo_url}
+                      alt={user.first_name}
+                      className="w-7 h-7 rounded-full object-cover"
+                    />
+                  ) : (
+                    <User size={18} />
+                  )}
                   Dashboard
                 </Link>
                 <button
