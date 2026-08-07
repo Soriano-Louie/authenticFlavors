@@ -239,7 +239,8 @@ export async function getPublicFeedbacks(req, res) {
       `SELECT f.feedback_id, f.rating, f.comment, f.submitted_at,
               f.is_analyzed, f.sentiment_status, f.sentiment_score, f.sentiment_summary,
               u.first_name, u.last_name,
-              p.package_name
+              p.package_name,
+              b.booking_status, b.cancellation_requested_at
        FROM feedback f
        JOIN users u ON f.user_id = u.user_id
        JOIN bookings b ON f.booking_id = b.booking_id
@@ -254,6 +255,8 @@ export async function getPublicFeedbacks(req, res) {
       submitted_at: row.submitted_at,
       customer_name: `${row.first_name} ${row.last_name}`.trim(),
       package_name: row.package_name,
+      booking_status: row.booking_status,
+      cancellation_requested_at: row.cancellation_requested_at,
     }));
 
     res.status(200).json({ feedbacks });
@@ -261,7 +264,7 @@ export async function getPublicFeedbacks(req, res) {
     console.error("Get public feedbacks failed:", error);
     res.status(500).json({
       error: {
-        code: "DATABASE_ERROR",
+        code: "SERVER_ERROR",
         message: "Failed to retrieve feedbacks.",
       },
     });

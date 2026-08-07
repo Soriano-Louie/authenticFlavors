@@ -329,11 +329,9 @@ export function CustomerDashboard() {
     const eligibleBookings = bookings.filter((b) => {
       const isUserCancelled =
         b.booking_status === "Cancelled" && b.cancellation_requested_at != null;
-      if (
-        b.booking_status !== "Confirmed" &&
-        b.booking_status !== "Completed" &&
-        !isUserCancelled
-      )
+      // User-cancelled bookings are always eligible regardless of event date
+      if (isUserCancelled) return true;
+      if (b.booking_status !== "Confirmed" && b.booking_status !== "Completed")
         return false;
       const eventDate = b.event_date.split("T")[0];
       return eventDate <= todayStr;
@@ -1720,16 +1718,16 @@ export function CustomerDashboard() {
             </p>
 
             {(() => {
-              // Show bookings whose event date is today or in the past
-              // and whose status allows feedback (Confirmed, Completed, or user-cancelled)
+              // Show bookings whose status allows feedback (Confirmed, Completed, or user-cancelled)
+              // User-cancelled bookings are always eligible regardless of event date
               const feedbackEligibleBookings = bookings.filter((b) => {
                 const isUserCancelled =
                   b.booking_status === "Cancelled" &&
                   b.cancellation_requested_at != null;
+                if (isUserCancelled) return true;
                 if (
                   b.booking_status !== "Confirmed" &&
-                  b.booking_status !== "Completed" &&
-                  !isUserCancelled
+                  b.booking_status !== "Completed"
                 )
                   return false;
                 const eventDate = b.event_date.split("T")[0];
@@ -1758,6 +1756,9 @@ export function CustomerDashboard() {
                   {feedbackEligibleBookings.map((ev) => {
                     const alreadyRated =
                       feedbackAlreadySubmitted[ev.booking_id] === true;
+                    const isUserCancelled =
+                      ev.booking_status === "Cancelled" &&
+                      ev.cancellation_requested_at != null;
                     return (
                       <div
                         key={ev.booking_id}
@@ -1771,6 +1772,11 @@ export function CustomerDashboard() {
                             {formatDate(ev.event_date)} · {ev.number_of_pax}{" "}
                             guests
                           </p>
+                          {alreadyRated && isUserCancelled && (
+                            <p className="text-[#C4541A] text-xs font-['Lato'] mt-0.5 font-medium">
+                              Booking Cancelled
+                            </p>
+                          )}
                         </div>
                         <button
                           onClick={() => {
@@ -1786,7 +1792,11 @@ export function CustomerDashboard() {
                           }`}
                         >
                           <Star size={12} />
-                          {alreadyRated ? "Rated" : "Rate Event"}
+                          {alreadyRated
+                            ? isUserCancelled
+                              ? "Rated (Cancelled)"
+                              : "Rated"
+                            : "Rate Event"}
                         </button>
                       </div>
                     );
