@@ -1,6 +1,12 @@
 import { pool } from "../db/pool.js";
-import { toPhilippineDateString, getPhilippineDateString } from "../utils/timezone.js";
-import { analyzeFeedback, generateOverallFeedbackAnalysis } from "../services/geminiService.js";
+import {
+  toPhilippineDateString,
+  getPhilippineDateString,
+} from "../utils/timezone.js";
+import {
+  analyzeFeedback,
+  generateOverallFeedbackAnalysis,
+} from "../services/geminiService.js";
 
 export async function createFeedback(req, res) {
   try {
@@ -42,7 +48,7 @@ export async function createFeedback(req, res) {
 
     // Verify booking exists and belongs to user
     const [bookings] = await pool.query(
-      "SELECT booking_id, booking_status, package_id FROM bookings WHERE booking_id = ? AND user_id = ? LIMIT 1",
+      "SELECT booking_id, booking_status, package_id, cancellation_requested_at FROM bookings WHERE booking_id = ? AND user_id = ? LIMIT 1",
       [booking_id, userId],
     );
 
@@ -67,13 +73,23 @@ export async function createFeedback(req, res) {
     const isConfirmedWithPastDate =
       booking.booking_status === "Confirmed" &&
       fullBooking.length > 0 &&
-      toPhilippineDateString(fullBooking[0].event_date) < getPhilippineDateString();
+      toPhilippineDateString(fullBooking[0].event_date) <
+        getPhilippineDateString();
+    // A booking cancelled by the user (not admin-rejected) is also reviewable
+    const isUserCancelled =
+      booking.booking_status === "Cancelled" &&
+      booking.cancellation_requested_at != null;
 
-    if (booking.booking_status !== "Completed" && !isConfirmedWithPastDate) {
+    if (
+      booking.booking_status !== "Completed" &&
+      !isConfirmedWithPastDate &&
+      !isUserCancelled
+    ) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
-          message: "Feedback can only be submitted for completed bookings.",
+          message:
+            "Feedback can only be submitted for completed or user-cancelled bookings.",
         },
       });
     }
@@ -96,12 +112,25 @@ export async function createFeedback(req, res) {
     // Perform real-time AI Analysis via Gemini
     let aiResult;
     try {
-      aiResult = await analyzeFeedback(parsedRating, trimmedComment, packageName);
+      aiResult = await analyzeFeedback(
+        parsedRating,
+        trimmedComment,
+        packageName,
+      );
     } catch (aiErr) {
-      console.error("[FeedbackController] AI analysis failed on submit, fallback used:", aiErr);
+      console.error(
+        "[FeedbackController] AI analysis failed on submit, fallback used:",
+        aiErr,
+      );
       aiResult = {
-        sentiment: parsedRating >= 4 ? "Positive" : parsedRating <= 2 ? "Negative" : "Neutral",
-        sentiment_score: parsedRating >= 4 ? 0.85 : parsedRating <= 2 ? 0.25 : 0.55,
+        sentiment:
+          parsedRating >= 4
+            ? "Positive"
+            : parsedRating <= 2
+              ? "Negative"
+              : "Neutral",
+        sentiment_score:
+          parsedRating >= 4 ? 0.85 : parsedRating <= 2 ? 0.25 : 0.55,
         summary: `${parsedRating}/5 stars: "${(trimmedComment || "").slice(0, 100)}"`,
         key_topics: ["Customer Review"],
         actionable_insights: [],
@@ -338,7 +367,10 @@ export async function getAdminFeedbackAnalysis(req, res) {
           fb.actionable_insights = aiResult.actionable_insights;
           fb.is_analyzed = 1;
         } catch (err) {
-          console.error(`Auto-analysis failed for feedback #${fb.feedback_id}:`, err);
+          console.error(
+            `Auto-analysis failed for feedback #${fb.feedback_id}:`,
+            err,
+          );
           aiServiceError = true;
         }
       }
@@ -350,21 +382,30 @@ export async function getAdminFeedbackAnalysis(req, res) {
       if (Array.isArray(r.key_topics)) {
         topics = r.key_topics;
       } else if (typeof r.key_topics === "string") {
-        try { topics = JSON.parse(r.key_topics); } catch { topics = []; }
+        try {
+          topics = JSON.parse(r.key_topics);
+        } catch {
+          topics = [];
+        }
       }
 
       let insights = [];
       if (Array.isArray(r.actionable_insights)) {
         insights = r.actionable_insights;
       } else if (typeof r.actionable_insights === "string") {
-        try { insights = JSON.parse(r.actionable_insights); } catch { insights = []; }
+        try {
+          insights = JSON.parse(r.actionable_insights);
+        } catch {
+          insights = [];
+        }
       }
 
       return {
         feedback_id: r.feedback_id,
         booking_id: r.booking_id,
         user_id: r.user_id,
-        customer_name: `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.email,
+        customer_name:
+          `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.email,
         customer_email: r.email,
         package_name: r.package_name,
         rating: r.rating,
@@ -384,7 +425,9 @@ export async function getAdminFeedbackAnalysis(req, res) {
     const totalCount = feedbacks.length;
     const counts = { Positive: 0, Neutral: 0, Negative: 0, Pending: 0 };
     feedbacks.forEach((f) => {
-      const status = ["Positive", "Neutral", "Negative"].includes(f.sentiment_status)
+      const status = ["Positive", "Neutral", "Negative"].includes(
+        f.sentiment_status,
+      )
         ? f.sentiment_status
         : "Pending";
       counts[status] = (counts[status] || 0) + 1;
@@ -394,17 +437,20 @@ export async function getAdminFeedbackAnalysis(req, res) {
       {
         sentiment: "Positive",
         count: counts.Positive,
-        percentage: totalCount > 0 ? Math.round((counts.Positive / totalCount) * 100) : 0,
+        percentage:
+          totalCount > 0 ? Math.round((counts.Positive / totalCount) * 100) : 0,
       },
       {
         sentiment: "Neutral",
         count: counts.Neutral,
-        percentage: totalCount > 0 ? Math.round((counts.Neutral / totalCount) * 100) : 0,
+        percentage:
+          totalCount > 0 ? Math.round((counts.Neutral / totalCount) * 100) : 0,
       },
       {
         sentiment: "Negative",
         count: counts.Negative,
-        percentage: totalCount > 0 ? Math.round((counts.Negative / totalCount) * 100) : 0,
+        percentage:
+          totalCount > 0 ? Math.round((counts.Negative / totalCount) * 100) : 0,
       },
     ];
 
@@ -416,9 +462,10 @@ export async function getAdminFeedbackAnalysis(req, res) {
       console.error("Failed to generate aggregate feedback analysis:", aggErr);
       aiServiceError = true;
       aggregateAnalysis = {
-        overallSummary: totalCount > 0 
-          ? `Analysis of ${totalCount} customer reviews.`
-          : "No feedback available for AI analysis.",
+        overallSummary:
+          totalCount > 0
+            ? `Analysis of ${totalCount} customer reviews.`
+            : "No feedback available for AI analysis.",
         keyTopics: [],
         actionableRecommendations: [],
       };
@@ -452,7 +499,10 @@ export async function reanalyzeFeedback(req, res) {
     const feedbackId = Number(req.params.id);
     if (!feedbackId) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Feedback ID is required." },
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Feedback ID is required.",
+        },
       });
     }
 
@@ -472,7 +522,11 @@ export async function reanalyzeFeedback(req, res) {
     }
 
     const fb = rows[0];
-    const aiResult = await analyzeFeedback(fb.rating, fb.comment, fb.package_name);
+    const aiResult = await analyzeFeedback(
+      fb.rating,
+      fb.comment,
+      fb.package_name,
+    );
 
     await pool.query(
       `UPDATE feedback SET
@@ -504,7 +558,8 @@ export async function reanalyzeFeedback(req, res) {
     res.status(500).json({
       error: {
         code: "ANALYSIS_ERROR",
-        message: "Failed to re-analyze feedback. Please check AI service connectivity.",
+        message:
+          "Failed to re-analyze feedback. Please check AI service connectivity.",
       },
     });
   }
@@ -525,7 +580,11 @@ export async function reanalyzeAllFeedbacks(req, res) {
     let countAnalyzed = 0;
     for (const fb of rows) {
       try {
-        const aiResult = await analyzeFeedback(fb.rating, fb.comment, fb.package_name);
+        const aiResult = await analyzeFeedback(
+          fb.rating,
+          fb.comment,
+          fb.package_name,
+        );
         await pool.query(
           `UPDATE feedback SET
             sentiment_status = ?,
@@ -547,7 +606,10 @@ export async function reanalyzeAllFeedbacks(req, res) {
         );
         countAnalyzed++;
       } catch (err) {
-        console.error(`Re-analysis failed for feedback #${fb.feedback_id}:`, err);
+        console.error(
+          `Re-analysis failed for feedback #${fb.feedback_id}:`,
+          err,
+        );
       }
     }
 
@@ -574,7 +636,10 @@ export async function deleteAdminFeedback(req, res) {
     const feedbackId = Number(req.params.id);
     if (!feedbackId) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Feedback ID is required." },
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Feedback ID is required.",
+        },
       });
     }
 
@@ -600,4 +665,3 @@ export async function deleteAdminFeedback(req, res) {
     });
   }
 }
-

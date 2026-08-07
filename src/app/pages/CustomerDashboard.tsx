@@ -327,7 +327,13 @@ export function CustomerDashboard() {
 
     const todayStr = new Date().toLocaleDateString("en-CA");
     const eligibleBookings = bookings.filter((b) => {
-      if (b.booking_status !== "Confirmed" && b.booking_status !== "Completed")
+      const isUserCancelled =
+        b.booking_status === "Cancelled" && b.cancellation_requested_at != null;
+      if (
+        b.booking_status !== "Confirmed" &&
+        b.booking_status !== "Completed" &&
+        !isUserCancelled
+      )
         return false;
       const eventDate = b.event_date.split("T")[0];
       return eventDate <= todayStr;
@@ -1715,11 +1721,15 @@ export function CustomerDashboard() {
 
             {(() => {
               // Show bookings whose event date is today or in the past
-              // and whose status allows feedback (only Confirmed or Completed)
+              // and whose status allows feedback (Confirmed, Completed, or user-cancelled)
               const feedbackEligibleBookings = bookings.filter((b) => {
+                const isUserCancelled =
+                  b.booking_status === "Cancelled" &&
+                  b.cancellation_requested_at != null;
                 if (
                   b.booking_status !== "Confirmed" &&
-                  b.booking_status !== "Completed"
+                  b.booking_status !== "Completed" &&
+                  !isUserCancelled
                 )
                   return false;
                 const eventDate = b.event_date.split("T")[0];

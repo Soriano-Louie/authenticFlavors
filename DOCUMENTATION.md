@@ -116,7 +116,7 @@ Authentication state is managed globally using React's **Context API** (`AuthCon
 
 - The authenticated `user` object
 - The `accessToken` (short-lived JWT)
-- Functions: `login`, `register`, `logout`, `updateProfile`, `setAuth`, `refreshUser`
+- Functions: `login`, `register`, `logout`, `updateProfile`, `changeProfilePhoto`, `setAuth`, `refreshUser`
 
 The access token is stored **in memory** (React state), not in `localStorage`, to prevent XSS token theft. The refresh token is stored in an **HttpOnly cookie**.
 
@@ -170,21 +170,21 @@ All API endpoints are prefixed with `/api`. Example: `POST /api/auth/register`.
 
 ### Schema Summary
 
-| Table                     | Description                                                    |
-| ------------------------- | -------------------------------------------------------------- |
-| `users`                   | Registered customers and admins                                |
-| `packages`                | Catering food packages                                         |
-| `package_pricing`         | Per-pax price tiers for each package                           |
-| `menu_categories`         | Food categories (e.g., Soup, Main Course)                      |
-| `menu_items`              | Individual food items linked to categories                     |
-| `event_types`             | Event types (e.g., Birthday, Wedding, Corporate)               |
-| `venue_setups`            | Venue add-on options (e.g., Floral Arrangements)               |
-| `bookings`                | Customer booking records                                       |
-| `booking_menu_selections` | Junction table linking bookings to chosen menu items           |
-| `email_verifications`     | One-time verification codes for email activation               |
-| `password_reset_tokens`   | One-time tokens for password reset flow                        |
-| `feedback`                | Customer feedback linked to bookings (with AI analysis fields) |
-| `payments`                | Payment records with receipt tracking                          |
+| Table                     | Description                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `users`                   | Registered customers and admins (includes `profile_photo_url` and `profile_photo_public_id`) |
+| `packages`                | Catering food packages                                                                       |
+| `package_pricing`         | Per-pax price tiers for each package                                                         |
+| `menu_categories`         | Food categories (e.g., Soup, Main Course)                                                    |
+| `menu_items`              | Individual food items linked to categories                                                   |
+| `event_types`             | Event types (e.g., Birthday, Wedding, Corporate)                                             |
+| `venue_setups`            | Venue add-on options (e.g., Floral Arrangements)                                             |
+| `bookings`                | Customer booking records                                                                     |
+| `booking_menu_selections` | Junction table linking bookings to chosen menu items                                         |
+| `email_verifications`     | One-time verification codes for email activation                                             |
+| `password_reset_tokens`   | One-time tokens for password reset flow                                                      |
+| `feedback`                | Customer feedback linked to bookings (with AI analysis fields)                               |
+| `payments`                | Payment records with receipt tracking                                                        |
 
 ### Key Design Decisions
 
@@ -297,6 +297,8 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ## File Uploads
 
+### Payment Receipts (Local Disk — Legacy)
+
 - **Library:** `multer` v2.2.0
 - **Storage:** Local disk — files are saved to `backend/uploads/` relative to where the server process runs
 - **Allowed Formats:** JPEG, PNG, WebP (`image/jpeg`, `image/png`, `image/webp`)
@@ -306,24 +308,88 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 > **Note:** Local disk storage is suitable for development. For production deployment, receipts should be migrated to a cloud storage provider (e.g., AWS S3, Cloudinary, or Google Cloud Storage) to ensure persistence across server restarts and deployments.
 
+### Cloudinary Integration
+
+The application uses **Cloudinary** as the primary cloud image storage for payment receipts and profile photos.
+
+**Cloudinary Service (`backend/src/services/cloudinaryService.js`):**
+
+| Function                                 | Description                                                                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uploadToCloudinary(fileBuffer, folder)` | Uploads a file buffer to Cloudinary under `authentic_flavors/{folder}`. Accepts JPG, JPEG, PNG, GIF, WebP (max 5MB). Returns `{ secure_url, public_id }`. |
+| `deleteFromCloudinary(publicId)`         | Deletes an image from Cloudinary by its public ID. Used when replacing an existing image.                                                                 |
+
+**Storage Folders:**
+
+| Folder                             | Used For                     |
+| ---------------------------------- | ---------------------------- |
+| `authentic_flavors/receipts`       | Payment receipt proof images |
+| `authentic_flavors/profile_photos` | User profile photos          |
+
+### Profile Photo Upload (Change Photo Feature)
+
+Users can upload a new profile photo from the **Account Settings** page in the Customer Dashboard.
+
+**Backend (`backend/src/middleware/upload.js`):**
+
+- Added a dedicated `uploadProfilePhoto` multer instance with **stricter validation**:
+  - **Allowed Formats:** JPG, JPEG, PNG only (`image/jpeg`, `image/jpg`, `image/png`)
+  - **Size Limit:** 5 MB
+- The existing `upload` multer instance continues to handle payment receipts (which still allow GIF/WebP).
+
+**Backend (`backend/src/controllers/authController.js`):**
+
+The `uploadProfilePhoto` controller function:
+
+1. Uses `req.auth.sub` to identify the authenticated user — only the user can change their own photo
+2. Validates `req.file` exists (multer enforces backend file type/size validation)
+3. Uploads the file to Cloudinary in the `profile_photos` folder via `uploadToCloudinary()`
+4. Deletes the **previous** profile photo from Cloudinary if one exists (via `deleteFromCloudinary()` using the stored `profile_photo_public_id`)
+5. Updates the `users` table with the new `profile_photo_url` and `profile_photo_public_id`
+6. Returns the updated user object
+7. On failure, the existing photo remains unchanged (the DB is only updated after a successful Cloudinary upload)
+
+**Backend Route:**
+
+- `POST /api/auth/profile/photo` — protected by `requireAuth` + `uploadProfilePhoto.single("photo")` middleware
+
+**Frontend (`src/app/api/authApi.ts` + `src/app/auth/AuthContext.tsx`):**
+
+- Added `profile_photo_url` and `profile_photo_public_id` fields to the `AuthUser` interface
+- Added `uploadProfilePhoto(accessToken, file)` API function that sends a `multipart/form-data` request
+- Added `changeProfilePhoto(file)` to `AuthContext` — updates the global `user` state immediately so the new photo appears everywhere (Navbar, Dashboard top bar, Settings) without a page refresh
+
+**Frontend UI — Customer Dashboard Settings Tab:**
+
+- **Hidden file input** with `accept="image/jpeg,image/jpg,image/png"`, triggered by the "Change Photo" button
+- **Frontend validation:** Rejects non-JPG/JPEG/PNG files and files larger than 5MB with clear toast error messages
+- **Loading state:** Spinner overlay on the avatar while uploading
+- **Success state:** Success toast + immediate avatar update across the app
+- **Error state:** Error toast — existing photo remains unchanged
+- **Responsive layout:** Uses `flex-col sm:flex-row` for proper mobile/desktop display
+- Shows the profile photo `<img>` when available; falls back to the initials circle otherwise
+
+**Note:** This feature requires a database migration to add two columns to the `users` table — see `.kilo/migration_add_profile_photo.sql`.
+
 ---
 
 ## API Overview
 
 ### Auth Endpoints (`/api/auth`)
 
-| Method | Path                 | Auth   | Description                                     |
-| ------ | -------------------- | ------ | ----------------------------------------------- |
-| `POST` | `/register`          | Public | Create a new customer account (status: Pending) |
-| `POST` | `/login`             | Public | Login and receive tokens                        |
-| `POST` | `/refresh`           | Cookie | Issue a new access token using a refresh cookie |
-| `POST` | `/logout`            | Public | Clear the refresh cookie                        |
-| `GET`  | `/me`                | Bearer | Get the current authenticated user              |
-| `PUT`  | `/profile`           | Bearer | Update name, email, and phone number            |
-| `POST` | `/send-verification` | Public | Send a verification code to the user's email    |
-| `POST` | `/verify-email`      | Public | Verify the code and activate the account        |
-| `POST` | `/forgot-password`   | Public | Send a password reset link                      |
-| `POST` | `/reset-password`    | Public | Reset password using a token                    |
+| Method | Path                 | Auth   | Description                                        |
+| ------ | -------------------- | ------ | -------------------------------------------------- |
+| `POST` | `/register`          | Public | Create a new customer account (status: Pending)    |
+| `POST` | `/login`             | Public | Login and receive tokens                           |
+| `POST` | `/refresh`           | Cookie | Issue a new access token using a refresh cookie    |
+| `POST` | `/logout`            | Public | Clear the refresh cookie                           |
+| `GET`  | `/me`                | Bearer | Get the current authenticated user                 |
+| `PUT`  | `/profile`           | Bearer | Update name, email, and phone number               |
+| `POST` | `/profile/photo`     | Bearer | Upload a new profile photo (JPG/JPEG/PNG, max 5MB) |
+| `POST` | `/send-verification` | Public | Send a verification code to the user's email       |
+| `POST` | `/verify-email`      | Public | Verify the code and activate the account           |
+| `POST` | `/forgot-password`   | Public | Send a password reset link                         |
+| `POST` | `/reset-password`    | Public | Reset password using a token                       |
 
 ### Package Endpoints (`/api`)
 
@@ -400,12 +466,12 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 
 ### Feedback Endpoints (`/api`)
 
-| Method | Path                         | Auth   | Description                                                   |
-| ------ | ---------------------------- | ------ | ------------------------------------------------------------- |
-| `POST` | `/feedback`                  | Bearer | Submit feedback for a completed booking (auto-analyzed by AI) |
-| `GET`  | `/feedback/:bookingId`       | Bearer | Get own feedback for a booking                                |
-| `GET`  | `/feedback/check/:bookingId` | Bearer | Check if feedback exists for a booking                        |
-| `GET`  | `/feedbacks/public`          | Public | List all public feedback entries                              |
+| Method | Path                         | Auth   | Description                                                                                            |
+| ------ | ---------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `POST` | `/feedback`                  | Bearer | Submit feedback for a completed, past-dated confirmed, or user-cancelled booking (auto-analyzed by AI) |
+| `GET`  | `/feedback/:bookingId`       | Bearer | Get own feedback for a booking                                                                         |
+| `GET`  | `/feedback/check/:bookingId` | Bearer | Check if feedback exists for a booking                                                                 |
+| `GET`  | `/feedbacks/public`          | Public | List all public feedback entries                                                                       |
 
 ### Admin Feedback Analysis Endpoints (`/api/admin`)
 
@@ -572,9 +638,13 @@ Set the following on the Render dashboard under the backend service's Environmen
 - [x] Transactional email (Brevo HTTP API)
 - [x] Role-based access control (Customer / Admin)
 - [x] Responsive design with Tailwind CSS
+- [x] User profile photo upload (Change Photo) with Cloudinary storage
+- [x] Reviews for user-cancelled bookings
 
 ### Recent Fixes
 
+- Implemented the **Change Photo** feature: Users can now upload a new profile photo from the Account Settings tab in the Customer Dashboard. The photo is uploaded to Cloudinary (in the `profile_photos` folder), saved in the `users` table via the new `profile_photo_url` and `profile_photo_public_id` columns, and immediately reflected across the Navbar, Dashboard top bar, and Settings — without a page refresh. File validation is enforced on both the frontend (client-side check in `CustomerDashboard.tsx`) and backend (dedicated `uploadProfilePhoto` multer instance allowing only JPG/JPEG/PNG, max 5MB). Old photos are deleted from Cloudinary when replaced. Requires the `.kilo/migration_add_profile_photo.sql` migration.
+- Enabled **reviews for user-cancelled bookings**: Previously, only `Completed` (or past-dated `Confirmed`) bookings could receive feedback. Now, bookings cancelled by the user (identified by `cancellation_requested_at` being set on the `bookings` row) are also eligible for review. Admin-rejected bookings remain non-reviewable. The frontend Feedback tab eligibility filter and feedback existence check in `CustomerDashboard.tsx` include user-cancelled bookings, and the backend `createFeedback` validation in `feedbackController.js` allows them. The `Booking` interface in `bookingApi.ts` now includes `cancellation_requested_at` / `cancellation_processed_at`. Duplicate reviews are still prevented by the existing `uq_feedback_booking` unique key on the `feedback` table.
 - Fixed admin routing when clicking payment reminder email links: Admins clicking "Settle Payment Now", "Pay Now", or "Go to Dashboard" in any of the three payment notification emails (upcoming payment, due today, overdue) were shown the customer dashboard. Added a `RequireCustomer` frontend guard (`src/app/components/AuthGuards.tsx`) that redirects admins to `/admin` when they navigate to `/dashboard`, and updated the `/dashboard` route in `src/app/routes.tsx` to use it instead of `RequireAuth`.
 - Implemented knowledge base lookup for chatbot to reduce Gemini API usage: Added `findKnowledgeBaseAnswer()` function in `chatbotController.js` that checks the `knowledge_base` table before calling Gemini API. Uses keyword-based matching algorithm with 60% threshold. Common FAQ questions are now served from the database, significantly reducing API costs and improving response time. Knowledge base hits are logged with request_type `'FAQ_KB'` in the `ai_requests` table.
 - Implemented customer booking cancellation workflow with automated penalty calculations based on event date
