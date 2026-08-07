@@ -178,6 +178,13 @@ function getBookingReference(booking: Booking): string {
   return `#BK${String(booking.booking_id).padStart(4, "0")}`;
 }
 
+function getDisplayEventType(booking: Booking): string {
+  if (booking.type_name === "Other" && booking.custom_event_type) {
+    return booking.custom_event_type;
+  }
+  return booking.type_name || String(booking.event_type_id);
+}
+
 function parseBookingSummary(booking: Booking): {
   rejection_reason?: string;
   receipt_path?: string;
@@ -1518,8 +1525,8 @@ export function CustomerDashboard() {
                               {formatTime(ev.start_time)}
                             </p>
                             <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {ev.number_of_pax} guests ·{" "}
-                              {ev.type_name || ev.event_type_id}
+                               {ev.number_of_pax} guests ·{" "}
+                               {getDisplayEventType(ev)}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -2762,10 +2769,9 @@ export function CustomerDashboard() {
                     <span className="text-[#2C1810]/50 block text-xs">
                       Event Type
                     </span>
-                    <span className="text-[#2C1810] font-medium">
-                      {selectedBooking.type_name ||
-                        selectedBooking.event_type_id}
-                    </span>
+                     <span className="text-[#2C1810] font-medium">
+                       {getDisplayEventType(selectedBooking)}
+                     </span>
                   </div>
                   <div>
                     <span className="text-[#2C1810]/50 block text-xs">

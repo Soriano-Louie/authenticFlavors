@@ -1,6 +1,7 @@
 export interface BookingPayload {
   package_id: number;
   event_type_name: string;
+  custom_event_type?: string;
   venue_setup_name?: string;
   venue_setup_names?: string[];
   number_of_pax: number;
@@ -26,6 +27,7 @@ export interface Booking {
   user_id: number;
   package_id: number;
   event_type_id: number;
+  custom_event_type: string | null;
   venue_setup_id: number;
   number_of_pax: number;
   contact_name: string;
@@ -56,8 +58,6 @@ export interface Booking {
   middle_name?: string | null;
   last_name?: string;
   menu_selections?: BookingMenuSelection[];
-  cancellation_requested_at?: string | null;
-  cancellation_processed_at?: string | null;
 }
 
 const API_BASE_URL =

@@ -87,6 +87,19 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added booking_reference column.");
     }
 
+    // 0.2 Add custom_event_type column to bookings table
+    const [customEventTypeColumn] = await connection.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'custom_event_type'`,
+      [connection.config.database],
+    );
+    if (customEventTypeColumn.length === 0) {
+      await connection.query(
+        "ALTER TABLE bookings ADD COLUMN custom_event_type VARCHAR(255) DEFAULT NULL AFTER event_type_id",
+      );
+      console.log("[MIGRATION] Added custom_event_type column to bookings table.");
+    }
+
     // 0.0 Ensure packages table has image column
     const [packageColumns] = await connection.query(
       "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'packages'",

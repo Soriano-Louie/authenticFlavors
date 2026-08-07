@@ -32,6 +32,7 @@ export async function createBooking(req, res) {
       menu_selections, // String array of selected item names
       total_price, // Frontend submitted price
       is_ai_booking,
+      custom_event_type,
     } = req.body;
 
     // 1. Basic validation
@@ -120,6 +121,21 @@ export async function createBooking(req, res) {
       });
     }
     const event_type_id = eventTypes[0].event_type_id;
+
+    // 3a. Validate custom_event_type when "Other" is selected
+    if (event_type_name === "Other") {
+      const customType = (custom_event_type || "").trim();
+      if (!customType) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message:
+              "Please specify the event type since you selected 'Other'.",
+          },
+        });
+      }
+    }
 
     // 4. Resolve venue_setup_id
     const primarySetupName =
@@ -214,15 +230,18 @@ export async function createBooking(req, res) {
     // 8. Insert booking
     const [bookingResult] = await connection.query(
       `INSERT INTO bookings (
-        user_id, package_id, event_type_id, venue_setup_id, number_of_pax,
+        user_id, package_id, event_type_id, custom_event_type, venue_setup_id, number_of_pax,
         contact_name, contact_email, contact_phone, event_date, start_time,
         allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
         ai_booking_reference, booking_reference, amount_paid, remaining_balance
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
       [
         userId,
         package_id,
         event_type_id,
+        event_type_name === "Other"
+          ? custom_event_type?.trim()
+          : null,
         venue_setup_id,
         number_of_pax,
         contact_name,

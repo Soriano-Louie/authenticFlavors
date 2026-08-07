@@ -164,6 +164,7 @@ export function BookingPage() {
   const [eventTime, setEventTime] = useState("18:00");
   const [guestCount, setGuestCount] = useState(normalizedInitialPax);
   const [eventType, setEventType] = useState(preselectedEventType);
+  const [customEventType, setCustomEventType] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -329,6 +330,10 @@ export function BookingPage() {
       toast.error("Could not calculate price. Please check your selections.");
       return;
     }
+    if (eventType === "Other" && !customEventType.trim()) {
+      toast.error("Please specify your event type.");
+      return;
+    }
 
     const menuSelectionNames = Object.values(menuChoices).filter(Boolean);
     const allergyText = allergies
@@ -345,6 +350,8 @@ export function BookingPage() {
       const result = await createBooking(accessToken, {
         package_id: Number(selectedPackage.id),
         event_type_name: eventType,
+        custom_event_type:
+          eventType === "Other" ? customEventType.trim() : undefined,
         venue_setup_name: venueOptions[0] || "Standard Setup",
         venue_setup_names:
           venueOptions.length > 0 ? venueOptions : ["Standard Setup"],
@@ -506,13 +513,33 @@ export function BookingPage() {
                   </label>
                   <select
                     value={eventType}
-                    onChange={(e) => setEventType(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setEventType(value);
+                      if (value !== "Other") {
+                        setCustomEventType("");
+                      }
+                    }}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   >
                     {eventTypes.map((t) => (
                       <option key={t}>{t}</option>
                     ))}
                   </select>
+                  {eventType === "Other" && (
+                    <div className="mt-2">
+                      <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                        Please specify event type *
+                      </label>
+                      <input
+                        type="text"
+                        value={customEventType}
+                        onChange={(e) => setCustomEventType(e.target.value)}
+                        placeholder="e.g. Graduation, Reunion, Product Launch"
+                        className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">

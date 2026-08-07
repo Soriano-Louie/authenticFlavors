@@ -1569,6 +1569,14 @@ function BookingsSection() {
                       <div className="mt-5 pt-4 border-t border-[#C8922A]/10 grid grid-cols-2 gap-3 text-xs font-['Lato'] text-[#2C1810]/60">
                         <div>
                           <span className="font-semibold text-[#2C1810]">
+                            Event Type:{" "}
+                          </span>
+                          {booking.type_name === "Other" && booking.custom_event_type
+                            ? booking.custom_event_type
+                            : booking.type_name || `#${booking.event_type_id}`}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[#2C1810]">
                             Contact:{" "}
                           </span>
                           {booking.contact_name}

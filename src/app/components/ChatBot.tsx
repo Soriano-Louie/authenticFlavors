@@ -532,7 +532,8 @@ export function ChatBot() {
         wizard.dietaryNotes || wizard.notes || undefined;
       const res = await createBooking(accessToken, {
         package_id: wizard.packageId,
-        event_type_name: wizard.eventType || "Birthday",
+        event_type_name: wizard.otherEventType ? "Other" : wizard.eventType || "Birthday",
+        custom_event_type: wizard.otherEventType || undefined,
         venue_setup_name: wizard.venueSetup || "Standard Setup",
         number_of_pax: wizard.pax,
         contact_name: wizard.contactName,
