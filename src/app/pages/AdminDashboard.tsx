@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
   getAdminBookings,
@@ -45,7 +45,12 @@ import {
   deleteAnnouncement,
   type Announcement,
 } from "../api/announcementApi";
-import type { Package as PackageType, PackagePricing, MenuCategory, MenuItem } from "../api/packageApi";
+import type {
+  Package as PackageType,
+  PackagePricing,
+  MenuCategory,
+  MenuItem,
+} from "../api/packageApi";
 import { getMenuCategories, getMenuItems } from "../api/packageApi";
 import type { AdminMenuCategory, AdminMenuItem } from "../api/adminApi";
 import {
@@ -93,6 +98,7 @@ import {
   Send,
   EyeOff,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -134,13 +140,38 @@ export function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("overview");
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const navigate = (section: string) => {
     setActiveSection(section);
     setSidebarOpen(false);
   };
 
-  const { accessToken } = useAuth();
+  const { accessToken, logout } = useAuth();
+  const navigateTo = useNavigate();
+
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+      toast.success("Logged out successfully");
+      navigateTo("/");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to logout. Please try again.",
+      );
+    } finally {
+      setLoggingOut(false);
+      setShowLogoutConfirm(false);
+    }
+  };
 
   const handleGenerateReport = async () => {
     if (!accessToken) return;
@@ -188,12 +219,15 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F0E8] flex" data-text-scale="large">
+    <div
+      className="h-screen bg-[#F5F0E8] flex overflow-hidden"
+      data-text-scale="large"
+    >
       {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#1A0E08] transform transition-transform duration-300 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        } flex flex-col`}
+        } flex flex-col h-full`}
       >
         <div className="p-5 border-b border-[#C8922A]/15">
           <div className="flex items-center gap-2.5">
@@ -234,10 +268,17 @@ export function AdminDashboard() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-[#C8922A]/15">
+        <div className="p-4 border-t border-[#C8922A]/15 space-y-3">
+          <button
+            onClick={handleLogoutClick}
+            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-['Lato'] font-semibold bg-[#C4541A]/15 text-[#C4541A] hover:bg-[#C4541A]/25 transition-colors cursor-pointer"
+          >
+            <LogOut size={17} />
+            Logout
+          </button>
           <Link
             to="/"
-            className="flex items-center gap-2 text-[#F5F0E8]/50 text-xs font-['Lato'] hover:text-[#C8922A] transition-colors"
+            className="flex items-center justify-center gap-2 text-[#F5F0E8]/50 text-xs font-['Lato'] hover:text-[#C8922A] transition-colors block text-center"
           >
             ← Back to Website
           </Link>
@@ -250,6 +291,46 @@ export function AdminDashboard() {
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !loggingOut && setShowLogoutConfirm(false)}
+          />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
+                <LogOut size={26} className="text-[#C4541A]" />
+              </div>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
+                Confirm Logout
+              </h3>
+              <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
+                Are you sure you want to log out of the admin panel?
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  disabled={loggingOut}
+                  className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmLogout}
+                  disabled={loggingOut}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {loggingOut && <Loader2 size={16} className="animate-spin" />}
+                  {loggingOut ? "Logging out..." : "Logout"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main Content */}
@@ -340,9 +421,12 @@ function MenuManagementSection() {
   const [loading, setLoading] = useState(true);
 
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<AdminMenuCategory | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<AdminMenuCategory | null>(null);
-  const [categoryForm, setCategoryForm] = useState<CategoryFormData>(emptyCategoryForm);
+  const [editingCategory, setEditingCategory] =
+    useState<AdminMenuCategory | null>(null);
+  const [deletingCategory, setDeletingCategory] =
+    useState<AdminMenuCategory | null>(null);
+  const [categoryForm, setCategoryForm] =
+    useState<CategoryFormData>(emptyCategoryForm);
   const [submittingCategory, setSubmittingCategory] = useState(false);
 
   const [showItemModal, setShowItemModal] = useState(false);
@@ -398,7 +482,10 @@ function MenuManagementSection() {
     setCategoryForm({
       category_name: cat.category_name,
       description: cat.description || "",
-      display_order: cat.display_order !== null && cat.display_order !== undefined ? String(cat.display_order) : "0",
+      display_order:
+        cat.display_order !== null && cat.display_order !== undefined
+          ? String(cat.display_order)
+          : "0",
       status: cat.status,
     });
     setShowCategoryModal(true);
@@ -420,12 +507,16 @@ function MenuManagementSection() {
     setSubmittingCategory(true);
     try {
       if (editingCategory) {
-        await updateAdminMenuCategory(accessToken, editingCategory.category_id, {
-          category_name: categoryForm.category_name.trim(),
-          description: categoryForm.description.trim() || null,
-          display_order: Number(categoryForm.display_order),
-          status: categoryForm.status,
-        });
+        await updateAdminMenuCategory(
+          accessToken,
+          editingCategory.category_id,
+          {
+            category_name: categoryForm.category_name.trim(),
+            description: categoryForm.description.trim() || null,
+            display_order: Number(categoryForm.display_order),
+            status: categoryForm.status,
+          },
+        );
         toast.success("Category updated successfully.");
       } else {
         await createAdminMenuCategory(accessToken, {
@@ -439,7 +530,9 @@ function MenuManagementSection() {
       closeCategoryModal();
       fetchCategories();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save category.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save category.",
+      );
     } finally {
       setSubmittingCategory(false);
     }
@@ -454,7 +547,9 @@ function MenuManagementSection() {
       setDeletingCategory(null);
       fetchCategories();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete category.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete category.",
+      );
     } finally {
       setSubmittingCategory(false);
     }
@@ -522,7 +617,11 @@ function MenuManagementSection() {
       }
 
       if (editingItem) {
-        await updateAdminMenuItem(accessToken, editingItem.menu_item_id, formPayload);
+        await updateAdminMenuItem(
+          accessToken,
+          editingItem.menu_item_id,
+          formPayload,
+        );
         toast.success("Menu item updated successfully.");
       } else {
         await createAdminMenuItem(accessToken, formPayload);
@@ -531,7 +630,9 @@ function MenuManagementSection() {
       closeItemModal();
       fetchItems();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save menu item.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save menu item.",
+      );
     } finally {
       setSubmittingItem(false);
     }
@@ -546,7 +647,9 @@ function MenuManagementSection() {
       setDeletingItem(null);
       fetchItems();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete menu item.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete menu item.",
+      );
     } finally {
       setSubmittingItem(false);
     }
@@ -609,30 +712,55 @@ function MenuManagementSection() {
               </div>
             ) : categories.length === 0 ? (
               <div className="text-center py-10">
-                <p className="text-sm font-['Lato'] text-[#2C1810]/50">No categories found.</p>
+                <p className="text-sm font-['Lato'] text-[#2C1810]/50">
+                  No categories found.
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm font-['Lato']">
                   <thead>
                     <tr className="border-b border-[#C8922A]/10">
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Name</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Description</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Order</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Status</th>
-                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">Actions</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Name
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Description
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Order
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Status
+                      </th>
+                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {categories.map((cat) => (
-                      <tr key={cat.category_id} className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors">
-                        <td className="py-3 px-2 text-[#2C1810] font-medium">{cat.category_name}</td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">{cat.description || "—"}</td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">{cat.display_order ?? 0}</td>
+                      <tr
+                        key={cat.category_id}
+                        className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
+                      >
+                        <td className="py-3 px-2 text-[#2C1810] font-medium">
+                          {cat.category_name}
+                        </td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">
+                          {cat.description || "—"}
+                        </td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">
+                          {cat.display_order ?? 0}
+                        </td>
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
-                            cat.status === "Active" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C4541A]/15 text-[#C4541A]"
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
+                              cat.status === "Active"
+                                ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                                : "bg-[#C4541A]/15 text-[#C4541A]"
+                            }`}
+                          >
                             {cat.status}
                           </span>
                         </td>
@@ -681,39 +809,68 @@ function MenuManagementSection() {
               </div>
             ) : items.length === 0 ? (
               <div className="text-center py-10">
-                <p className="text-sm font-['Lato'] text-[#2C1810]/50">No menu items found.</p>
+                <p className="text-sm font-['Lato'] text-[#2C1810]/50">
+                  No menu items found.
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm font-['Lato']">
                   <thead>
                     <tr className="border-b border-[#C8922A]/10">
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Item</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Category</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Additional Price</th>
-                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Status</th>
-                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">Actions</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Item
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Category
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Additional Price
+                      </th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Status
+                      </th>
+                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((item) => (
-                      <tr key={item.menu_item_id} className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors">
+                      <tr
+                        key={item.menu_item_id}
+                        className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
+                      >
                         <td className="py-3 px-2">
                           <div className="flex items-center gap-3">
                             {item.image && (
-                              <img src={item.image} alt={item.item_name} className="w-10 h-10 rounded-lg object-cover" />
+                              <img
+                                src={item.image}
+                                alt={item.item_name}
+                                className="w-10 h-10 rounded-lg object-cover"
+                              />
                             )}
-                            <span className="text-[#2C1810] font-medium">{item.item_name}</span>
+                            <span className="text-[#2C1810] font-medium">
+                              {item.item_name}
+                            </span>
                           </div>
                         </td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">{item.category_name || "—"}</td>
                         <td className="py-3 px-2 text-[#2C1810]/70">
-                          {item.additional_price > 0 ? `+₱${Number(item.additional_price).toLocaleString()}` : "Included"}
+                          {item.category_name || "—"}
+                        </td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">
+                          {item.additional_price > 0
+                            ? `+₱${Number(item.additional_price).toLocaleString()}`
+                            : "Included"}
                         </td>
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
-                            item.availability_status === "Active" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C4541A]/15 text-[#C4541A]"
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
+                              item.availability_status === "Active"
+                                ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                                : "bg-[#C4541A]/15 text-[#C4541A]"
+                            }`}
+                          >
                             {item.availability_status}
                           </span>
                         </td>
@@ -748,27 +905,44 @@ function MenuManagementSection() {
       {/* Category Modal */}
       {showCategoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={closeCategoryModal} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={closeCategoryModal}
+          />
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
             <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
               {editingCategory ? "Edit Category" : "Add Category"}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Category Name <span className="text-[#C4541A]">*</span></label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Category Name <span className="text-[#C4541A]">*</span>
+                </label>
                 <input
                   type="text"
                   value={categoryForm.category_name}
-                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, category_name: e.target.value }))}
+                  onChange={(e) =>
+                    setCategoryForm((prev) => ({
+                      ...prev,
+                      category_name: e.target.value,
+                    }))
+                  }
                   placeholder="e.g. Appetizer"
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
                 />
               </div>
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Description</label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Description
+                </label>
                 <textarea
                   value={categoryForm.description}
-                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setCategoryForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
                   placeholder="Optional description..."
                   rows={2}
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
@@ -776,20 +950,34 @@ function MenuManagementSection() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Display Order</label>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                    Display Order
+                  </label>
                   <input
                     type="number"
                     value={categoryForm.display_order}
-                    onChange={(e) => setCategoryForm((prev) => ({ ...prev, display_order: e.target.value }))}
+                    onChange={(e) =>
+                      setCategoryForm((prev) => ({
+                        ...prev,
+                        display_order: e.target.value,
+                      }))
+                    }
                     min="0"
                     className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Status</label>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                    Status
+                  </label>
                   <select
                     value={categoryForm.status}
-                    onChange={(e) => setCategoryForm((prev) => ({ ...prev, status: e.target.value as "Active" | "Inactive" }))}
+                    onChange={(e) =>
+                      setCategoryForm((prev) => ({
+                        ...prev,
+                        status: e.target.value as "Active" | "Inactive",
+                      }))
+                    }
                     className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
                   >
                     <option value="Active">Active</option>
@@ -811,7 +999,9 @@ function MenuManagementSection() {
                 disabled={submittingCategory}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                {submittingCategory && <Loader2 size={22} className="animate-spin" />}
+                {submittingCategory && (
+                  <Loader2 size={22} className="animate-spin" />
+                )}
                 {submittingCategory ? "Saving..." : "Save Category"}
               </button>
             </div>
@@ -822,16 +1012,23 @@ function MenuManagementSection() {
       {/* Delete Category Confirmation */}
       {deletingCategory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !submittingCategory && setDeletingCategory(null)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !submittingCategory && setDeletingCategory(null)}
+          />
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
                 <AlertCircle size={26} className="text-[#C4541A]" />
               </div>
-              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">Delete Category</h3>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
+                Delete Category
+              </h3>
               <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
                 Are you sure you want to delete{" "}
-                <span className="font-semibold text-[#2C1810]">{deletingCategory.category_name}</span>
+                <span className="font-semibold text-[#2C1810]">
+                  {deletingCategory.category_name}
+                </span>
                 ? This will deactivate the category.
               </p>
               <div className="flex items-center justify-center gap-3">
@@ -847,7 +1044,9 @@ function MenuManagementSection() {
                   disabled={submittingCategory}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {submittingCategory && <Loader2 size={16} className="animate-spin" />}
+                  {submittingCategory && (
+                    <Loader2 size={16} className="animate-spin" />
+                  )}
                   {submittingCategory ? "Deleting..." : "Delete Category"}
                 </button>
               </div>
@@ -859,40 +1058,66 @@ function MenuManagementSection() {
       {/* Item Modal */}
       {showItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={closeItemModal} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={closeItemModal}
+          />
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
             <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
               {editingItem ? "Edit Menu Item" : "Add Menu Item"}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Category <span className="text-[#C4541A]">*</span></label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Category <span className="text-[#C4541A]">*</span>
+                </label>
                 <select
                   value={itemForm.category_id}
-                  onChange={(e) => setItemForm((prev) => ({ ...prev, category_id: e.target.value }))}
+                  onChange={(e) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      category_id: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
                 >
                   <option value="">Select category</option>
                   {categories.map((cat) => (
-                    <option key={cat.category_id} value={cat.category_id}>{cat.category_name}</option>
+                    <option key={cat.category_id} value={cat.category_id}>
+                      {cat.category_name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Item Name <span className="text-[#C4541A]">*</span></label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Item Name <span className="text-[#C4541A]">*</span>
+                </label>
                 <input
                   type="text"
                   value={itemForm.item_name}
-                  onChange={(e) => setItemForm((prev) => ({ ...prev, item_name: e.target.value }))}
+                  onChange={(e) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      item_name: e.target.value,
+                    }))
+                  }
                   placeholder="e.g. Sisig"
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
                 />
               </div>
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Description</label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Description
+                </label>
                 <textarea
                   value={itemForm.description}
-                  onChange={(e) => setItemForm((prev) => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
                   placeholder="Optional description..."
                   rows={2}
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
@@ -900,21 +1125,37 @@ function MenuManagementSection() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Additional Price (₱)</label>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                    Additional Price (₱)
+                  </label>
                   <input
                     type="number"
                     value={itemForm.additional_price}
-                    onChange={(e) => setItemForm((prev) => ({ ...prev, additional_price: e.target.value }))}
+                    onChange={(e) =>
+                      setItemForm((prev) => ({
+                        ...prev,
+                        additional_price: e.target.value,
+                      }))
+                    }
                     min="0"
                     step="0.01"
                     className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Status</label>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                    Status
+                  </label>
                   <select
                     value={itemForm.availability_status}
-                    onChange={(e) => setItemForm((prev) => ({ ...prev, availability_status: e.target.value as "Active" | "Inactive" }))}
+                    onChange={(e) =>
+                      setItemForm((prev) => ({
+                        ...prev,
+                        availability_status: e.target.value as
+                          | "Active"
+                          | "Inactive",
+                      }))
+                    }
                     className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
                   >
                     <option value="Active">Active</option>
@@ -923,13 +1164,22 @@ function MenuManagementSection() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Item Image</label>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
+                  Item Image
+                </label>
                 <div className="flex items-center gap-4">
                   {itemImagePreview ? (
                     <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[#C8922A]/20">
-                      <img src={itemImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                      <img
+                        src={itemImagePreview}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
                       <button
-                        onClick={() => { setItemImageFile(null); setItemImagePreview(null); }}
+                        onClick={() => {
+                          setItemImageFile(null);
+                          setItemImagePreview(null);
+                        }}
                         className="absolute top-1 right-1 p-0.5 rounded-full bg-[#C4541A]/80 text-white"
                       >
                         <X size={12} />
@@ -938,7 +1188,9 @@ function MenuManagementSection() {
                   ) : (
                     <label className="w-16 h-16 rounded-xl border-2 border-dashed border-[#C8922A]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#C8922A] transition-colors">
                       <ImagePlus size={20} className="text-[#C8922A]/50" />
-                      <span className="text-[9px] font-['Lato'] text-[#C8922A]/50 mt-0.5">Upload</span>
+                      <span className="text-[9px] font-['Lato'] text-[#C8922A]/50 mt-0.5">
+                        Upload
+                      </span>
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/gif,image/webp"
@@ -947,7 +1199,9 @@ function MenuManagementSection() {
                       />
                     </label>
                   )}
-                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">JPEG, PNG, GIF, WebP. Max 5MB.</span>
+                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">
+                    JPEG, PNG, GIF, WebP. Max 5MB.
+                  </span>
                 </div>
               </div>
             </div>
@@ -964,7 +1218,9 @@ function MenuManagementSection() {
                 disabled={submittingItem}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                {submittingItem && <Loader2 size={22} className="animate-spin" />}
+                {submittingItem && (
+                  <Loader2 size={22} className="animate-spin" />
+                )}
                 {submittingItem ? "Saving..." : "Save Item"}
               </button>
             </div>
@@ -975,16 +1231,23 @@ function MenuManagementSection() {
       {/* Delete Item Confirmation */}
       {deletingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !submittingItem && setDeletingItem(null)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !submittingItem && setDeletingItem(null)}
+          />
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
                 <AlertCircle size={26} className="text-[#C4541A]" />
               </div>
-              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">Delete Menu Item</h3>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
+                Delete Menu Item
+              </h3>
               <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
                 Are you sure you want to delete{" "}
-                <span className="font-semibold text-[#2C1810]">{deletingItem.item_name}</span>
+                <span className="font-semibold text-[#2C1810]">
+                  {deletingItem.item_name}
+                </span>
                 ? This will deactivate the item.
               </p>
               <div className="flex items-center justify-center gap-3">
@@ -1000,7 +1263,9 @@ function MenuManagementSection() {
                   disabled={submittingItem}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {submittingItem && <Loader2 size={16} className="animate-spin" />}
+                  {submittingItem && (
+                    <Loader2 size={16} className="animate-spin" />
+                  )}
                   {submittingItem ? "Deleting..." : "Delete Item"}
                 </button>
               </div>
@@ -2300,7 +2565,8 @@ function BookingsSection() {
                           <span className="font-semibold text-[#2C1810]">
                             Event Type:{" "}
                           </span>
-                          {booking.type_name === "Other" && booking.custom_event_type
+                          {booking.type_name === "Other" &&
+                          booking.custom_event_type
                             ? booking.custom_event_type
                             : booking.type_name || `#${booking.event_type_id}`}
                         </div>
@@ -2392,14 +2658,14 @@ function PackagesSection() {
 
   useEffect(() => {
     if (showModal) {
-      Promise.all([getMenuCategories(), getMenuItems()]).then(
-        ([categoriesData, itemsData]) => {
+      Promise.all([getMenuCategories(), getMenuItems()])
+        .then(([categoriesData, itemsData]) => {
           setCategories(categoriesData.categories);
           setAllMenuItems(itemsData.items);
-        }
-      ).catch(() => {
-        toast.error("Failed to load menu data.");
-      });
+        })
+        .catch(() => {
+          toast.error("Failed to load menu data.");
+        });
     }
   }, [showModal]);
 
@@ -2938,26 +3204,36 @@ function PackagesSection() {
                     Menu Inclusions
                   </label>
                   <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
-                    Select which menu items are available for this package. Customers will choose one item per category from these selections during booking.
+                    Select which menu items are available for this package.
+                    Customers will choose one item per category from these
+                    selections during booking.
                   </p>
                 </div>
                 {categories.length === 0 || allMenuItems.length === 0 ? (
-                  <p className="text-xs font-['Lato'] text-[#2C1810]/50">No menu items available.</p>
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                    No menu items available.
+                  </p>
                 ) : (
                   <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
                     {categories.map((category) => {
                       const categoryItems = allMenuItems.filter(
-                        (item) => item.category_id === category.category_id
+                        (item) => item.category_id === category.category_id,
                       );
                       if (categoryItems.length === 0) return null;
                       return (
-                        <div key={category.category_id} className="border border-[#C8922A]/10 rounded-xl p-3">
+                        <div
+                          key={category.category_id}
+                          className="border border-[#C8922A]/10 rounded-xl p-3"
+                        >
                           <p className="text-xs font-['Lato'] font-semibold text-[#2C1810] mb-2 uppercase tracking-wider">
                             {category.category_name}
                           </p>
                           <div className="space-y-1.5">
                             {categoryItems.map((item) => {
-                              const isSelected = formData.menu_inclusions.includes(item.menu_item_id);
+                              const isSelected =
+                                formData.menu_inclusions.includes(
+                                  item.menu_item_id,
+                                );
                               return (
                                 <label
                                   key={item.menu_item_id}
@@ -2970,14 +3246,21 @@ function PackagesSection() {
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    onChange={() => toggleMenuInclusion(item.menu_item_id)}
+                                    onChange={() =>
+                                      toggleMenuInclusion(item.menu_item_id)
+                                    }
                                     className="rounded border-[#C8922A]/30 text-[#C8922A] focus:ring-[#C8922A]"
                                   />
                                   <div className="flex-1">
-                                    <span className="text-sm font-['Lato'] text-[#2C1810]">{item.item_name}</span>
+                                    <span className="text-sm font-['Lato'] text-[#2C1810]">
+                                      {item.item_name}
+                                    </span>
                                     {item.additional_price > 0 && (
                                       <span className="text-xs font-['Lato'] text-[#2C1810]/50 ml-2">
-                                        +₱{Number(item.additional_price).toLocaleString()}
+                                        +₱
+                                        {Number(
+                                          item.additional_price,
+                                        ).toLocaleString()}
                                       </span>
                                     )}
                                   </div>
@@ -2985,16 +3268,39 @@ function PackagesSection() {
                                     <div className="flex items-center gap-1">
                                       <button
                                         type="button"
-                                        onClick={() => moveMenuInclusion(formData.menu_inclusions.indexOf(item.menu_item_id), "up")}
-                                        disabled={formData.menu_inclusions.indexOf(item.menu_item_id) === 0}
+                                        onClick={() =>
+                                          moveMenuInclusion(
+                                            formData.menu_inclusions.indexOf(
+                                              item.menu_item_id,
+                                            ),
+                                            "up",
+                                          )
+                                        }
+                                        disabled={
+                                          formData.menu_inclusions.indexOf(
+                                            item.menu_item_id,
+                                          ) === 0
+                                        }
                                         className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
                                       >
                                         <ArrowUp size={12} />
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => moveMenuInclusion(formData.menu_inclusions.indexOf(item.menu_item_id), "down")}
-                                        disabled={formData.menu_inclusions.indexOf(item.menu_item_id) === formData.menu_inclusions.length - 1}
+                                        onClick={() =>
+                                          moveMenuInclusion(
+                                            formData.menu_inclusions.indexOf(
+                                              item.menu_item_id,
+                                            ),
+                                            "down",
+                                          )
+                                        }
+                                        disabled={
+                                          formData.menu_inclusions.indexOf(
+                                            item.menu_item_id,
+                                          ) ===
+                                          formData.menu_inclusions.length - 1
+                                        }
                                         className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
                                       >
                                         <ArrowDown size={12} />
@@ -3074,7 +3380,7 @@ function PackagesSection() {
                   disabled={submitting}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                {submitting && <Loader2 size={16} className="animate-spin" />}
+                  {submitting && <Loader2 size={16} className="animate-spin" />}
                   {submitting ? "Deleting..." : "Delete Package"}
                 </button>
               </div>
@@ -3522,7 +3828,7 @@ function AnnouncementsSection() {
                   onClick={closeModal}
                   className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors"
                 >
-              <X size={20} />
+                  <X size={20} />
                 </button>
               </div>
             </div>
