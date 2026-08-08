@@ -6,6 +6,11 @@ import type { Package } from "../api/packageApi";
 
 // Transform database package to match expected structure
 function transformPackage(pkg: Package) {
+  const includedItemIds = new Set(
+    (pkg.menu_inclusions || []).map((inc) => inc.menu_item_id),
+  );
+  const hasInclusions = includedItemIds.size > 0;
+
   // Get starting price (lowest pax)
   const startingPrice =
     pkg.pricing && pkg.pricing.length > 0 ? pkg.pricing[0].price : 0;
@@ -28,11 +33,15 @@ function transformPackage(pkg: Package) {
   // Base rating on package quality signals (pricing + capacity)
   const rating = startingPrice > 2000 ? 5 : startingPrice > 1200 ? 4.5 : 4;
 
+  const dishes = hasInclusions
+    ? pkg.menu_inclusions!.map((inc) => inc.item_name).slice(0, 4)
+    : ["Multiple menu options available"];
+
   return {
     id: String(pkg.package_id),
     name: pkg.package_name,
     image: pkg.image || "/packagesFood.png",
-    dishes: ["Multiple menu options available"], // Generic since menu items are separate
+    dishes,
     guestRange: `Up to ${pkg.max_pax} guests`,
     pricePerPerson: startingPrice.toLocaleString(),
     description: pkg.description || "Catering package for your special event",

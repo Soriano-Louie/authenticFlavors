@@ -4,6 +4,15 @@ export interface PackagePricing {
   price: number;
 }
 
+export interface PackageMenuInclusion {
+  inclusion_id: number;
+  menu_item_id: number;
+  display_order: number;
+  item_name: string;
+  category_id: number;
+  category_name: string;
+}
+
 export interface Package {
   package_id: number;
   package_name: string;
@@ -14,6 +23,7 @@ export interface Package {
   created_at: string;
   updated_at: string;
   pricing?: PackagePricing[];
+  menu_inclusions?: PackageMenuInclusion[];
 }
 
 export interface MenuCategory {

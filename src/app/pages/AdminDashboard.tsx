@@ -45,7 +45,8 @@ import {
   deleteAnnouncement,
   type Announcement,
 } from "../api/announcementApi";
-import type { Package as PackageType, PackagePricing } from "../api/packageApi";
+import type { Package as PackageType, PackagePricing, MenuCategory, MenuItem } from "../api/packageApi";
+import { getMenuCategories, getMenuItems } from "../api/packageApi";
 import { toast } from "sonner";
 import {
   BarChart2,
@@ -1618,6 +1619,7 @@ interface PackageFormData {
   description: string;
   max_pax: string;
   pricing: { pax_count: string; price: string }[];
+  menu_inclusions: number[];
 }
 
 const emptyFormData: PackageFormData = {
@@ -1625,6 +1627,7 @@ const emptyFormData: PackageFormData = {
   description: "",
   max_pax: "",
   pricing: [{ pax_count: "", price: "" }],
+  menu_inclusions: [],
 };
 
 function PackagesSection() {
@@ -1638,6 +1641,8 @@ function PackagesSection() {
   const [formData, setFormData] = useState<PackageFormData>(emptyFormData);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
 
   const fetchPackages = async () => {
     if (!accessToken) return;
@@ -1656,6 +1661,19 @@ function PackagesSection() {
   useEffect(() => {
     fetchPackages();
   }, [accessToken]);
+
+  useEffect(() => {
+    if (showModal) {
+      Promise.all([getMenuCategories(), getMenuItems()]).then(
+        ([categoriesData, itemsData]) => {
+          setCategories(categoriesData.categories);
+          setAllMenuItems(itemsData.items);
+        }
+      ).catch(() => {
+        toast.error("Failed to load menu data.");
+      });
+    }
+  }, [showModal]);
 
   // Open modal for adding
   const handleAdd = () => {
@@ -1680,6 +1698,10 @@ function PackagesSection() {
               price: String(p.price),
             }))
           : [{ pax_count: "", price: "" }],
+      menu_inclusions:
+        pkg.menu_inclusions && pkg.menu_inclusions.length > 0
+          ? pkg.menu_inclusions.map((inc) => inc.menu_item_id)
+          : [],
     });
     setImageFile(null);
     setImagePreview(pkg.image || null);
@@ -1727,6 +1749,32 @@ function PackagesSection() {
       ...prev,
       pricing: prev.pricing.filter((_, i) => i !== index),
     }));
+  };
+
+  // Toggle menu inclusion
+  const toggleMenuInclusion = (menuItemId: number) => {
+    setFormData((prev) => {
+      const exists = prev.menu_inclusions.includes(menuItemId);
+      return {
+        ...prev,
+        menu_inclusions: exists
+          ? prev.menu_inclusions.filter((id) => id !== menuItemId)
+          : [...prev.menu_inclusions, menuItemId],
+      };
+    });
+  };
+
+  const moveMenuInclusion = (index: number, direction: "up" | "down") => {
+    setFormData((prev) => {
+      const newInclusions = [...prev.menu_inclusions];
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= newInclusions.length) return prev;
+      [newInclusions[index], newInclusions[targetIndex]] = [
+        newInclusions[targetIndex],
+        newInclusions[index],
+      ];
+      return { ...prev, menu_inclusions: newInclusions };
+    });
   };
 
   // Handle image selection
@@ -1812,6 +1860,13 @@ function PackagesSection() {
 
       if (imageFile) {
         formPayload.append("image", imageFile);
+      }
+
+      if (formData.menu_inclusions.length > 0) {
+        formPayload.append(
+          "menu_inclusions",
+          JSON.stringify(formData.menu_inclusions),
+        );
       }
 
       if (editingPkg) {
@@ -2146,6 +2201,87 @@ function PackagesSection() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Menu Inclusions */}
+              <div>
+                <div className="mb-1.5">
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                    Menu Inclusions
+                  </label>
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/50 mt-1">
+                    Select which menu items are available for this package. Customers will choose one item per category from these selections during booking.
+                  </p>
+                </div>
+                {categories.length === 0 || allMenuItems.length === 0 ? (
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/50">No menu items available.</p>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                    {categories.map((category) => {
+                      const categoryItems = allMenuItems.filter(
+                        (item) => item.category_id === category.category_id
+                      );
+                      if (categoryItems.length === 0) return null;
+                      return (
+                        <div key={category.category_id} className="border border-[#C8922A]/10 rounded-xl p-3">
+                          <p className="text-xs font-['Lato'] font-semibold text-[#2C1810] mb-2 uppercase tracking-wider">
+                            {category.category_name}
+                          </p>
+                          <div className="space-y-1.5">
+                            {categoryItems.map((item) => {
+                              const isSelected = formData.menu_inclusions.includes(item.menu_item_id);
+                              return (
+                                <label
+                                  key={item.menu_item_id}
+                                  className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${
+                                    isSelected
+                                      ? "bg-[#C8922A]/10 border border-[#C8922A]/30"
+                                      : "bg-[#F5F0E8]/30 border border-transparent hover:bg-[#F5F0E8]/60"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleMenuInclusion(item.menu_item_id)}
+                                    className="rounded border-[#C8922A]/30 text-[#C8922A] focus:ring-[#C8922A]"
+                                  />
+                                  <div className="flex-1">
+                                    <span className="text-sm font-['Lato'] text-[#2C1810]">{item.item_name}</span>
+                                    {item.additional_price > 0 && (
+                                      <span className="text-xs font-['Lato'] text-[#2C1810]/50 ml-2">
+                                        +₱{Number(item.additional_price).toLocaleString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => moveMenuInclusion(formData.menu_inclusions.indexOf(item.menu_item_id), "up")}
+                                        disabled={formData.menu_inclusions.indexOf(item.menu_item_id) === 0}
+                                        className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
+                                      >
+                                        <ArrowUp size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveMenuInclusion(formData.menu_inclusions.indexOf(item.menu_item_id), "down")}
+                                        disabled={formData.menu_inclusions.indexOf(item.menu_item_id) === formData.menu_inclusions.length - 1}
+                                        className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
+                                      >
+                                        <ArrowDown size={12} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 

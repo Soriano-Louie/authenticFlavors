@@ -30,25 +30,41 @@ function transformPackage(
   categories: MenuCategory[],
   items: MenuItem[],
 ) {
+  const includedItemIds = new Set(
+    (pkg.menu_inclusions || []).map((inc) => inc.menu_item_id),
+  );
+  const hasInclusions = includedItemIds.size > 0;
+
   // Group menu items by category
   const menuData = {
     appetizers: items
-      .filter((i) => i.category_name === "Appetizer")
+      .filter((i) => {
+        if (hasInclusions && !includedItemIds.has(i.menu_item_id)) return false;
+        return i.category_name === "Appetizer";
+      })
       .map((i) => i.item_name),
     mains: items
-      .filter(
-        (i) =>
+      .filter((i) => {
+        if (hasInclusions && !includedItemIds.has(i.menu_item_id)) return false;
+        return (
           i.category_name === "Chicken" ||
           i.category_name === "Pork" ||
           i.category_name === "Beef" ||
-          i.category_name === "Seafood",
-      )
+          i.category_name === "Seafood"
+        );
+      })
       .map((i) => i.item_name),
     desserts: items
-      .filter((i) => i.category_name === "Dessert")
+      .filter((i) => {
+        if (hasInclusions && !includedItemIds.has(i.menu_item_id)) return false;
+        return i.category_name === "Dessert";
+      })
       .map((i) => i.item_name),
     drinks: items
-      .filter((i) => i.category_name === "Drinks")
+      .filter((i) => {
+        if (hasInclusions && !includedItemIds.has(i.menu_item_id)) return false;
+        return i.category_name === "Drinks";
+      })
       .map((i) => i.item_name),
   };
 

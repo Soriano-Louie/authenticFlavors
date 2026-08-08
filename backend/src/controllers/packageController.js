@@ -22,9 +22,18 @@ export async function getPackages(_req, res) {
           "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
           [pkg.package_id],
         );
+        const [inclusionRows] = await pool.query(
+          `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+           FROM package_menu_inclusions pmi
+           JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+           JOIN menu_categories mc ON mi.category_id = mc.category_id
+           WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+          [pkg.package_id],
+        );
         return {
           ...pkg,
           pricing: pricingRows,
+          menu_inclusions: inclusionRows,
         };
       }),
     );
@@ -58,8 +67,18 @@ export async function getPackageById(req, res) {
       [id],
     );
 
+    const [inclusionRows] = await pool.query(
+      `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+       FROM package_menu_inclusions pmi
+       JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+       JOIN menu_categories mc ON mi.category_id = mc.category_id
+       WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+      [id],
+    );
+
     const packageData = rows[0];
     packageData.pricing = pricingRows;
+    packageData.menu_inclusions = inclusionRows;
 
     res.status(200).json({ package: packageData });
   } catch (error) {
@@ -184,9 +203,18 @@ export async function getAllPackages(_req, res) {
           "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
           [pkg.package_id],
         );
+        const [inclusionRows] = await pool.query(
+          `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+           FROM package_menu_inclusions pmi
+           JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+           JOIN menu_categories mc ON mi.category_id = mc.category_id
+           WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+          [pkg.package_id],
+        );
         return {
           ...pkg,
           pricing: pricingRows,
+          menu_inclusions: inclusionRows,
         };
       }),
     );
@@ -281,7 +309,30 @@ export async function createPackage(req, res) {
       }
     }
 
-    // Fetch the created package with pricing
+    // Insert menu inclusions if provided
+    if (menu_inclusions) {
+      let inclusionsArray;
+      try {
+        inclusionsArray =
+          typeof menu_inclusions === "string" ? JSON.parse(menu_inclusions) : menu_inclusions;
+      } catch {
+        inclusionsArray = [];
+      }
+
+      if (Array.isArray(inclusionsArray) && inclusionsArray.length > 0) {
+        for (let i = 0; i < inclusionsArray.length; i++) {
+          const inc = inclusionsArray[i];
+          if (inc && inc.menu_item_id) {
+            await pool.query(
+              "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
+              [packageId, Number(inc.menu_item_id), i],
+            );
+          }
+        }
+      }
+    }
+
+    // Fetch the created package with pricing and inclusions
     const [rows] = await pool.query(
       "SELECT * FROM packages WHERE package_id = ?",
       [packageId],
@@ -290,9 +341,18 @@ export async function createPackage(req, res) {
       "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
       [packageId],
     );
+    const [inclusionRows] = await pool.query(
+      `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+       FROM package_menu_inclusions pmi
+       JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+       JOIN menu_categories mc ON mi.category_id = mc.category_id
+       WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+      [packageId],
+    );
 
     const newPackage = rows[0];
     newPackage.pricing = pricingRows;
+    newPackage.menu_inclusions = inclusionRows;
 
     res.status(201).json({ package: newPackage });
   } catch (error) {
@@ -445,7 +505,36 @@ export async function updatePackage(req, res) {
       }
     }
 
-    // Fetch updated package with pricing
+    // Update menu inclusions if provided
+    if (menu_inclusions !== undefined) {
+      let inclusionsArray;
+      try {
+        inclusionsArray =
+          typeof menu_inclusions === "string" ? JSON.parse(menu_inclusions) : menu_inclusions;
+      } catch {
+        inclusionsArray = [];
+      }
+
+      if (Array.isArray(inclusionsArray)) {
+        // Delete existing inclusions and re-insert
+        await pool.query(
+          "DELETE FROM package_menu_inclusions WHERE package_id = ?",
+          [id],
+        );
+
+        for (let i = 0; i < inclusionsArray.length; i++) {
+          const inc = inclusionsArray[i];
+          if (inc && inc.menu_item_id) {
+            await pool.query(
+              "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
+              [Number(id), Number(inc.menu_item_id), i],
+            );
+          }
+        }
+      }
+    }
+
+    // Fetch updated package with pricing and inclusions
     const [rows] = await pool.query(
       "SELECT * FROM packages WHERE package_id = ?",
       [id],
@@ -454,9 +543,18 @@ export async function updatePackage(req, res) {
       "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
       [id],
     );
+    const [inclusionRows] = await pool.query(
+      `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+       FROM package_menu_inclusions pmi
+       JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+       JOIN menu_categories mc ON mi.category_id = mc.category_id
+       WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+      [id],
+    );
 
     const updatedPackage = rows[0];
     updatedPackage.pricing = pricingRows;
+    updatedPackage.menu_inclusions = inclusionRows;
 
     res.status(200).json({ package: updatedPackage });
   } catch (error) {

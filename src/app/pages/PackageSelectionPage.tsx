@@ -37,11 +37,20 @@ function transformPackage(
 ) {
   const packageId = String(pkg.package_id);
 
+  const includedItemIds = new Set(
+    (pkg.menu_inclusions || []).map((inc) => inc.menu_item_id),
+  );
+  const hasInclusions = includedItemIds.size > 0;
+
   // Group menu items by category
   const menuSections = categories
     .map((category) => {
       const categoryItems = items
-        .filter((item) => item.category_id === category.category_id)
+        .filter((item) => {
+          if (hasInclusions && !includedItemIds.has(item.menu_item_id))
+            return false;
+          return item.category_id === category.category_id;
+        })
         .map((item) => item.item_name);
 
       return {

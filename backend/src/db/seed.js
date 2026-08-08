@@ -120,6 +120,29 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added description column to packages table.");
     }
 
+    // 0.0.1 Ensure package_menu_inclusions table exists
+    const [inclusionTableCheck] = await connection.query(
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'package_menu_inclusions'`,
+      [connection.config.database],
+    );
+    if (inclusionTableCheck.length === 0) {
+      await connection.query(`
+        CREATE TABLE package_menu_inclusions (
+          inclusion_id INT AUTO_INCREMENT PRIMARY KEY,
+          package_id INT NOT NULL,
+          menu_item_id INT NOT NULL,
+          display_order INT NOT NULL DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE CASCADE,
+          FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE CASCADE,
+          UNIQUE KEY unique_package_menu_item (package_id, menu_item_id),
+          INDEX idx_package_order (package_id, display_order)
+        )
+      `);
+      console.log("[MIGRATION] package_menu_inclusions table created.");
+    }
+
     // 0.1 Create feedback table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS feedback (
