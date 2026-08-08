@@ -11,6 +11,7 @@ import { chatbotRouter } from "./routes/chatbotRoutes.js";
 import { notificationRouter } from "./routes/notificationRoutes.js";
 import { announcementRouter } from "./routes/announcementRoutes.js";
 import { menuChangeRouter } from "./routes/menuChangeRoutes.js";
+import { menuRouter } from "./routes/menuRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -54,6 +55,7 @@ export function createApp() {
   app.use("/api", notificationRouter);
   app.use("/api", announcementRouter);
   app.use("/api", menuChangeRouter);
+  app.use("/api", menuRouter);
 
   app.use((err, _req, res, _next) => {
     console.error(err);

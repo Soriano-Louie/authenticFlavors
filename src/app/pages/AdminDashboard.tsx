@@ -47,6 +47,17 @@ import {
 } from "../api/announcementApi";
 import type { Package as PackageType, PackagePricing, MenuCategory, MenuItem } from "../api/packageApi";
 import { getMenuCategories, getMenuItems } from "../api/packageApi";
+import type { AdminMenuCategory, AdminMenuItem } from "../api/adminApi";
+import {
+  getAdminMenuCategories,
+  getAdminMenuItems,
+  createAdminMenuCategory,
+  updateAdminMenuCategory,
+  deleteAdminMenuCategory,
+  createAdminMenuItem,
+  updateAdminMenuItem,
+  deleteAdminMenuItem,
+} from "../api/adminApi";
 import { toast } from "sonner";
 import {
   BarChart2,
@@ -81,6 +92,7 @@ import {
   Megaphone,
   Send,
   EyeOff,
+  BookOpen,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -100,6 +112,7 @@ const SIDEBAR_LINKS = [
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
   { key: "menu-changes", label: "Menu Change Requests", icon: ChefHat },
+  { key: "menu-management", label: "Menu Management", icon: BookOpen },
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "activity", label: "Recent Activity", icon: Activity },
@@ -276,10 +289,725 @@ export function AdminDashboard() {
           {activeSection === "activity" && <ActivitySection />}
           {activeSection === "bookings" && <BookingsSection />}
           {activeSection === "menu-changes" && <MenuChangeRequestsSection />}
+          {activeSection === "menu-management" && <MenuManagementSection />}
           {activeSection === "packages" && <PackagesSection />}
           {activeSection === "announcements" && <AnnouncementsSection />}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ─── Menu Management Section ─────────────────────────────────────────
+
+interface CategoryFormData {
+  category_name: string;
+  description: string;
+  display_order: string;
+  status: "Active" | "Inactive";
+}
+
+const emptyCategoryForm: CategoryFormData = {
+  category_name: "",
+  description: "",
+  display_order: "0",
+  status: "Active",
+};
+
+interface ItemFormData {
+  category_id: string;
+  item_name: string;
+  description: string;
+  additional_price: string;
+  availability_status: "Active" | "Inactive";
+}
+
+const emptyItemForm: ItemFormData = {
+  category_id: "",
+  item_name: "",
+  description: "",
+  additional_price: "0",
+  availability_status: "Active",
+};
+
+type ManagementTab = "categories" | "items";
+
+function MenuManagementSection() {
+  const { accessToken } = useAuth();
+  const [activeTab, setActiveTab] = useState<ManagementTab>("categories");
+  const [categories, setCategories] = useState<AdminMenuCategory[]>([]);
+  const [items, setItems] = useState<AdminMenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<AdminMenuCategory | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<AdminMenuCategory | null>(null);
+  const [categoryForm, setCategoryForm] = useState<CategoryFormData>(emptyCategoryForm);
+  const [submittingCategory, setSubmittingCategory] = useState(false);
+
+  const [showItemModal, setShowItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<AdminMenuItem | null>(null);
+  const [deletingItem, setDeletingItem] = useState<AdminMenuItem | null>(null);
+  const [itemForm, setItemForm] = useState<ItemFormData>(emptyItemForm);
+  const [itemImageFile, setItemImageFile] = useState<File | null>(null);
+  const [itemImagePreview, setItemImagePreview] = useState<string | null>(null);
+  const [submittingItem, setSubmittingItem] = useState(false);
+
+  const fetchCategories = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminMenuCategories(accessToken);
+      setCategories(res.categories);
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
+      toast.error("Failed to load menu categories.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchItems = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminMenuItems(accessToken);
+      setItems(res.items);
+    } catch (err) {
+      console.error("Failed to fetch menu items:", err);
+      toast.error("Failed to load menu items.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "categories") fetchCategories();
+    else fetchItems();
+  }, [activeTab, accessToken]);
+
+  // Category handlers
+  const handleAddCategory = () => {
+    setEditingCategory(null);
+    setCategoryForm(emptyCategoryForm);
+    setShowCategoryModal(true);
+  };
+
+  const handleEditCategory = (cat: AdminMenuCategory) => {
+    setEditingCategory(cat);
+    setCategoryForm({
+      category_name: cat.category_name,
+      description: cat.description || "",
+      display_order: cat.display_order !== null && cat.display_order !== undefined ? String(cat.display_order) : "0",
+      status: cat.status,
+    });
+    setShowCategoryModal(true);
+  };
+
+  const closeCategoryModal = () => {
+    setShowCategoryModal(false);
+    setEditingCategory(null);
+    setCategoryForm(emptyCategoryForm);
+  };
+
+  const handleCategorySubmit = async () => {
+    if (!accessToken) return;
+    if (!categoryForm.category_name.trim()) {
+      toast.error("Category name is required.");
+      return;
+    }
+
+    setSubmittingCategory(true);
+    try {
+      if (editingCategory) {
+        await updateAdminMenuCategory(accessToken, editingCategory.category_id, {
+          category_name: categoryForm.category_name.trim(),
+          description: categoryForm.description.trim() || null,
+          display_order: Number(categoryForm.display_order),
+          status: categoryForm.status,
+        });
+        toast.success("Category updated successfully.");
+      } else {
+        await createAdminMenuCategory(accessToken, {
+          category_name: categoryForm.category_name.trim(),
+          description: categoryForm.description.trim() || null,
+          display_order: Number(categoryForm.display_order),
+          status: categoryForm.status,
+        });
+        toast.success("Category created successfully.");
+      }
+      closeCategoryModal();
+      fetchCategories();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save category.");
+    } finally {
+      setSubmittingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!accessToken || !deletingCategory) return;
+    setSubmittingCategory(true);
+    try {
+      await deleteAdminMenuCategory(accessToken, deletingCategory.category_id);
+      toast.success("Category deleted successfully.");
+      setDeletingCategory(null);
+      fetchCategories();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete category.");
+    } finally {
+      setSubmittingCategory(false);
+    }
+  };
+
+  // Item handlers
+  const handleAddItem = () => {
+    setEditingItem(null);
+    setItemForm(emptyItemForm);
+    setItemImageFile(null);
+    setItemImagePreview(null);
+    setShowItemModal(true);
+  };
+
+  const handleEditItem = (item: AdminMenuItem) => {
+    setEditingItem(item);
+    setItemForm({
+      category_id: String(item.category_id),
+      item_name: item.item_name,
+      description: item.description || "",
+      additional_price: String(item.additional_price),
+      availability_status: item.availability_status,
+    });
+    setItemImageFile(null);
+    setItemImagePreview(item.image || null);
+    setShowItemModal(true);
+  };
+
+  const closeItemModal = () => {
+    setShowItemModal(false);
+    setEditingItem(null);
+    setItemForm(emptyItemForm);
+    setItemImageFile(null);
+    setItemImagePreview(null);
+  };
+
+  const handleItemImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setItemImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setItemImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleItemSubmit = async () => {
+    if (!accessToken) return;
+    if (!itemForm.category_id || !itemForm.item_name.trim()) {
+      toast.error("Category and item name are required.");
+      return;
+    }
+
+    setSubmittingItem(true);
+    try {
+      const formPayload = new FormData();
+      formPayload.append("category_id", itemForm.category_id);
+      formPayload.append("item_name", itemForm.item_name.trim());
+      formPayload.append("description", itemForm.description.trim());
+      formPayload.append("additional_price", itemForm.additional_price);
+      formPayload.append("availability_status", itemForm.availability_status);
+
+      if (itemImageFile) {
+        formPayload.append("image", itemImageFile);
+      }
+
+      if (editingItem) {
+        await updateAdminMenuItem(accessToken, editingItem.menu_item_id, formPayload);
+        toast.success("Menu item updated successfully.");
+      } else {
+        await createAdminMenuItem(accessToken, formPayload);
+        toast.success("Menu item created successfully.");
+      }
+      closeItemModal();
+      fetchItems();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save menu item.");
+    } finally {
+      setSubmittingItem(false);
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    if (!accessToken || !deletingItem) return;
+    setSubmittingItem(true);
+    try {
+      await deleteAdminMenuItem(accessToken, deletingItem.menu_item_id);
+      toast.success("Menu item deleted successfully.");
+      setDeletingItem(null);
+      fetchItems();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete menu item.");
+    } finally {
+      setSubmittingItem(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
+              Menu Management
+            </h2>
+            <p className="text-sm font-['Lato'] text-[#2C1810]/60 mt-1">
+              Manage menu categories and items available for packages.
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab("categories")}
+            className={`px-4 py-2 rounded-xl text-sm font-['Lato'] transition-all ${
+              activeTab === "categories"
+                ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
+                : "bg-[#F5F0E8] text-[#2C1810]/70 hover:bg-[#C8922A]/10"
+            }`}
+          >
+            Categories
+          </button>
+          <button
+            onClick={() => setActiveTab("items")}
+            className={`px-4 py-2 rounded-xl text-sm font-['Lato'] transition-all ${
+              activeTab === "items"
+                ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
+                : "bg-[#F5F0E8] text-[#2C1810]/70 hover:bg-[#C8922A]/10"
+            }`}
+          >
+            Menu Items
+          </button>
+        </div>
+
+        {/* Categories Tab */}
+        {activeTab === "categories" && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddCategory}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+              >
+                <Plus size={18} />
+                Add Category
+              </button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+              </div>
+            ) : categories.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-sm font-['Lato'] text-[#2C1810]/50">No categories found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm font-['Lato']">
+                  <thead>
+                    <tr className="border-b border-[#C8922A]/10">
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Name</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Description</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Order</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Status</th>
+                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((cat) => (
+                      <tr key={cat.category_id} className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors">
+                        <td className="py-3 px-2 text-[#2C1810] font-medium">{cat.category_name}</td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">{cat.description || "—"}</td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">{cat.display_order ?? 0}</td>
+                        <td className="py-3 px-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
+                            cat.status === "Active" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C4541A]/15 text-[#C4541A]"
+                          }`}>
+                            {cat.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleEditCategory(cat)}
+                              className="p-1.5 rounded-lg hover:bg-[#C8922A]/10 text-[#C8922A] transition-colors"
+                              title="Edit category"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                            <button
+                              onClick={() => setDeletingCategory(cat)}
+                              className="p-1.5 rounded-lg hover:bg-[#C4541A]/10 text-[#C4541A] transition-colors"
+                              title="Delete category"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Items Tab */}
+        {activeTab === "items" && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddItem}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+              >
+                <Plus size={18} />
+                Add Menu Item
+              </button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="animate-spin text-[#C8922A]" size={32} />
+              </div>
+            ) : items.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-sm font-['Lato'] text-[#2C1810]/50">No menu items found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm font-['Lato']">
+                  <thead>
+                    <tr className="border-b border-[#C8922A]/10">
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Item</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Category</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Additional Price</th>
+                      <th className="text-left py-3 px-2 text-[#2C1810]/60 font-semibold">Status</th>
+                      <th className="text-right py-3 px-2 text-[#2C1810]/60 font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <tr key={item.menu_item_id} className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-3">
+                            {item.image && (
+                              <img src={item.image} alt={item.item_name} className="w-10 h-10 rounded-lg object-cover" />
+                            )}
+                            <span className="text-[#2C1810] font-medium">{item.item_name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">{item.category_name || "—"}</td>
+                        <td className="py-3 px-2 text-[#2C1810]/70">
+                          {item.additional_price > 0 ? `+₱${Number(item.additional_price).toLocaleString()}` : "Included"}
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
+                            item.availability_status === "Active" ? "bg-[#7A8C5C]/15 text-[#7A8C5C]" : "bg-[#C4541A]/15 text-[#C4541A]"
+                          }`}>
+                            {item.availability_status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleEditItem(item)}
+                              className="p-1.5 rounded-lg hover:bg-[#C8922A]/10 text-[#C8922A] transition-colors"
+                              title="Edit item"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                            <button
+                              onClick={() => setDeletingItem(item)}
+                              className="p-1.5 rounded-lg hover:bg-[#C4541A]/10 text-[#C4541A] transition-colors"
+                              title="Delete item"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Category Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeCategoryModal} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
+              {editingCategory ? "Edit Category" : "Add Category"}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Category Name <span className="text-[#C4541A]">*</span></label>
+                <input
+                  type="text"
+                  value={categoryForm.category_name}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, category_name: e.target.value }))}
+                  placeholder="e.g. Appetizer"
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Description</label>
+                <textarea
+                  value={categoryForm.description}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional description..."
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Display Order</label>
+                  <input
+                    type="number"
+                    value={categoryForm.display_order}
+                    onChange={(e) => setCategoryForm((prev) => ({ ...prev, display_order: e.target.value }))}
+                    min="0"
+                    className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Status</label>
+                  <select
+                    value={categoryForm.status}
+                    onChange={(e) => setCategoryForm((prev) => ({ ...prev, status: e.target.value as "Active" | "Inactive" }))}
+                    className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#C8922A]/10 flex items-center justify-end gap-3">
+              <button
+                onClick={closeCategoryModal}
+                disabled={submittingCategory}
+                className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCategorySubmit}
+                disabled={submittingCategory}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submittingCategory && <Loader2 size={22} className="animate-spin" />}
+                {submittingCategory ? "Saving..." : "Save Category"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Category Confirmation */}
+      {deletingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !submittingCategory && setDeletingCategory(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={26} className="text-[#C4541A]" />
+              </div>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">Delete Category</h3>
+              <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-[#2C1810]">{deletingCategory.category_name}</span>
+                ? This will deactivate the category.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setDeletingCategory(null)}
+                  disabled={submittingCategory}
+                  className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteCategory}
+                  disabled={submittingCategory}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {submittingCategory && <Loader2 size={16} className="animate-spin" />}
+                  {submittingCategory ? "Deleting..." : "Delete Category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Item Modal */}
+      {showItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeItemModal} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
+              {editingItem ? "Edit Menu Item" : "Add Menu Item"}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Category <span className="text-[#C4541A]">*</span></label>
+                <select
+                  value={itemForm.category_id}
+                  onChange={(e) => setItemForm((prev) => ({ ...prev, category_id: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                >
+                  <option value="">Select category</option>
+                  {categories.map((cat) => (
+                    <option key={cat.category_id} value={cat.category_id}>{cat.category_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Item Name <span className="text-[#C4541A]">*</span></label>
+                <input
+                  type="text"
+                  value={itemForm.item_name}
+                  onChange={(e) => setItemForm((prev) => ({ ...prev, item_name: e.target.value }))}
+                  placeholder="e.g. Sisig"
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Description</label>
+                <textarea
+                  value={itemForm.description}
+                  onChange={(e) => setItemForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional description..."
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Additional Price (₱)</label>
+                  <input
+                    type="number"
+                    value={itemForm.additional_price}
+                    onChange={(e) => setItemForm((prev) => ({ ...prev, additional_price: e.target.value }))}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Status</label>
+                  <select
+                    value={itemForm.availability_status}
+                    onChange={(e) => setItemForm((prev) => ({ ...prev, availability_status: e.target.value as "Active" | "Inactive" }))}
+                    className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">Item Image</label>
+                <div className="flex items-center gap-4">
+                  {itemImagePreview ? (
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[#C8922A]/20">
+                      <img src={itemImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => { setItemImageFile(null); setItemImagePreview(null); }}
+                        className="absolute top-1 right-1 p-0.5 rounded-full bg-[#C4541A]/80 text-white"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-16 h-16 rounded-xl border-2 border-dashed border-[#C8922A]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#C8922A] transition-colors">
+                      <ImagePlus size={20} className="text-[#C8922A]/50" />
+                      <span className="text-[9px] font-['Lato'] text-[#C8922A]/50 mt-0.5">Upload</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        onChange={handleItemImageSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">JPEG, PNG, GIF, WebP. Max 5MB.</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#C8922A]/10 flex items-center justify-end gap-3">
+              <button
+                onClick={closeItemModal}
+                disabled={submittingItem}
+                className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleItemSubmit}
+                disabled={submittingItem}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submittingItem && <Loader2 size={22} className="animate-spin" />}
+                {submittingItem ? "Saving..." : "Save Item"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Item Confirmation */}
+      {deletingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !submittingItem && setDeletingItem(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={26} className="text-[#C4541A]" />
+              </div>
+              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">Delete Menu Item</h3>
+              <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-[#2C1810]">{deletingItem.item_name}</span>
+                ? This will deactivate the item.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setDeletingItem(null)}
+                  disabled={submittingItem}
+                  className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteItem}
+                  disabled={submittingItem}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {submittingItem && <Loader2 size={16} className="animate-spin" />}
+                  {submittingItem ? "Deleting..." : "Delete Item"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

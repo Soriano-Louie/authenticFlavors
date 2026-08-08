@@ -147,3 +147,168 @@ export function deleteAdminPackage(
     },
   });
 }
+
+// ─── Admin Menu Management ──────────────────────────────────────────
+
+export interface AdminMenuCategory {
+  category_id: number;
+  category_name: string;
+  description: string | null;
+  display_order: number | null;
+  status: "Active" | "Inactive";
+}
+
+export interface AdminMenuItem {
+  menu_item_id: number;
+  category_id: number;
+  item_name: string;
+  description: string | null;
+  additional_price: number;
+  availability_status: "Active" | "Inactive";
+  image: string | null;
+  created_at: string;
+  updated_at: string;
+  category_name?: string;
+}
+
+export interface AdminMenuCategoryResponse {
+  category: AdminMenuCategory;
+}
+
+export interface AdminMenuCategoriesResponse {
+  categories: AdminMenuCategory[];
+}
+
+export interface AdminMenuItemsResponse {
+  items: AdminMenuItem[];
+}
+
+export interface AdminMenuItemResponse {
+  item: AdminMenuItem;
+}
+
+export interface AdminMenuDeleteResponse {
+  message: string;
+}
+
+/** Fetch all menu categories (including inactive) for admin */
+export function getAdminMenuCategories(
+  accessToken: string,
+): Promise<AdminMenuCategoriesResponse> {
+  return request<AdminMenuCategoriesResponse>("/api/admin/menu/categories", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+/** Create a new menu category */
+export function createAdminMenuCategory(
+  accessToken: string,
+  data: Record<string, unknown>,
+): Promise<AdminMenuCategoryResponse> {
+  return request<AdminMenuCategoryResponse>("/api/admin/menu/categories", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Update a menu category */
+export function updateAdminMenuCategory(
+  accessToken: string,
+  id: number,
+  data: Record<string, unknown>,
+): Promise<AdminMenuCategoryResponse> {
+  return request<AdminMenuCategoryResponse>(
+    `/api/admin/menu/categories/${id}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+/** Delete (deactivate) a menu category */
+export function deleteAdminMenuCategory(
+  accessToken: string,
+  id: number,
+): Promise<AdminMenuDeleteResponse> {
+  return request<AdminMenuDeleteResponse>(
+    `/api/admin/menu/categories/${id}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+/** Fetch all menu items (including inactive) for admin */
+export function getAdminMenuItems(
+  accessToken: string,
+): Promise<AdminMenuItemsResponse> {
+  return request<AdminMenuItemsResponse>("/api/admin/menu/items", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+/** Create a new menu item (multipart/form-data for image upload) */
+export async function createAdminMenuItem(
+  accessToken: string,
+  formData: FormData,
+): Promise<AdminMenuItemResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/menu/items`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  return parseResponse<AdminMenuItemResponse>(response);
+}
+
+/** Update a menu item (multipart/form-data for image upload) */
+export async function updateAdminMenuItem(
+  accessToken: string,
+  id: number,
+  formData: FormData,
+): Promise<AdminMenuItemResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/menu/items/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  return parseResponse<AdminMenuItemResponse>(response);
+}
+
+/** Delete (deactivate) a menu item */
+export function deleteAdminMenuItem(
+  accessToken: string,
+  id: number,
+): Promise<AdminMenuDeleteResponse> {
+  return request<AdminMenuDeleteResponse>(`/api/admin/menu/items/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
