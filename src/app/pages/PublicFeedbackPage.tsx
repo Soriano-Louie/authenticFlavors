@@ -156,7 +156,7 @@ export function PublicFeedbackPage() {
       {/* ─── Summary Stats ─── */}
       {!loading && !error && total > 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 -mt-8 relative z-10">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-10">
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#C8922A]/10 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1.5">
                 <span
