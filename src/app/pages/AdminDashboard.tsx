@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -107,6 +107,12 @@ import {
   BookOpen,
   LogOut,
   Search,
+  Settings,
+  Mail,
+  KeyRound,
+  Camera,
+  Shield,
+  Save,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -130,6 +136,7 @@ const SIDEBAR_LINKS = [
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "activity", label: "Recent Activity", icon: Activity },
+  { key: "settings", label: "Settings", icon: Settings },
 ];
 
 const SENTIMENT_COLORS: Record<string, string> = {
@@ -156,7 +163,7 @@ export function AdminDashboard() {
     setSidebarOpen(false);
   };
 
-  const { accessToken, logout } = useAuth();
+  const { accessToken, logout, user } = useAuth();
   const navigateTo = useNavigate();
 
   const handleLogoutClick = () => {
@@ -365,6 +372,30 @@ export function AdminDashboard() {
                 </p>
               </div>
             </div>
+            {user && (
+              <div className="flex items-center gap-2.5">
+                {user.profile_photo_url ? (
+                  <img
+                    src={user.profile_photo_url}
+                    alt="Admin"
+                    className="w-9 h-9 rounded-full object-cover border border-[#C8922A]/30"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold">
+                    {(user.first_name?.charAt(0) || "A") +
+                      (user.last_name?.charAt(0) || "")}
+                  </div>
+                )}
+                <div className="hidden sm:block">
+                  <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                    {user.first_name} {user.last_name}
+                  </p>
+                  <p className="text-[11px] text-[#2C1810]/50 font-['Lato']">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </header>
 
@@ -383,8 +414,818 @@ export function AdminDashboard() {
           {activeSection === "menu-management" && <MenuManagementSection />}
           {activeSection === "packages" && <PackagesSection />}
           {activeSection === "announcements" && <AnnouncementsSection />}
+          {activeSection === "settings" && <AdminSettingsSection />}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ─── Admin Settings Section ─────────────────────────────────────────────
+// Lets the currently authenticated admin manage their own profile, email
+// (verified via a one-time code to the new address), password (requires the
+// current password), and profile photo. Only the logged-in admin's own
+// credentials can be modified here.
+
+function AdminSettingsSection() {
+  const {
+    user,
+    updateProfile,
+    changeProfilePhoto,
+    requestEmailChange,
+    verifyEmailChange,
+    changePassword,
+  } = useAuth();
+
+  // Profile information
+  const [profileForm, setProfileForm] = useState({
+    first_name: user?.first_name || "",
+    middle_name: user?.middle_name || "",
+    last_name: user?.last_name || "",
+    phone_number: user?.phone_number || "",
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>(
+    {},
+  );
+
+  // Password
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // Profile photo
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Verified email change
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailStep, setEmailStep] = useState<"email" | "code">("email");
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailFieldError, setEmailFieldError] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        first_name: user.first_name || "",
+        middle_name: user.middle_name || "",
+        last_name: user.last_name || "",
+        phone_number: user.phone_number || "",
+      });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setEmailCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailCooldown]);
+
+  const getAdminInitials = () => {
+    if (!user) return "A";
+    return (
+      (user.first_name?.charAt(0) || "A") + (user.last_name?.charAt(0) || "")
+    ).toUpperCase();
+  };
+
+  const handleProfileSave = async () => {
+    if (!user) return;
+    setProfileSaving(true);
+    setProfileErrors({});
+    setProfileSaved(false);
+    try {
+      await updateProfile({
+        first_name: profileForm.first_name,
+        middle_name: profileForm.middle_name || undefined,
+        last_name: profileForm.last_name,
+        email: user.email,
+        phone_number: profileForm.phone_number,
+      });
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
+    } catch (error) {
+      if (error && typeof error === "object" && "fieldErrors" in error) {
+        setProfileErrors(error.fieldErrors as Record<string, string>);
+      } else {
+        setProfileErrors({
+          general:
+            error instanceof Error
+              ? error.message
+              : "Failed to update profile. Please try again.",
+        });
+      }
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const validatePhoto = (file: File): string | null => {
+    const allowed = ["image/jpeg", "image/jpg", "image/png"];
+    if (!allowed.includes(file.type)) {
+      return "Invalid file type. Only JPG, JPEG, and PNG images are allowed.";
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return "File size exceeds the 5MB limit.";
+    }
+    return null;
+  };
+
+  const handlePhotoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const err = validatePhoto(file);
+    if (err) {
+      setPhotoError(err);
+      toast.error(err);
+      return;
+    }
+    setPhotoError(null);
+    setPhotoUploading(true);
+    try {
+      await changeProfilePhoto(file);
+      toast.success("Profile photo updated successfully!");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to upload profile photo.";
+      setPhotoError(message);
+      toast.error(message);
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const openEmailModal = () => {
+    setEmailAddress("");
+    setEmailCode("");
+    setEmailError(null);
+    setEmailFieldError(null);
+    setEmailStep("email");
+    setEmailCooldown(0);
+    setShowEmailModal(true);
+  };
+
+  const closeEmailModal = () => {
+    setShowEmailModal(false);
+    setEmailAddress("");
+    setEmailCode("");
+    setEmailError(null);
+    setEmailFieldError(null);
+    setEmailStep("email");
+    setEmailCooldown(0);
+  };
+
+  const handleSendEmailCode = async () => {
+    setEmailError(null);
+    setEmailFieldError(null);
+    const trimmed = emailAddress.trim().toLowerCase();
+    if (!trimmed) {
+      setEmailFieldError("Please enter your new email address.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailFieldError("Please enter a valid email address.");
+      return;
+    }
+    if (user?.email && trimmed === user.email.toLowerCase()) {
+      setEmailFieldError(
+        "New email must be different from your current email.",
+      );
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      await requestEmailChange(trimmed);
+      setEmailAddress(trimmed);
+      setEmailStep("code");
+      setEmailCooldown(60);
+      toast.success(
+        `Verification code sent to ${trimmed}. Check your inbox.`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to send verification code. Please try again.";
+      setEmailError(message);
+      toast.error(message);
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    setEmailError(null);
+    if (!/^\d{6}$/.test(emailCode.trim())) {
+      setEmailError("Verification code must be a 6-digit number.");
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      await verifyEmailChange(emailAddress, emailCode.trim());
+      setShowEmailModal(false);
+      setEmailCode("");
+      setEmailAddress("");
+      toast.success("Email changed successfully!");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to verify the code. Please try again.";
+      setEmailError(message);
+      toast.error(message);
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleResendEmailCode = async () => {
+    setEmailError(null);
+    setEmailLoading(true);
+    try {
+      await requestEmailChange(emailAddress);
+      setEmailCooldown(60);
+      toast.success("A new verification code has been sent.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to resend the verification code. Please try again.";
+      setEmailError(message);
+      toast.error(message);
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handlePasswordSave = async () => {
+    setPasswordErrors({});
+    setPasswordSaved(false);
+    const errs: Record<string, string> = {};
+    if (!passwordForm.current_password) {
+      errs.current_password = "Current password is required.";
+    }
+    if (!passwordForm.new_password) {
+      errs.new_password = "New password is required.";
+    } else if (passwordForm.new_password.length < 8) {
+      errs.new_password = "Password must be at least 8 characters.";
+    }
+    if (!passwordForm.confirm_password) {
+      errs.confirm_password = "Please confirm your new password.";
+    } else if (passwordForm.new_password !== passwordForm.confirm_password) {
+      errs.confirm_password = "Passwords do not match.";
+    }
+    if (Object.keys(errs).length > 0) {
+      setPasswordErrors(errs);
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await changePassword({
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+        confirm_password: passwordForm.confirm_password,
+      });
+      setPasswordSaved(true);
+      setPasswordForm({
+        current_password: "",
+        new_password: "",
+        confirm_password: "",
+      });
+      setTimeout(() => setPasswordSaved(false), 3000);
+      toast.success("Password changed successfully!");
+    } catch (error) {
+      if (error && typeof error === "object" && "fieldErrors" in error) {
+        setPasswordErrors(error.fieldErrors as Record<string, string>);
+      } else {
+        setPasswordErrors({
+          general:
+            error instanceof Error
+              ? error.message
+              : "Failed to change password. Please try again.",
+        });
+      }
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const sectionCard =
+    "bg-white rounded-2xl border border-[#C8922A]/10 p-6";
+  const sectionTitle =
+    "text-lg font-['Playfair_Display'] text-[#2C1810] flex items-center gap-2 mb-1";
+  const inputCls = (hasError: boolean) =>
+    `w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+      hasError
+        ? "border-[#C4541A]"
+        : "border-[#C8922A]/20 focus:border-[#C8922A]"
+    }`;
+
+  return (
+    <div className="space-y-6">
+      {/* Profile Information */}
+      <div className={sectionCard}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className={sectionTitle}>
+              <Save size={18} className="text-[#C8922A]" />
+              Profile Information
+            </h3>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+              Update your basic account information.
+            </p>
+          </div>
+        </div>
+        {profileSaved && (
+          <div className="mb-4 flex items-center gap-2 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 text-[#7A8C5C] text-sm font-['Lato'] px-4 py-2.5 rounded-xl">
+            <CheckCircle size={16} /> Profile updated successfully!
+          </div>
+        )}
+        {profileErrors.general && (
+          <div className="mb-4 flex items-center gap-2 bg-[#C4541A]/10 border border-[#C4541A]/30 text-[#C4541A] text-sm font-['Lato'] px-4 py-2.5 rounded-xl">
+            <AlertCircle size={16} /> {profileErrors.general}
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              First Name
+            </label>
+            <input
+              type="text"
+              value={profileForm.first_name}
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, first_name: e.target.value })
+              }
+              className={inputCls(!!profileErrors.first_name)}
+            />
+            {profileErrors.first_name && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {profileErrors.first_name}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Middle Name (Optional)
+            </label>
+            <input
+              type="text"
+              value={profileForm.middle_name}
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  middle_name: e.target.value,
+                })
+              }
+              className={inputCls(false)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Last Name
+            </label>
+            <input
+              type="text"
+              value={profileForm.last_name}
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, last_name: e.target.value })
+              }
+              className={inputCls(!!profileErrors.last_name)}
+            />
+            {profileErrors.last_name && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {profileErrors.last_name}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              value={profileForm.phone_number}
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  phone_number: e.target.value,
+                })
+              }
+              className={inputCls(!!profileErrors.phone_number)}
+            />
+            {profileErrors.phone_number && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {profileErrors.phone_number}
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={handleProfileSave}
+          disabled={profileSaving}
+          className="mt-4 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+        >
+          {profileSaving ? (
+            <>
+              <Loader2 size={18} className="animate-spin" /> Saving...
+            </>
+          ) : (
+            "Save Changes"
+          )}
+        </button>
+      </div>
+
+      {/* Email Address */}
+      <div className={sectionCard}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className={sectionTitle}>
+              <Mail size={18} className="text-[#C8922A]" />
+              Email Address
+            </h3>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+              A verification code is sent to your new email before it is
+              applied.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="email"
+            value={user?.email || ""}
+            readOnly
+            className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#EDE8DF] text-[#2C1810]/70 outline-none text-sm font-['Lato'] cursor-not-allowed"
+          />
+          <button
+            onClick={openEmailModal}
+            className="shrink-0 px-4 py-3 rounded-xl border border-[#C8922A]/30 text-[#C8922A] text-sm font-['Lato'] font-semibold hover:bg-[#C8922A]/10 transition-colors cursor-pointer"
+          >
+            Change Email
+          </button>
+        </div>
+      </div>
+
+      {/* Password */}
+      <div className={sectionCard}>
+        <div className="mb-4">
+          <h3 className={sectionTitle}>
+            <KeyRound size={18} className="text-[#C8922A]" />
+            Password
+          </h3>
+          <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+            Your current password is required to set a new one.
+          </p>
+        </div>
+        {passwordSaved && (
+          <div className="mb-4 flex items-center gap-2 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 text-[#7A8C5C] text-sm font-['Lato'] px-4 py-2.5 rounded-xl">
+            <CheckCircle size={16} /> Password changed successfully!
+          </div>
+        )}
+        {passwordErrors.general && (
+          <div className="mb-4 flex items-center gap-2 bg-[#C4541A]/10 border border-[#C4541A]/30 text-[#C4541A] text-sm font-['Lato'] px-4 py-2.5 rounded-xl">
+            <AlertCircle size={16} /> {passwordErrors.general}
+          </div>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Current Password
+            </label>
+            <div className="relative">
+              <input
+                type={showCurrent ? "text" : "password"}
+                value={passwordForm.current_password}
+                onChange={(e) =>
+                  setPasswordForm({
+                    ...passwordForm,
+                    current_password: e.target.value,
+                  })
+                }
+                placeholder="Enter your current password"
+                className={`${inputCls(!!passwordErrors.current_password)} pr-12`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrent((v) => !v)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] cursor-pointer"
+              >
+                {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {passwordErrors.current_password && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {passwordErrors.current_password}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showNew ? "text" : "password"}
+                value={passwordForm.new_password}
+                onChange={(e) =>
+                  setPasswordForm({
+                    ...passwordForm,
+                    new_password: e.target.value,
+                  })
+                }
+                placeholder="At least 8 characters"
+                className={`${inputCls(!!passwordErrors.new_password)} pr-12`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNew((v) => !v)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] cursor-pointer"
+              >
+                {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {passwordErrors.new_password && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {passwordErrors.new_password}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Confirm New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirm ? "text" : "password"}
+                value={passwordForm.confirm_password}
+                onChange={(e) =>
+                  setPasswordForm({
+                    ...passwordForm,
+                    confirm_password: e.target.value,
+                  })
+                }
+                placeholder="Re-enter your new password"
+                className={`${inputCls(!!passwordErrors.confirm_password)} pr-12`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm((v) => !v)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] cursor-pointer"
+              >
+                {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {passwordErrors.confirm_password && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {passwordErrors.confirm_password}
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={handlePasswordSave}
+          disabled={passwordSaving}
+          className="mt-4 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+        >
+          {passwordSaving ? (
+            <>
+              <Loader2 size={18} className="animate-spin" /> Updating...
+            </>
+          ) : (
+            "Change Password"
+          )}
+        </button>
+      </div>
+
+      {/* Profile Photo */}
+      <div className={sectionCard}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className={sectionTitle}>
+              <Camera size={18} className="text-[#C8922A]" />
+              Profile Photo
+            </h3>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+              This photo appears across the Admin Dashboard.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-5">
+          {user?.profile_photo_url ? (
+            <img
+              src={user.profile_photo_url}
+              alt="Admin"
+              className="w-20 h-20 rounded-full object-cover border-2 border-[#C8922A]/40"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-2xl font-['Playfair_Display'] font-semibold">
+              {getAdminInitials()}
+            </div>
+          )}
+          <div>
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoUploading}
+              className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-[#C8922A] text-sm font-['Lato'] font-semibold hover:bg-[#C8922A]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {photoUploading ? "Uploading..." : "Change Photo"}
+            </button>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-2">
+              JPG, JPEG, or PNG. Max 5MB.
+            </p>
+            {photoError && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {photoError}
+              </p>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Verified Email Change Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+            <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                Change Email
+              </h3>
+              <button
+                onClick={closeEmailModal}
+                disabled={emailLoading}
+                className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="bg-[#F5F0E8] p-4 rounded-xl mb-4">
+                <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider mb-1">
+                  Current Email
+                </p>
+                <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                  {user?.email || "No email"}
+                </p>
+              </div>
+              {emailStep === "email" ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      New Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={emailAddress}
+                      onChange={(e) => {
+                        setEmailAddress(e.target.value);
+                        setEmailFieldError(null);
+                      }}
+                      placeholder="newemail@example.com"
+                      className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                        emailFieldError
+                          ? "border-[#C4541A]"
+                          : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                      }`}
+                    />
+                    {emailFieldError && (
+                      <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                        {emailFieldError}
+                      </p>
+                    )}
+                    <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
+                      A one-time verification code will be sent to this new
+                      address. Your email won't change until you verify it.
+                    </p>
+                  </div>
+                  {emailError && (
+                    <p className="text-[#C4541A] text-xs font-['Lato']">
+                      {emailError}
+                    </p>
+                  )}
+                  <button
+                    onClick={handleSendEmailCode}
+                    disabled={emailLoading}
+                    className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {emailLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      "Send Verification Code"
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      New Email
+                    </label>
+                    <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                      {emailAddress}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={emailCode}
+                      onChange={(e) => {
+                        setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                        setEmailError(null);
+                      }}
+                      placeholder="Enter the 6-digit code"
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] font-['Lato']"
+                    />
+                    <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
+                      Enter the verification code sent to {emailAddress}.
+                    </p>
+                  </div>
+                  {emailError && (
+                    <p className="text-[#C4541A] text-xs font-['Lato']">
+                      {emailError}
+                    </p>
+                  )}
+                  <button
+                    onClick={handleVerifyEmailCode}
+                    disabled={emailLoading}
+                    className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {emailLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" /> Verifying...
+                      </>
+                    ) : (
+                      "Verify & Change Email"
+                    )}
+                  </button>
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => {
+                        setEmailStep("email");
+                        setEmailError(null);
+                        setEmailCode("");
+                      }}
+                      disabled={emailLoading}
+                      className="text-sm text-[#2C1810]/50 hover:text-[#2C1810] font-['Lato'] transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      ← Use a different email
+                    </button>
+                    <button
+                      onClick={handleResendEmailCode}
+                      disabled={emailLoading || emailCooldown > 0}
+                      className="text-sm text-[#C8922A] font-['Lato'] font-semibold hover:text-[#C4541A] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {emailCooldown > 0
+                        ? `Resend in ${emailCooldown}s`
+                        : "Resend code"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Security note */}
+      <div className="flex items-center gap-2 text-xs text-[#2C1810]/40 font-['Lato'] px-2">
+        <Shield size={14} />
+        Changes here only affect your own admin account. All sensitive changes
+        require authentication.
+      </div>
     </div>
   );
 }
@@ -4557,6 +5398,8 @@ function getIconComponent(iconName: string) {
     menu_change_rejected: ChefHat,
     user_registered: Users,
     feedback_submitted: MessageSquare,
+    email_changed: Mail,
+    password_changed: KeyRound,
     // Legacy icon names (kept for backward compatibility)
     Calendar,
     MessageSquare,

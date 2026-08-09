@@ -1081,7 +1081,7 @@ export async function verifyEmailChange(req, res) {
 
     await logActivity({
       actorUserId: userId,
-      actorRole: "Customer",
+      actorRole: user.role === "Admin" ? "Admin" : "Customer",
       activityType: "email_changed",
       action: `changed their account email`,
     });
@@ -1096,6 +1096,97 @@ export async function verifyEmailChange(req, res) {
       error: {
         code: "SERVER_ERROR",
         message: "Failed to change email. Please try again.",
+      },
+    });
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Secure Password Change
+// ═════════════════════════════════════════════════════════════════════════════
+// Requires the current password before accepting a new one. The new password
+// is validated, hashed with bcrypt (same cost as registration/reset), and
+// never stored or returned in plain text.
+
+export async function changePassword(req, res) {
+  const userId = Number(req.auth.sub);
+  const currentPassword = String(req.body.current_password ?? "");
+  const newPassword = String(req.body.new_password ?? "");
+  const confirmPassword = String(req.body.confirm_password ?? "");
+
+  const fieldErrors = {};
+  if (!currentPassword) {
+    fieldErrors.current_password = "Current password is required.";
+  }
+  if (!newPassword) {
+    fieldErrors.new_password = "New password is required.";
+  } else if (newPassword.length < 8) {
+    fieldErrors.new_password = "Password must be at least 8 characters.";
+  }
+  if (!confirmPassword) {
+    fieldErrors.confirm_password = "Please confirm your new password.";
+  } else if (newPassword !== confirmPassword) {
+    fieldErrors.confirm_password = "Passwords do not match.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+      },
+    });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT user_id, password_hash, role FROM users WHERE user_id = ? LIMIT 1",
+      [userId],
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "User not found." },
+      });
+    }
+
+    // Verify the current password before allowing the change
+    const passwordMatches = await bcrypt.compare(
+      currentPassword,
+      users[0].password_hash,
+    );
+    if (!passwordMatches) {
+      return res.status(401).json({
+        error: {
+          code: "INVALID_PASSWORD",
+          message: "Current password is incorrect.",
+          fieldErrors: { current_password: "Current password is incorrect." },
+        },
+      });
+    }
+
+    // Hash the new password with the same cost used for registration/resets
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    await pool.query("UPDATE users SET password_hash = ? WHERE user_id = ?", [
+      password_hash,
+      userId,
+    ]);
+
+    await logActivity({
+      actorUserId: userId,
+      actorRole: users[0].role === "Admin" ? "Admin" : "Customer",
+      activityType: "password_changed",
+      action: "changed their account password",
+    });
+
+    return res.status(200).json({ message: "Password changed successfully." });
+  } catch (error) {
+    console.error("changePassword failed:", error);
+    return res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to change password. Please try again.",
       },
     });
   }

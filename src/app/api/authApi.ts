@@ -300,3 +300,24 @@ export function verifyEmailChange(
     },
   );
 }
+
+// ─── Password Change ───────────────────────────────────────────────────────
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export function changePassword(
+  accessToken: string,
+  payload: ChangePasswordPayload,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/change-password", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}

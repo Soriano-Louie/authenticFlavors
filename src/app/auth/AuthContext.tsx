@@ -18,6 +18,7 @@ import {
   uploadProfilePhoto as apiUploadProfilePhoto,
   requestEmailChange as apiRequestEmailChange,
   verifyEmailChange as apiVerifyEmailChange,
+  changePassword as apiChangePassword,
   type AuthUser,
   type LoginPayload,
   type RegisterPayload,
@@ -36,6 +37,11 @@ interface AuthContextValue {
   changeProfilePhoto: (file: File) => Promise<AuthUser>;
   requestEmailChange: (newEmail: string) => Promise<{ message: string }>;
   verifyEmailChange: (newEmail: string, code: string) => Promise<AuthUser>;
+  changePassword: (payload: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => Promise<{ message: string }>;
   setAuth: (accessToken: string, user: AuthUser) => void;
 }
 
@@ -140,6 +146,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [accessToken],
   );
 
+  const changePassword = useCallback(
+    async (payload: {
+      current_password: string;
+      new_password: string;
+      confirm_password: string;
+    }) => {
+      if (!accessToken) {
+        throw new Error("No access token available");
+      }
+      return apiChangePassword(accessToken, payload);
+    },
+    [accessToken],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -153,6 +173,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       changeProfilePhoto,
       requestEmailChange,
       verifyEmailChange,
+      changePassword,
       setAuth,
     }),
     [
@@ -167,6 +188,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       changeProfilePhoto,
       requestEmailChange,
       verifyEmailChange,
+      changePassword,
       setAuth,
     ],
   );
