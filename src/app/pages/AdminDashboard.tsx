@@ -2265,7 +2265,10 @@ function BookingsSection() {
     setSubmittingVenueSetup(true);
     try {
       if (venueSetupAction === "approve") {
-        await approveVenueSetupRequest(accessToken, reviewingVenueSetup.request_id);
+        await approveVenueSetupRequest(
+          accessToken,
+          reviewingVenueSetup.request_id,
+        );
         toast.success("Venue setup request approved.");
       } else if (venueSetupAction === "changes") {
         await requestVenueSetupChanges(
@@ -2701,10 +2704,14 @@ function BookingsSection() {
                         if (!venueReq) return null;
 
                         const statusStyles: Record<string, string> = {
-                          Pending: "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30",
-                          Approved: "bg-[#7A8C5C]/15 text-[#7A8C5C] border border-[#7A8C5C]/30",
-                          Changes_Requested: "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30",
-                          Declined: "bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30",
+                          Pending:
+                            "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30",
+                          Approved:
+                            "bg-[#7A8C5C]/15 text-[#7A8C5C] border border-[#7A8C5C]/30",
+                          Changes_Requested:
+                            "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30",
+                          Declined:
+                            "bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30",
                         };
 
                         return (
@@ -2807,27 +2814,29 @@ function BookingsSection() {
                   Action
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {(["approve", "changes", "decline"] as const).map((action) => (
-                    <button
-                      key={action}
-                      onClick={() => setVenueSetupAction(action)}
-                      className={`px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold transition-all cursor-pointer ${
-                        venueSetupAction === action
-                          ? action === "approve"
-                            ? "bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white"
-                            : action === "changes"
-                              ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
-                              : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white"
-                          : "bg-white text-[#2C1810]/70 border border-[#2C1810]/15 hover:border-[#C8922A]"
-                      }`}
-                    >
-                      {action === "approve"
-                        ? "Approve"
-                        : action === "changes"
-                          ? "Request Changes"
-                          : "Decline"}
-                    </button>
-                  ))}
+                  {(["approve", "changes", "decline"] as const).map(
+                    (action) => (
+                      <button
+                        key={action}
+                        onClick={() => setVenueSetupAction(action)}
+                        className={`px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold transition-all cursor-pointer ${
+                          venueSetupAction === action
+                            ? action === "approve"
+                              ? "bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white"
+                              : action === "changes"
+                                ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
+                                : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white"
+                            : "bg-white text-[#2C1810]/70 border border-[#2C1810]/15 hover:border-[#C8922A]"
+                        }`}
+                      >
+                        {action === "approve"
+                          ? "Approve"
+                          : action === "changes"
+                            ? "Request Changes"
+                            : "Decline"}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
             </div>
@@ -3110,12 +3119,15 @@ function PackagesSection() {
         formPayload.append("image", imageFile);
       }
 
-      if (formData.menu_inclusions.length > 0) {
-        formPayload.append(
-          "menu_inclusions",
-          JSON.stringify(formData.menu_inclusions),
-        );
-      }
+      // Always send menu_inclusions (even empty) so unchecking all
+      // selections clears existing associations on update.
+      // Map to { menu_item_id } objects expected by the backend.
+      formPayload.append(
+        "menu_inclusions",
+        JSON.stringify(
+          formData.menu_inclusions.map((id) => ({ menu_item_id: id })),
+        ),
+      );
 
       if (editingPkg) {
         await updateAdminPackage(

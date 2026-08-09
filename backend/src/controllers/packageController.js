@@ -231,7 +231,8 @@ export async function getAllPackages(_req, res) {
 // ─── Admin: Create Package ──────────────────────────────────────────
 export async function createPackage(req, res) {
   try {
-    const { package_name, description, max_pax, pricing, menu_inclusions } = req.body;
+    const { package_name, description, max_pax, pricing, menu_inclusions } =
+      req.body;
 
     // Validate required fields
     if (!package_name || !package_name.trim()) {
@@ -314,20 +315,29 @@ export async function createPackage(req, res) {
       let inclusionsArray;
       try {
         inclusionsArray =
-          typeof menu_inclusions === "string" ? JSON.parse(menu_inclusions) : menu_inclusions;
+          typeof menu_inclusions === "string"
+            ? JSON.parse(menu_inclusions)
+            : menu_inclusions;
       } catch {
         inclusionsArray = [];
       }
 
       if (Array.isArray(inclusionsArray) && inclusionsArray.length > 0) {
-        for (let i = 0; i < inclusionsArray.length; i++) {
-          const inc = inclusionsArray[i];
-          if (inc && inc.menu_item_id) {
-            await pool.query(
-              "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
-              [packageId, Number(inc.menu_item_id), i],
-            );
-          }
+        // Normalize to support both plain numbers [1,2,3] and objects
+        // [{ menu_item_id: 1 }, ...] so the API is tolerant to any caller.
+        const normalizedIds = inclusionsArray
+          .map((inc) =>
+            typeof inc === "object" && inc !== null
+              ? Number(inc.menu_item_id)
+              : Number(inc),
+          )
+          .filter((mid) => !Number.isNaN(mid));
+
+        for (let i = 0; i < normalizedIds.length; i++) {
+          await pool.query(
+            "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
+            [packageId, normalizedIds[i], i],
+          );
         }
       }
     }
@@ -367,7 +377,14 @@ export async function createPackage(req, res) {
 export async function updatePackage(req, res) {
   try {
     const { id } = req.params;
-    const { package_name, description, max_pax, status, pricing, menu_inclusions } = req.body;
+    const {
+      package_name,
+      description,
+      max_pax,
+      status,
+      pricing,
+      menu_inclusions,
+    } = req.body;
 
     // Check package exists
     const [existing] = await pool.query(
@@ -510,7 +527,9 @@ export async function updatePackage(req, res) {
       let inclusionsArray;
       try {
         inclusionsArray =
-          typeof menu_inclusions === "string" ? JSON.parse(menu_inclusions) : menu_inclusions;
+          typeof menu_inclusions === "string"
+            ? JSON.parse(menu_inclusions)
+            : menu_inclusions;
       } catch {
         inclusionsArray = [];
       }
@@ -522,14 +541,21 @@ export async function updatePackage(req, res) {
           [id],
         );
 
-        for (let i = 0; i < inclusionsArray.length; i++) {
-          const inc = inclusionsArray[i];
-          if (inc && inc.menu_item_id) {
-            await pool.query(
-              "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
-              [Number(id), Number(inc.menu_item_id), i],
-            );
-          }
+        // Normalize to support both plain numbers [1,2,3] and objects
+        // [{ menu_item_id: 1 }, ...] so the API is tolerant to any caller.
+        const normalizedIds = inclusionsArray
+          .map((inc) =>
+            typeof inc === "object" && inc !== null
+              ? Number(inc.menu_item_id)
+              : Number(inc),
+          )
+          .filter((mid) => !Number.isNaN(mid));
+
+        for (let i = 0; i < normalizedIds.length; i++) {
+          await pool.query(
+            "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
+            [Number(id), normalizedIds[i], i],
+          );
         }
       }
     }
