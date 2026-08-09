@@ -434,11 +434,11 @@ export function PackageSelectionPage() {
             {totalPages > 1 && (
               <div className="mt-10 flex items-center justify-center gap-2">
                 <button
-                  onClick={() => goToPage(currentPage - 1)}
+                  onClick={() => goToPage(1)}
                   disabled={currentPage === 1}
                   className="px-4 py-2 rounded-full border border-[#C8922A]/30 text-[#2C1810] text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  Previous
+                  First
                 </button>
 
                 <div className="flex items-center gap-1">

@@ -119,7 +119,9 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
   return (
     <div
       ref={controlRef}
-      className={`fixed z-[60] select-none ${dragging ? "cursor-grabbing" : ""}`}
+      className={`fixed z-[60] pointer-events-auto select-none ${
+        dragging ? "cursor-grabbing" : ""
+      }`}
       style={
         pos
           ? { left: pos.x, top: pos.y }
