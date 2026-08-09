@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Award, Heart, Users, ChefHat, Camera, ArrowRight } from "lucide-react";
 import { IMAGES } from "../data/mockData";
+import { getHomepageStatistics } from "../api/packageApi";
 
 const GALLERY = [
   { img: IMAGES.birthday, caption: "Birthday Celebrations" },
@@ -30,6 +32,27 @@ const MILESTONES = [
 ];
 
 export function AboutPage() {
+  const [stats, setStats] = useState<{
+    eventsHosted: number;
+    happyGuests: number;
+    averageRating: number | null;
+    yearsOfExcellence: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getHomepageStatistics()
+      .then(({ statistics }) => {
+        if (!cancelled) setStats(statistics);
+      })
+      .catch(() => {
+        if (!cancelled) setStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div>
       {/* Hero */}
@@ -122,9 +145,25 @@ export function AboutPage() {
               </p>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { icon: Award, label: "Awards Won", value: "1" },
-                  { icon: Users, label: "Events / Year", value: "500+" },
-                  { icon: Heart, label: "Guest Rating", value: "4.9★" },
+                  {
+                    icon: Award,
+                    label: "Years of Excellence",
+                    value: stats ? stats.yearsOfExcellence.toString() : "N/A",
+                  },
+                  {
+                    icon: Users,
+                    label: "Events Hosted",
+                    value: stats
+                      ? stats.eventsHosted.toLocaleString()
+                      : "N/A",
+                  },
+                  {
+                    icon: Heart,
+                    label: "Guest Rating",
+                    value: stats?.averageRating
+                      ? `${stats.averageRating.toFixed(1)}★`
+                      : "N/A",
+                  },
                 ].map(({ icon: Icon, label, value }) => (
                   <div
                     key={label}
