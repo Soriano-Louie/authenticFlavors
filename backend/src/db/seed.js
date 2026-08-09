@@ -447,6 +447,222 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] venue_setup_requests table ensured.");
 
+    // 0.11 Create activity_logs table for the admin Recent Activity feed,
+    // then backfill it from existing records so the feed shows real data.
+    const [activityLogsTable] = await connection.query(
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'activity_logs'`,
+      [connection.config.database],
+    );
+    if (activityLogsTable.length === 0) {
+      await connection.query(`
+        CREATE TABLE activity_logs (
+          activity_id INT AUTO_INCREMENT PRIMARY KEY,
+          actor_user_id INT NULL,
+          actor_name VARCHAR(255) NOT NULL,
+          actor_role ENUM('Admin', 'Customer') NOT NULL DEFAULT 'Admin',
+          activity_type VARCHAR(50) NOT NULL,
+          action VARCHAR(500) NOT NULL,
+          booking_id INT NULL,
+          created_at DATETIME NULL,
+          INDEX idx_activity_created (created_at),
+          INDEX idx_activity_type (activity_type),
+          INDEX idx_activity_actor (actor_user_id),
+          CONSTRAINT fk_activity_actor FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+          CONSTRAINT fk_activity_booking FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE SET NULL
+        )
+      `);
+      console.log("[MIGRATION] activity_logs table created.");
+
+      const adminSub = `(SELECT user_id, first_name, last_name FROM users WHERE role = 'Admin' ORDER BY user_id LIMIT 1)`;
+      const backfillSql = `
+        INSERT INTO activity_logs
+          (actor_user_id, actor_name, actor_role, activity_type, action, booking_id, created_at)
+        SELECT
+          u.user_id,
+          CONCAT(u.first_name, ' ', u.last_name),
+          CASE WHEN u.role = 'Admin' THEN 'Admin' ELSE 'Customer' END,
+          'booking_submitted',
+          CONCAT('submitted Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id,
+          b.created_at
+        FROM bookings b
+        JOIN users u ON u.user_id = b.user_id
+        WHERE b.created_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_confirmed',
+          CONCAT('confirmed Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, b.updated_at
+        FROM bookings b JOIN ${adminSub} u
+        WHERE b.booking_status = 'Confirmed'
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_completed',
+          CONCAT('completed Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, b.updated_at
+        FROM bookings b JOIN ${adminSub} u
+        WHERE b.booking_status = 'Completed'
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Customer', 'booking_cancelled_customer',
+          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, COALESCE(b.cancellation_processed_at, b.updated_at)
+        FROM bookings b
+        JOIN users u ON u.user_id = b.user_id
+        WHERE b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_cancelled_admin',
+          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, b.updated_at
+        FROM bookings b JOIN ${adminSub} u
+        WHERE b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NULL
+
+        UNION ALL SELECT
+          cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'receipt_uploaded',
+          CONCAT(
+            'uploaded the ',
+            CASE p.payment_type
+              WHEN 'DownPayment' THEN 'down payment'
+              WHEN 'FinalPayment' THEN 'final payment'
+              ELSE 'reservation'
+            END,
+            ' receipt for Booking #',
+            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+          ),
+          b.booking_id, p.receipt_uploaded_at
+        FROM payments p
+        JOIN bookings b ON b.booking_id = p.booking_id
+        JOIN users cu ON cu.user_id = b.user_id
+        WHERE p.receipt_uploaded_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'payment_approved',
+          CONCAT(
+            'approved the ',
+            CASE p.payment_type WHEN 'DownPayment' THEN 'Down Payment' WHEN 'FinalPayment' THEN 'Final Payment' ELSE 'Reservation' END,
+            ' for Booking #',
+            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+          ),
+          b.booking_id, p.verified_at
+        FROM payments p
+        JOIN bookings b ON b.booking_id = p.booking_id
+        JOIN ${adminSub} u
+        WHERE p.verified_at IS NOT NULL AND p.payment_status = 'Paid'
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'payment_rejected',
+          CONCAT(
+            'rejected the ',
+            CASE p.payment_type WHEN 'DownPayment' THEN 'Down Payment' WHEN 'FinalPayment' THEN 'Final Payment' ELSE 'Reservation' END,
+            ' for Booking #',
+            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+          ),
+          b.booking_id, COALESCE(p.verified_at, p.updated_at)
+        FROM payments p
+        JOIN bookings b ON b.booking_id = p.booking_id
+        JOIN ${adminSub} u
+        WHERE p.payment_status = 'Rejected'
+
+        UNION ALL SELECT
+          cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'payment_paid',
+          CONCAT(
+            'paid the ',
+            CASE p.payment_type WHEN 'DownPayment' THEN 'down payment' WHEN 'FinalPayment' THEN 'final payment' ELSE 'reservation' END,
+            ' for Booking #',
+            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+          ),
+          b.booking_id, p.verified_at
+        FROM payments p
+        JOIN bookings b ON b.booking_id = p.booking_id
+        JOIN users cu ON cu.user_id = b.user_id
+        WHERE p.payment_status = 'Paid' AND p.verified_at IS NOT NULL
+
+        UNION ALL SELECT
+          cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'venue_setup_submitted',
+          CONCAT('submitted venue setup notes for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, v.created_at
+        FROM venue_setup_requests v
+        JOIN bookings b ON b.booking_id = v.booking_id
+        JOIN users cu ON cu.user_id = v.user_id
+        WHERE v.status = 'Pending'
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_approved',
+          CONCAT('approved the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, v.reviewed_at
+        FROM venue_setup_requests v
+        JOIN bookings b ON b.booking_id = v.booking_id
+        JOIN ${adminSub} u
+        WHERE v.status = 'Approved' AND v.reviewed_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_changes_requested',
+          CONCAT('requested changes for the venue setup of Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, v.reviewed_at
+        FROM venue_setup_requests v
+        JOIN bookings b ON b.booking_id = v.booking_id
+        JOIN ${adminSub} u
+        WHERE v.status = 'Changes_Requested' AND v.reviewed_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_declined',
+          CONCAT('declined the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, v.reviewed_at
+        FROM venue_setup_requests v
+        JOIN bookings b ON b.booking_id = v.booking_id
+        JOIN ${adminSub} u
+        WHERE v.status = 'Declined' AND v.reviewed_at IS NOT NULL
+
+        UNION ALL SELECT
+          cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'menu_change_requested',
+          CONCAT('requested a menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, m.created_at
+        FROM menu_change_requests m
+        JOIN bookings b ON b.booking_id = m.booking_id
+        JOIN users cu ON cu.user_id = m.user_id
+        WHERE m.status = 'Pending'
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'menu_change_approved',
+          CONCAT('approved the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, m.reviewed_at
+        FROM menu_change_requests m
+        JOIN bookings b ON b.booking_id = m.booking_id
+        JOIN ${adminSub} u
+        WHERE m.status = 'Approved' AND m.reviewed_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'menu_change_rejected',
+          CONCAT('rejected the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, m.reviewed_at
+        FROM menu_change_requests m
+        JOIN bookings b ON b.booking_id = m.booking_id
+        JOIN ${adminSub} u
+        WHERE m.status = 'Rejected' AND m.reviewed_at IS NOT NULL
+
+        UNION ALL SELECT
+          cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'feedback_submitted',
+          CONCAT('submitted feedback for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          b.booking_id, f.submitted_at
+        FROM feedback f
+        JOIN bookings b ON b.booking_id = f.booking_id
+        JOIN users cu ON cu.user_id = f.user_id
+        WHERE f.submitted_at IS NOT NULL
+
+        UNION ALL SELECT
+          u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Customer', 'user_registered',
+          CONCAT('created a new customer account'),
+          NULL, u.created_at
+        FROM users u
+        WHERE u.role = 'Customer' AND u.created_at IS NOT NULL
+      `;
+      const [backfillResult] = await connection.query(backfillSql);
+      console.log(
+        `[MIGRATION] activity_logs backfilled with ${backfillResult.affectedRows} entries.`,
+      );
+    }
+
     // 0.5 Ensure account_status ENUM includes 'Pending'
     const [accountStatusCol] = await connection.query(
       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",

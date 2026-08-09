@@ -20,6 +20,7 @@ import {
   generateResetToken,
   hashResetToken,
 } from "../utils/tokens.js";
+import { logActivity } from "../services/activityService.js";
 import {
   uploadToCloudinary,
   deleteFromCloudinary,
@@ -245,6 +246,15 @@ export async function register(req, res) {
   const code = generateVerificationCode();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes
+
+  logActivity({
+    actorUserId: result.insertId,
+    actorRole: "Customer",
+    activityType: "user_registered",
+    action: "created a new customer account",
+  }).catch((err) =>
+    console.error("Activity logging failed (user_registered):", err),
+  );
 
   // Invalidate any previous codes for this email
   await pool.query(

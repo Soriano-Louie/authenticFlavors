@@ -7,6 +7,7 @@ import {
   analyzeFeedback,
   generateOverallFeedbackAnalysis,
 } from "../services/geminiService.js";
+import { logActivity } from "../services/activityService.js";
 
 export async function createFeedback(req, res) {
   try {
@@ -48,7 +49,7 @@ export async function createFeedback(req, res) {
 
     // Verify booking exists and belongs to user
     const [bookings] = await pool.query(
-      "SELECT booking_id, booking_status, package_id, cancellation_requested_at FROM bookings WHERE booking_id = ? AND user_id = ? LIMIT 1",
+      "SELECT booking_id, booking_status, package_id, cancellation_requested_at, booking_reference FROM bookings WHERE booking_id = ? AND user_id = ? LIMIT 1",
       [booking_id, userId],
     );
 
@@ -161,6 +162,16 @@ export async function createFeedback(req, res) {
     const [created] = await pool.query(
       "SELECT * FROM feedback WHERE feedback_id = ?",
       [result.insertId],
+    );
+
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "feedback_submitted",
+      action: `submitted feedback for Booking #${(booking.booking_reference || `#${booking_id}`).replace(/^#/, "")}`,
+      bookingId: Number(booking_id),
+    }).catch((err) =>
+      console.error("Activity logging failed (feedback_submitted):", err),
     );
 
     res.status(201).json({

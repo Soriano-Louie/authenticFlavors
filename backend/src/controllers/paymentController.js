@@ -11,6 +11,8 @@ import {
   sendPaymentRejectedEmail,
 } from "../services/emailService.js";
 import { createNotification } from "../services/notificationService.js";
+import { logActivity } from "../services/activityService.js";
+import { getPhilippineDateTimeString } from "../utils/timezone.js";
 
 // ──────────────────────────────────────────
 // Auto-update overdue payments (run on every payment fetch)
@@ -96,7 +98,7 @@ export async function uploadReceiptFile(req, res) {
 
     // Verify payment belongs to user
     const [payments] = await connection.query(
-      `SELECT p.*, b.user_id 
+      `SELECT p.*, b.user_id, b.booking_reference
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        WHERE p.payment_id = ?`,
@@ -161,6 +163,25 @@ export async function uploadReceiptFile(req, res) {
           ? "Down Payment"
           : "Final Payment";
 
+    const refStr =
+      payment.booking_reference ||
+      `#BK${String(payment.booking_id).padStart(4, "0")}`;
+    const receiptActionLabel =
+      payment.payment_type === "Reservation"
+        ? "reservation"
+        : payment.payment_type === "DownPayment"
+          ? "down payment"
+          : "final payment";
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "receipt_uploaded",
+      action: `uploaded the ${receiptActionLabel} receipt for Booking #${refStr.replace(/^#/, "")}`,
+      bookingId: payment.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (receipt_uploaded):", err),
+    );
+
     createNotification({
       userId,
       bookingId: payment.booking_id,
@@ -206,7 +227,7 @@ export async function uploadReceipt(req, res) {
 
     // Verify payment belongs to user
     const [payments] = await connection.query(
-      `SELECT p.*, b.user_id 
+      `SELECT p.*, b.user_id, b.booking_reference
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        WHERE p.payment_id = ?`,
@@ -262,6 +283,25 @@ export async function uploadReceipt(req, res) {
         : payment.payment_type === "DownPayment"
           ? "Down Payment"
           : "Final Payment";
+
+    const refStr =
+      payment.booking_reference ||
+      `#BK${String(payment.booking_id).padStart(4, "0")}`;
+    const receiptActionLabel =
+      payment.payment_type === "Reservation"
+        ? "reservation"
+        : payment.payment_type === "DownPayment"
+          ? "down payment"
+          : "final payment";
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "receipt_uploaded",
+      action: `uploaded the ${receiptActionLabel} receipt for Booking #${refStr.replace(/^#/, "")}`,
+      bookingId: payment.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (receipt_uploaded):", err),
+    );
 
     createNotification({
       userId,
@@ -358,8 +398,7 @@ export async function verifyReceipt(req, res) {
     const formattedAmount = `₱${Number(payment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
     if (action === "approve") {
-      const now = new Date();
-      const paidAt = now.toISOString().slice(0, 19).replace("T", " ");
+      const paidAt = getPhilippineDateTimeString();
 
       // Update payment as paid
       await connection.query(
@@ -402,6 +441,31 @@ export async function verifyReceipt(req, res) {
              updated_at = CURRENT_TIMESTAMP
          WHERE booking_id = ?`,
         [newBookingStatus, newAmountPaid, newRemaining, payment.booking_id],
+      );
+
+      const paidActionLabel =
+        payment.payment_type === "Reservation"
+          ? "reservation"
+          : payment.payment_type === "DownPayment"
+            ? "down payment"
+            : "final payment";
+      logActivity({
+        actorUserId: adminId,
+        actorRole: "Admin",
+        activityType: "payment_approved",
+        action: `approved the ${paymentTypeLabel} for Booking #${refStr.replace(/^#/, "")}`,
+        bookingId: payment.booking_id,
+      }).catch((err) =>
+        console.error("Activity logging failed (payment_approved):", err),
+      );
+      logActivity({
+        actorUserId: payment.booking_user_id,
+        actorRole: "Customer",
+        activityType: "payment_paid",
+        action: `paid the ${paidActionLabel} for Booking #${refStr.replace(/^#/, "")}`,
+        bookingId: payment.booking_id,
+      }).catch((err) =>
+        console.error("Activity logging failed (payment_paid):", err),
       );
 
       // 1. Trigger payment approval notification & Brevo email
@@ -459,10 +523,20 @@ export async function verifyReceipt(req, res) {
          WHERE payment_id = ?`,
         [
           adminId,
-          new Date().toISOString().slice(0, 19).replace("T", " "),
+          getPhilippineDateTimeString(),
           admin_remarks || null,
           paymentId,
         ],
+      );
+
+      logActivity({
+        actorUserId: adminId,
+        actorRole: "Admin",
+        activityType: "payment_rejected",
+        action: `rejected the ${paymentTypeLabel} for Booking #${refStr.replace(/^#/, "")}`,
+        bookingId: payment.booking_id,
+      }).catch((err) =>
+        console.error("Activity logging failed (payment_rejected):", err),
       );
 
       createNotification({
@@ -658,7 +732,7 @@ export async function cancelBookingForOverdue(req, res) {
 
     // Get the payment and its booking
     const [payments] = await connection.query(
-      `SELECT p.*, b.booking_status
+      `SELECT p.*, b.booking_status, b.booking_reference
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        WHERE p.payment_id = ?`,
@@ -701,6 +775,19 @@ export async function cancelBookingForOverdue(req, res) {
     );
 
     await connection.commit();
+
+    const refStr =
+      payment.booking_reference ||
+      `#BK${String(payment.booking_id).padStart(4, "0")}`;
+    logActivity({
+      actorUserId: Number(req.auth?.sub) || null,
+      actorRole: "Admin",
+      activityType: "booking_cancelled_admin",
+      action: `cancelled Booking #${refStr.replace(/^#/, "")} due to overdue payment`,
+      bookingId: payment.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_cancelled_admin):", err),
+    );
 
     res.status(200).json({
       message: "Booking cancelled due to overdue payment.",

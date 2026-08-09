@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
 import { createNotification } from "../services/notificationService.js";
+import { logActivity } from "../services/activityService.js";
 import {
   sendMenuChangeRequestedAdminEmail,
   sendMenuChangeApprovedCustomerEmail,
@@ -112,6 +113,16 @@ export async function requestMenuChange(req, res, next) {
     );
 
     const requestId = result.insertId;
+
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "menu_change_requested",
+      action: `requested a menu change for Booking #${(booking.booking_reference || `#${bookingId}`).replace(/^#/, "")}`,
+      bookingId,
+    }).catch((err) =>
+      console.error("Activity logging failed (menu_change_requested):", err),
+    );
 
     // Notify admins via in-app notification & email
     const [admins] = await pool.query(
@@ -322,6 +333,16 @@ export async function approveMenuChangeRequest(req, res, next) {
 
     await connection.commit();
 
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "menu_change_approved",
+      action: `approved the menu change for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
+      bookingId: request.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (menu_change_approved):", err),
+    );
+
     // In-app notification to customer
     await createNotification({
       user_id: request.user_id,
@@ -404,6 +425,16 @@ export async function rejectMenuChangeRequest(req, res, next) {
        SET status = 'Rejected', rejection_reason = ?, reviewed_by = ?, reviewed_at = NOW()
        WHERE request_id = ?`,
       [rejection_reason.trim(), adminId, requestId],
+    );
+
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "menu_change_rejected",
+      action: `rejected the menu change for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
+      bookingId: request.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (menu_change_rejected):", err),
     );
 
     // In-app notification to customer

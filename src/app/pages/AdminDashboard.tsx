@@ -94,8 +94,6 @@ import {
   Activity,
   Sparkles,
   Download,
-  ArrowUp,
-  ArrowDown,
   Info,
   Loader2,
   Eye,
@@ -240,9 +238,11 @@ export function AdminDashboard() {
       >
         <div className="p-5 border-b border-[#C8922A]/15">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center">
-              <ChefHat size={20} className="text-[#F5F0E8]" />
-            </div>
+            <img
+              src="/authentic_flavor_logo.png"
+              alt="Authentic Flavors Logo"
+              className="w-9 h-9 rounded-full object-cover border border-[#C8922A]/30"
+            />
             <div>
               <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
                 Admin Panel
@@ -1432,14 +1432,31 @@ function RecentActivityList({ limit }: { limit?: number }) {
 
   useEffect(() => {
     if (!accessToken) return;
+
+    let isMounted = true;
+
+    const fetchActivity = () => {
+      return getAdminActivity(accessToken)
+        .then((res) => {
+          if (isMounted) setActivities(res.activities);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch admin activity:", err);
+        });
+    };
+
     setLoading(true);
-    getAdminActivity(accessToken)
-      .then((res) => setActivities(res.activities))
-      .catch((err) => {
-        console.error("Failed to fetch admin activity:", err);
-        toast.error("Failed to load recent activity.");
-      })
-      .finally(() => setLoading(false));
+    fetchActivity().finally(() => {
+      if (isMounted) setLoading(false);
+    });
+
+    // Poll every 60 seconds so the feed stays fresh without a manual reload
+    const interval = setInterval(fetchActivity, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [accessToken]);
 
   if (loading) {
@@ -1477,9 +1494,11 @@ function RecentActivityList({ limit }: { limit?: number }) {
                 <span className="font-semibold">{activity.user}</span>{" "}
                 {activity.action}
               </p>
-              <p className="text-xs font-['Lato'] text-[#2C1810]/50 truncate">
-                {activity.details}
-              </p>
+              {activity.details ? (
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50 truncate">
+                  {activity.details}
+                </p>
+              ) : null}
               <p className="text-xs font-['Lato'] text-[#C8922A] mt-0.5">
                 {activity.timestamp}
               </p>
@@ -3021,16 +3040,17 @@ function PackagesSection() {
     });
   };
 
-  const moveMenuInclusion = (index: number, direction: "up" | "down") => {
+  // Check or uncheck all available menu items
+  const toggleAllMenuInclusions = () => {
     setFormData((prev) => {
-      const newInclusions = [...prev.menu_inclusions];
-      const targetIndex = direction === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= newInclusions.length) return prev;
-      [newInclusions[index], newInclusions[targetIndex]] = [
-        newInclusions[targetIndex],
-        newInclusions[index],
-      ];
-      return { ...prev, menu_inclusions: newInclusions };
+      const allItemIds = allMenuItems.map((item) => item.menu_item_id);
+      const allSelected = allItemIds.every((id) =>
+        prev.menu_inclusions.includes(id),
+      );
+      return {
+        ...prev,
+        menu_inclusions: allSelected ? [] : allItemIds,
+      };
     });
   };
 
@@ -3481,6 +3501,24 @@ function PackagesSection() {
                   </p>
                 ) : (
                   <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                    {/* Select All / Deselect All toggle */}
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={toggleAllMenuInclusions}
+                        className="text-xs font-['Lato'] font-semibold text-[#C8922A] hover:underline flex items-center gap-1.5"
+                      >
+                        <CheckCircle size={14} />
+                        {allMenuItems.every((item) =>
+                          formData.menu_inclusions.includes(item.menu_item_id),
+                        )
+                          ? "Deselect All"
+                          : "Check All"}
+                      </button>
+                      <span className="text-xs font-['Lato'] text-[#2C1810]/50">
+                        {formData.menu_inclusions.length} selected
+                      </span>
+                    </div>
                     {categories.map((category) => {
                       const categoryItems = allMenuItems.filter(
                         (item) => item.category_id === category.category_id,
@@ -3530,49 +3568,6 @@ function PackagesSection() {
                                       </span>
                                     )}
                                   </div>
-                                  {isSelected && (
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          moveMenuInclusion(
-                                            formData.menu_inclusions.indexOf(
-                                              item.menu_item_id,
-                                            ),
-                                            "up",
-                                          )
-                                        }
-                                        disabled={
-                                          formData.menu_inclusions.indexOf(
-                                            item.menu_item_id,
-                                          ) === 0
-                                        }
-                                        className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
-                                      >
-                                        <ArrowUp size={12} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          moveMenuInclusion(
-                                            formData.menu_inclusions.indexOf(
-                                              item.menu_item_id,
-                                            ),
-                                            "down",
-                                          )
-                                        }
-                                        disabled={
-                                          formData.menu_inclusions.indexOf(
-                                            item.menu_item_id,
-                                          ) ===
-                                          formData.menu_inclusions.length - 1
-                                        }
-                                        className="p-1 rounded hover:bg-[#C8922A]/10 text-[#2C1810]/50 disabled:opacity-30"
-                                      >
-                                        <ArrowDown size={12} />
-                                      </button>
-                                    </div>
-                                  )}
                                 </label>
                               );
                             })}
@@ -4333,13 +4328,31 @@ function AnnouncementsSection() {
 // Helper Functions
 function getIconComponent(iconName: string) {
   const icons: Record<string, any> = {
+    // Activity types emitted by the backend activity_logs feed
+    booking_submitted: Calendar,
+    booking_confirmed: CheckCircle,
+    booking_completed: CheckCircle,
+    booking_cancelled_customer: XCircle,
+    booking_cancelled_admin: XCircle,
+    receipt_uploaded: DollarSign,
+    payment_approved: DollarSign,
+    payment_rejected: DollarSign,
+    payment_paid: DollarSign,
+    venue_setup_submitted: Sparkles,
+    venue_setup_approved: Sparkles,
+    venue_setup_changes_requested: Sparkles,
+    venue_setup_declined: Sparkles,
+    menu_change_requested: ChefHat,
+    menu_change_approved: ChefHat,
+    menu_change_rejected: ChefHat,
+    user_registered: Users,
+    feedback_submitted: MessageSquare,
+    // Legacy icon names (kept for backward compatibility)
     Calendar,
     MessageSquare,
     Package,
     Users,
     XCircle,
-    BarChart2,
-    AlertCircle,
     DollarSign,
   };
   return icons[iconName] || Activity;

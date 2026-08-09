@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
 import { createNotification } from "../services/notificationService.js";
+import { logActivity } from "../services/activityService.js";
 import {
   sendVenueSetupApprovedCustomerEmail,
   sendVenueSetupChangesRequestedCustomerEmail,
@@ -74,6 +75,19 @@ export async function submitVenueSetupRequest(req, res, next) {
     );
 
     const requestId = result.insertId;
+
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "venue_setup_submitted",
+      action: `submitted venue setup notes for Booking #${(booking.booking_reference || `#${bookingId}`).replace(/^#/, "")}`,
+      bookingId,
+    }).catch((err) =>
+      console.error(
+        "Activity logging failed (venue_setup_submitted):",
+        err,
+      ),
+    );
 
     const [admins] = await pool.query(
       "SELECT user_id, email FROM users WHERE role = 'Admin'",
@@ -209,6 +223,16 @@ export async function approveVenueSetupRequest(req, res, next) {
 
     await connection.commit();
 
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "venue_setup_approved",
+      action: `approved the venue setup for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
+      bookingId: request.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (venue_setup_approved):", err),
+    );
+
     const customerName = `${request.first_name} ${request.last_name}`.trim();
     await createNotification({
       user_id: request.user_id,
@@ -304,6 +328,19 @@ export async function requestVenueSetupChanges(req, res, next) {
 
     await connection.commit();
 
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "venue_setup_changes_requested",
+      action: `requested changes for the venue setup of Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
+      bookingId: request.booking_id,
+    }).catch((err) =>
+      console.error(
+        "Activity logging failed (venue_setup_changes_requested):",
+        err,
+      ),
+    );
+
     await createNotification({
       user_id: request.user_id,
       booking_id: request.booking_id,
@@ -390,6 +427,16 @@ export async function declineVenueSetupRequest(req, res, next) {
         JSON.stringify({ status: "Declined", admin_response: admin_response.trim() }),
         adminId,
       ],
+    );
+
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "venue_setup_declined",
+      action: `declined the venue setup for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
+      bookingId: request.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (venue_setup_declined):", err),
     );
 
     await createNotification({

@@ -9,6 +9,7 @@ import {
   getOperatingHoursMessage,
 } from "../utils/operatingHours.js";
 import { createNotification } from "../services/notificationService.js";
+import { logActivity } from "../services/activityService.js";
 import {
   sendBookingSubmittedEmail,
   sendBookingConfirmedEmail,
@@ -351,6 +352,15 @@ export async function createBooking(req, res) {
       (ai_booking_reference
         ? `#AF-${ai_booking_reference}`
         : `#BK${String(booking_id).padStart(4, "0")}`);
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "booking_submitted",
+      action: `submitted Booking #${refStr.replace("#", "")}`,
+      bookingId: booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_submitted):", err),
+    );
     createNotification({
       userId,
       bookingId: booking_id,
@@ -494,7 +504,7 @@ export async function completeBooking(req, res) {
 
     // Get booking
     const [bookings] = await pool.query(
-      "SELECT event_date, booking_status FROM bookings WHERE booking_id = ? LIMIT 1",
+      "SELECT event_date, booking_status, booking_reference FROM bookings WHERE booking_id = ? LIMIT 1",
       [bookingId],
     );
 
@@ -535,6 +545,16 @@ export async function completeBooking(req, res) {
     await pool.query(
       "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
       [bookingId],
+    );
+
+    logActivity({
+      actorUserId: Number(req.auth?.sub) || null,
+      actorRole: "Admin",
+      activityType: "booking_completed",
+      action: `completed Booking #${booking.booking_reference || `BK-${String(bookingId).padStart(4, "0")}`}`,
+      bookingId,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_completed):", err),
     );
 
     res.status(200).json({
@@ -610,6 +630,15 @@ export async function verifyBooking(req, res) {
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
+    logActivity({
+      actorUserId: Number(req.auth?.sub) || null,
+      actorRole: "Admin",
+      activityType: "booking_confirmed",
+      action: `confirmed Booking #${refStr.replace(/^#/, "")}`,
+      bookingId,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_confirmed):", err),
+    );
     createNotification({
       userId: booking.user_id,
       bookingId,
@@ -706,116 +735,48 @@ export async function getAdminStats(req, res) {
 // Admin recent activity feed
 export async function getAdminActivity(req, res) {
   try {
-    // New bookings
-    const [newBookings] = await pool.query(
-      `SELECT CONCAT('act-', 'booking-', b.booking_id) AS id,
-              'booking' AS type,
-              CONCAT(u.first_name, ' ', u.last_name) AS user,
-              'Created new booking' AS action,
-              CONCAT(p.package_name, ' - ', DATE_FORMAT(b.event_date, '%M %e, %Y')) AS details,
-              CONCAT('Calendar') AS icon,
-              b.created_at AS ts
-       FROM bookings b
-       JOIN users u ON b.user_id = u.user_id
-       JOIN packages p ON b.package_id = p.package_id
-       ORDER BY b.created_at DESC
-       LIMIT 10`,
+    const [rows] = await pool.query(
+      `SELECT activity_id, actor_name, actor_role, activity_type, action,
+              booking_id, created_at
+       FROM activity_logs
+       ORDER BY created_at DESC, activity_id DESC
+       LIMIT 25`,
     );
 
-    // Feedback submissions
-    const [newFeedback] = await pool.query(
-      `SELECT CONCAT('act-', 'feedback-', f.feedback_id) AS id,
-              'feedback' AS type,
-              CONCAT(u.first_name, ' ', u.last_name) AS user,
-              'Submitted feedback' AS action,
-              CONCAT(f.rating, '-star review') AS details,
-              CONCAT('MessageSquare') AS icon,
-              f.submitted_at AS ts
-       FROM feedback f
-       JOIN users u ON f.user_id = u.user_id
-       ORDER BY f.submitted_at DESC
-       LIMIT 10`,
-    );
+    const activities = rows.map((act) => {
+      const actDate = new Date(act.created_at);
+      const now = new Date();
+      const diffMs = now.getTime() - actDate.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
 
-    // New user registrations
-    const [newUsers] = await pool.query(
-      `SELECT CONCAT('act-', 'user-', u.user_id) AS id,
-              'user' AS type,
-              CONCAT(u.first_name, ' ', u.last_name) AS user,
-              'New user registered' AS action,
-              'Customer account created' AS details,
-              CONCAT('Users') AS icon,
-              u.created_at AS ts
-       FROM users u
-       WHERE u.role = 'Customer'
-       ORDER BY u.created_at DESC
-       LIMIT 10`,
-    );
+      let timestamp;
+      if (diffMins < 1) timestamp = "Just now";
+      else if (diffMins < 60)
+        timestamp = `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+      else if (diffHours < 24)
+        timestamp = `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+      else if (diffDays < 7)
+        timestamp = `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+      else
+        timestamp = actDate.toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+        });
 
-    // Payment verifications (recently paid)
-    const [newPayments] = await pool.query(
-      `SELECT CONCAT('act-', 'payment-', p.payment_id) AS id,
-              'payment' AS type,
-              CONCAT(u.first_name, ' ', u.last_name) AS user,
-              'Payment submitted' AS action,
-              CONCAT(p.payment_type, ' - ₱', FORMAT(p.amount, 2)) AS details,
-              CONCAT('DollarSign') AS icon,
-              p.paid_at AS ts
-       FROM payments p
-       JOIN bookings b ON p.booking_id = b.booking_id
-       JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_status = 'Paid'
-       ORDER BY p.paid_at DESC
-       LIMIT 10`,
-    );
+      return {
+        id: `act-${act.activity_id}`,
+        type: act.activity_type,
+        user: act.actor_name,
+        action: act.action,
+        details: "",
+        icon: act.activity_type,
+        timestamp,
+      };
+    });
 
-    // Combine all activities, sort by timestamp descending, limit to 20
-    const allActivities = [
-      ...newBookings,
-      ...newFeedback,
-      ...newUsers,
-      ...newPayments,
-    ]
-      .sort((a, b) => {
-        const dateA = new Date(a.ts || 0).getTime();
-        const dateB = new Date(b.ts || 0).getTime();
-        return dateB - dateA;
-      })
-      .slice(0, 20)
-      .map((act) => {
-        const now = new Date();
-        const actDate = new Date(act.ts);
-        const diffMs = now.getTime() - actDate.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-
-        let timestamp;
-        if (diffMins < 1) timestamp = "Just now";
-        else if (diffMins < 60)
-          timestamp = `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
-        else if (diffHours < 24)
-          timestamp = `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
-        else if (diffDays < 7)
-          timestamp = `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
-        else
-          timestamp = actDate.toLocaleDateString("en-PH", {
-            month: "short",
-            day: "numeric",
-          });
-
-        return {
-          id: act.id,
-          type: act.type,
-          user: act.user,
-          action: act.action,
-          details: act.details,
-          icon: act.icon,
-          timestamp,
-        };
-      });
-
-    res.status(200).json({ activities: allActivities });
+    res.status(200).json({ activities });
   } catch (error) {
     console.error("Error fetching admin activity:", error);
     res.status(500).json({
@@ -875,6 +836,15 @@ export async function rejectBooking(req, res) {
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
+    logActivity({
+      actorUserId: Number(req.auth?.sub) || null,
+      actorRole: "Admin",
+      activityType: "booking_cancelled_admin",
+      action: `rejected Booking #${refStr.replace(/^#/, "")}`,
+      bookingId,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_cancelled_admin):", err),
+    );
     createNotification({
       userId: booking.user_id,
       bookingId,
@@ -1065,6 +1035,18 @@ export async function requestCancellation(req, res) {
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
+    logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "booking_cancelled_customer",
+      action: `cancelled Booking #${refStr.replace(/^#/, "")}`,
+      bookingId,
+    }).catch((err) =>
+      console.error(
+        "Activity logging failed (booking_cancelled_customer):",
+        err,
+      ),
+    );
     const [userRows] = await pool.query(
       "SELECT email, first_name FROM users WHERE user_id = ?",
       [userId],
