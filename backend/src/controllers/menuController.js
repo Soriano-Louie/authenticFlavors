@@ -36,6 +36,20 @@ export async function adminCreateCategory(req, res) {
       });
     }
 
+    // Prevent duplicate active category names (case-insensitive, trimmed)
+    const [dupName] = await pool.query(
+      "SELECT category_id FROM menu_categories WHERE LOWER(TRIM(category_name)) = LOWER(?) AND status = 'Active' LIMIT 1",
+      [category_name.trim()],
+    );
+    if (dupName.length > 0) {
+      return res.status(409).json({
+        error: {
+          code: "DUPLICATE_CATEGORY",
+          message: "A menu category with this name already exists.",
+        },
+      });
+    }
+
     const [result] = await pool.query(
       "INSERT INTO menu_categories (category_name, description, display_order, status) VALUES (?, ?, ?, ?)",
       [
@@ -76,6 +90,22 @@ export async function adminUpdateCategory(req, res) {
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Category not found." },
       });
+    }
+
+    // Prevent renaming to a duplicate category name (case-insensitive, trimmed)
+    if (category_name !== undefined && category_name.trim()) {
+      const [dupName] = await pool.query(
+        "SELECT category_id FROM menu_categories WHERE LOWER(TRIM(category_name)) = LOWER(?) AND category_id != ? LIMIT 1",
+        [category_name.trim(), id],
+      );
+      if (dupName.length > 0) {
+        return res.status(409).json({
+          error: {
+            code: "DUPLICATE_CATEGORY",
+            message: "A menu category with this name already exists.",
+          },
+        });
+      }
     }
 
     const updateFields = [];

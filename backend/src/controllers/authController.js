@@ -29,6 +29,16 @@ import {
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
 
+// Normalize a phone number for duplicate comparison: keep digits only,
+// convert international prefix +63 / 63 to the local 0 format (e.g. +639171234567 → 09171234567).
+function normalizePhoneForCompare(phone) {
+  let digits = String(phone ?? "").replace(/\D/g, "");
+  if (digits.startsWith("63") && digits.length > 11) {
+    digits = "0" + digits.slice(2);
+  }
+  return digits;
+}
+
 // Package Controller Functions
 export async function getPackages(_req, res) {
   try {
@@ -241,6 +251,26 @@ export async function register(req, res) {
         fieldErrors: { email: "Email is already registered." },
       },
     });
+  }
+
+  // Prevent duplicate phone numbers (normalized: digits only, +63/63 → 0 prefix)
+  const phoneKey = normalizePhoneForCompare(phone_number);
+  if (phoneKey) {
+    const [phoneRows] = await pool.query(
+      "SELECT phone_number FROM users WHERE phone_number IS NOT NULL",
+    );
+    const isPhoneTaken = phoneRows.some(
+      (row) => normalizePhoneForCompare(row.phone_number) === phoneKey,
+    );
+    if (isPhoneTaken) {
+      return res.status(409).json({
+        error: {
+          code: "PHONE_IN_USE",
+          message: "Phone number is already registered.",
+          fieldErrors: { phone_number: "Phone number is already registered." },
+        },
+      });
+    }
   }
 
   const password_hash = await bcrypt.hash(password, 12);

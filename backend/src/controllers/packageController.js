@@ -260,6 +260,20 @@ export async function createPackage(req, res) {
       });
     }
 
+    // Prevent duplicate active package names (case-insensitive, trimmed)
+    const [dupName] = await pool.query(
+      "SELECT package_id FROM packages WHERE LOWER(TRIM(package_name)) = LOWER(?) AND status = 'Active' LIMIT 1",
+      [package_name.trim()],
+    );
+    if (dupName.length > 0) {
+      return res.status(409).json({
+        error: {
+          code: "DUPLICATE_PACKAGE",
+          message: "A package with this name already exists.",
+        },
+      });
+    }
+
     let imageUrl = null;
     let imagePublicId = null;
 
@@ -426,6 +440,22 @@ export async function updatePackage(req, res) {
           message: "Maximum pax cannot exceed 70 (venue capacity).",
         },
       });
+    }
+
+    // Prevent renaming to a duplicate package name (case-insensitive, trimmed)
+    if (package_name !== undefined) {
+      const [dupName] = await pool.query(
+        "SELECT package_id FROM packages WHERE LOWER(TRIM(package_name)) = LOWER(?) AND package_id != ? LIMIT 1",
+        [package_name.trim(), id],
+      );
+      if (dupName.length > 0) {
+        return res.status(409).json({
+          error: {
+            code: "DUPLICATE_PACKAGE",
+            message: "A package with this name already exists.",
+          },
+        });
+      }
     }
 
     let imageUrl = currentPackage.image;
