@@ -291,7 +291,7 @@ export function PackageSelectionPage() {
       <Dialog open={showRulesModal}>
         <DialogContent
           showCloseButton={false}
-          className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto"
+          className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto outline-none"
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
