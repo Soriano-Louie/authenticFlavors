@@ -278,6 +278,22 @@ export function ChatBot() {
       setBookingSessionId(res.session_id);
     } catch (e) {
       console.error("Failed to start booking session:", e);
+      const errMsg =
+        e instanceof Error && e.message
+          ? e.message
+          : "Please try again in a moment.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          sender: "bot",
+          text: `⚠️ **Something went wrong while starting your booking session.** ${errMsg} You can still continue, but your progress may not be saved.`,
+          time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        },
+      ]);
     }
 
     setWizard((prev) => ({
@@ -617,18 +633,28 @@ export function ChatBot() {
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
 
-    if (
-      text.toLowerCase().includes("book") ||
-      text.toLowerCase().includes("reserve")
-    ) {
-      startWizard();
-      return;
-    }
-
     const now = new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
+
+    // Detect explicit booking intent (word-boundary match to avoid false
+    // positives like "facebook" or "notebook").
+    const bookingIntent = /\b(book|booked|booking|bookings|reserve|reserved|reservation|reservations)\b/.test(
+      text.toLowerCase(),
+    );
+
+    if (bookingIntent) {
+      // Show the user's message before routing to the booking flow so it is
+      // never silently swallowed (applies to both logged-in and guest users).
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now(), sender: "user", text: text.trim(), time: now },
+      ]);
+      setInput("");
+      startWizard();
+      return;
+    }
 
     const userMsg: Message = {
       id: Date.now(),

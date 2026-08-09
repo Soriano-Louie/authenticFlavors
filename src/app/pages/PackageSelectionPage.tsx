@@ -29,6 +29,22 @@ function getPackageLabel(packageName: string): string {
   return packageName;
 }
 
+// Normalize package images to a consistent 16:9 crop so cards render
+// with the same aspect ratio and zoom regardless of the source image.
+function getNormalizedImage(image: string | null): string {
+  if (!image) return "/packagesFood.png";
+  if (
+    image.includes("res.cloudinary.com") &&
+    image.includes("/image/upload/")
+  ) {
+    return image.replace(
+      "/image/upload/",
+      "/image/upload/w_720,h_405,c_fill,g_auto,f_auto,q_auto/",
+    );
+  }
+  return image;
+}
+
 // Transform database package to match expected structure
 function transformPackage(
   pkg: Package,
@@ -71,7 +87,7 @@ function transformPackage(
     description: pkg.description || "Catering package for your special event",
     serving: `Up to ${pkg.max_pax} guests`,
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
-    image: pkg.image || "/packagesFood.png",
+    image: getNormalizedImage(pkg.image),
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,
     menuSections,
@@ -376,33 +392,39 @@ export function PackageSelectionPage() {
                   key={pkg.id}
                   type="button"
                   onClick={() => setSelectedPackageId(pkg.id)}
-                  className={`rounded-3xl border p-6 text-left transition-all ${
+                  className={`flex h-full flex-col overflow-hidden rounded-3xl border text-left transition-all ${
                     selectedPackageId === pkg.id
-                      ? "border-[#C8922A] bg-[#C8922A]/10 shadow-lg"
+                      ? "border-[#C8922A] shadow-lg"
                       : "border-[#C8922A]/20 bg-white hover:border-[#C8922A]/40"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A] font-['Lato']">
-                        {getPackageLabel(pkg.title)}
-                      </p>
-                      <h2 className="mt-2 text-lg font-['Playfair_Display'] text-[#2C1810]">
-                        {pkg.title}
-                      </h2>
-                    </div>
+                  <div className="relative shrink-0 overflow-hidden">
+                    <img
+                      src={pkg.image}
+                      alt={pkg.title}
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/85 via-[#1A0E08]/20 to-transparent" />
                     {selectedPackageId === pkg.id ? (
-                      <span className="inline-flex items-center justify-center rounded-full bg-[#C8922A] p-2 text-white">
+                      <span className="absolute top-3 right-3 inline-flex items-center justify-center rounded-full bg-[#C8922A] p-2 text-white shadow-md">
                         <Check size={16} />
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-sm text-[#2C1810]/70 font-['Lato'] mb-6">
-                    {pkg.summary}
-                  </p>
-                  <div className="flex items-center justify-between text-sm font-['Lato'] text-[#2C1810]/60">
-                    <span>{pkg.serving}</span>
-                    <span>{pkg.priceLabel}</span>
+                  <div className="flex flex-1 flex-col p-5 bg-white">
+                    <p className="text-xs uppercase tracking-[0.3em] text-[#C8922A] font-['Lato']">
+                      {getPackageLabel(pkg.title)}
+                    </p>
+                    <h2 className="mt-1 text-lg font-['Playfair_Display'] text-[#2C1810]">
+                      {pkg.title}
+                    </h2>
+                    <p className="mt-2 text-sm text-[#2C1810]/70 font-['Lato'] leading-relaxed line-clamp-2">
+                      {pkg.summary}
+                    </p>
+                    <div className="mt-4 flex items-center justify-between text-sm font-['Lato'] text-[#2C1810]/60">
+                      <span>{pkg.serving}</span>
+                      <span>{pkg.priceLabel}</span>
+                    </div>
                   </div>
                 </button>
               ))}

@@ -435,11 +435,80 @@ async function buildRestaurantContext() {
     console.error("[GeminiService] Failed to fetch venue setups:", err);
   }
 
+  // 7. Live menu items from database
+  try {
+    const [menuItems] = await pool.query(
+      `SELECT mi.item_name, mi.description, mi.additional_price, mc.category_name
+       FROM menu_items mi
+       JOIN menu_categories mc ON mi.category_id = mc.category_id
+       WHERE mi.availability_status = 'Active' AND mc.status = 'Active'
+       ORDER BY mc.display_order, mc.category_name, mi.item_name
+       LIMIT 60`,
+    );
+    if (menuItems.length > 0) {
+      const lines = ["MENU SELECTIONS (from database):"];
+      for (const m of menuItems) {
+        const extra = m.additional_price
+          ? ` (+₱${Number(m.additional_price).toLocaleString()})`
+          : "";
+        lines.push(
+          `- [${m.category_name}] ${m.item_name}${extra}${
+            m.description ? ` — ${m.description}` : ""
+          }`,
+        );
+      }
+      sections.push(lines.join("\n"));
+    }
+  } catch (err) {
+    console.error("[GeminiService] Failed to fetch menu items:", err);
+  }
+
+  // 8. Live announcements / upcoming events from database
+  // Formats DB dates that may arrive as Date objects or 'YYYY-MM-DD HH:MM:SS' strings.
+  const formatDatePart = (value) => {
+    if (!value) return "N/A";
+    const text = String(value);
+    const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+    const date = new Date(text);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+    return text;
+  };
+  try {
+    const [announcements] = await pool.query(
+      `SELECT title, content, publish_date, expiration_date
+       FROM announcements
+       WHERE status = 'published'
+         AND publish_date <= NOW()
+         AND (expiration_date IS NULL OR expiration_date >= NOW())
+       ORDER BY publish_date DESC
+       LIMIT 10`,
+    );
+    if (announcements.length > 0) {
+      const lines = ["UPCOMING EVENTS & ANNOUNCEMENTS (from database):"];
+      for (const a of announcements) {
+        const published = formatDatePart(a.publish_date);
+        const expires = a.expiration_date
+          ? ` (until ${formatDatePart(a.expiration_date)})`
+          : "";
+        lines.push(
+          `- ${a.title} (Published: ${published}${expires}): ${a.content ?? ""}`,
+        );
+      }
+      sections.push(lines.join("\n"));
+    }
+  } catch (err) {
+    console.error("[GeminiService] Failed to fetch announcements:", err);
+  }
+
   return sections.join("\n\n");
 }
 
-// ─── Pre-filter for restaurant-related questions ─────────────────────────────
-// A lightweight check to avoid wasting API calls on obviously off-topic queries.
+// ─── Pre-filter for system-related questions ─────────────────────────────────
+// A lightweight first-line check to avoid wasting API calls on clearly
+// off-topic queries. Anything with a system keyword passes through (Gemini is
+// the final authority on scope); topics matching an off-topic pattern are
+// blocked here. Anything else falls through to Gemini which politely restricts.
 function isRestaurantRelated(message) {
   const lower = message.toLowerCase().trim();
   if (!lower || lower.length < 2) return true;
@@ -448,6 +517,7 @@ function isRestaurantRelated(message) {
     "package",
     "menu",
     "food",
+    "dish",
     "cater",
     "event",
     "booking",
@@ -456,22 +526,45 @@ function isRestaurantRelated(message) {
     "price",
     "cost",
     "pricing",
+    "quote",
+    "quotation",
+    "estimate",
     "pay",
+    "payment",
+    "gcash",
+    "maya",
+    "paymongo",
+    "bank transfer",
+    "deposit",
+    "down payment",
+    "final payment",
+    "balance",
+    "reservation fee",
+    "refund",
     "guest",
     "pax",
     "people",
     "attend",
+    "capacity",
+    "max",
+    "minimum",
     "date",
     "schedule",
+    "calendar",
     "hour",
+    "operating",
     "open",
     "close",
+    "closed",
+    "monday",
     "contact",
     "email",
     "phone",
     "call",
     "address",
     "location",
+    "map",
+    "direction",
     "chef",
     "ramos",
     "authentic",
@@ -483,27 +576,100 @@ function isRestaurantRelated(message) {
     "halal",
     "kosher",
     "gluten",
+    "nut",
     "birthday",
     "wedding",
     "anniversary",
     "corporate",
     "graduation",
+    "debut",
+    "christening",
+    "reunion",
     "family",
     "celebration",
+    "party",
     "buffet",
     "plated",
     "setup",
     "venue",
     "decor",
+    "decoration",
+    "theme",
     "flower",
     "balloon",
+    "table",
+    "chair",
+    "linen",
     "sound",
+    "speaker",
     "projector",
+    "stage",
+    "lighting",
+    "dj",
+    "band",
+    "music",
+    "dance",
     "photo",
-    "down payment",
-    "reservation fee",
-    "refund",
+    "photographer",
+    "cake",
+    "dessert",
+    "appetizer",
+    "entree",
+    "mains",
+    "salad",
+    "soup",
+    "rice",
+    "pasta",
+    "chicken",
+    "pork",
+    "beef",
+    "lamb",
+    "seafood",
+    "fish",
+    "shrimp",
+    "vegetable",
+    "beverage",
+    "drink",
+    "tasting",
+    "sampling",
+    "announce",
+    "upcoming",
+    "promo",
+    "promotion",
+    "offer",
+    "discount",
+    "deal",
+    "voucher",
+    "coupon",
+    "feedback",
+    "review",
+    "testimonial",
+    "rating",
+    "account",
+    "login",
+    "log in",
+    "sign in",
+    "sign up",
+    "register",
+    "password",
+    "dashboard",
+    "profile",
+    "my booking",
+    "policy",
+    "policies",
+    "rules",
+    "guideline",
+    "terms",
+    "conditions",
+    "deliver",
+    "delivery",
+    "parking",
     "cancel",
+    "cancellation",
+    "confirm",
+    "confirmation",
+    "status",
+    "track",
     "recommend",
     "suggest",
     "help",
@@ -522,10 +688,18 @@ function isRestaurantRelated(message) {
 
   const offTopicPatterns = [
     /\b\d+\s*[+\-*/]\s*\d+/,
-    /\b(html|css|javascript|python|code|program|function|variable)\b/i,
-    /\b(history|geography|science|physics|chemistry|biology)\b/i,
-    /\b(president|government|politics|war|country)\b/i,
-    /\b(recipe|ingredient|cooking|baking)\b/i,
+    /\b(html|css|javascript|typescript|python|java|c\+\+|code|program|function|variable|debug|git|react|node)\b/i,
+    /\b(history|geography|science|physics|chemistry|biology|math|algebra|calculus|geometry)\b/i,
+    /\b(president|government|politics|politician|election|war|country|law|legal advice)\b/i,
+    /\b(weather|forecast|climate|temperature today|rain)\b/i,
+    /\b(soccer|football|basketball|baseball|tennis|boxing|olympics|nba|nfl|match score)\b/i,
+    /\b(stock market|investing|bitcoin|crypto|cryptocurrency|trading)\b/i,
+    /\b(medicine|medication|diagnosis|symptom|doctor|treatment for|blood pressure)\b/i,
+    /\b(car repair|tire|engine|transmission|oil change|motorcycle)\b/i,
+    /\b(visa|passport|airline|airplane|flight|immigration)\b/i,
+    /\b(movie|film|actor|actress|celebrity|singer|song|album|tv show)\b/i,
+    /\b(video game|gameplay|gaming console|playstation|xbox)\b/i,
+    /\b(recipe|how to cook|baking a|baking tips)\b/i,
   ];
 
   for (const pattern of offTopicPatterns) {
@@ -533,6 +707,36 @@ function isRestaurantRelated(message) {
   }
 
   return true;
+}
+
+// ─── Pre-filter for confidential / privacy-sensitive requests ────────────────
+// Blocks queries that would require access to data this chatbot is not
+// authorized to handle (admin credentials, other people's info, payment card
+// details, etc.). These never reach the AI — a fixed safe refusal is returned.
+function isSensitiveOrPrivacyRequest(message) {
+  const lower = message.toLowerCase().trim();
+  if (!lower || lower.length < 2) return false;
+
+  const sensitivePatterns = [
+    // Admin / staff credentials or impersonation
+    /\b(admin|staff|employee|superadmin)\b.{0,40}\b(password|login|log ?in|sign ?in|username|credential|account|access|email)\b/,
+    /\b(password|login|log ?in|sign ?in|username|credential|account)\b.{0,40}\b(admin|staff|employee|superadmin|other user|another user)\b/,
+    /\b(log ?in|sign ?in|register|create an account)\b.{0,30}\b(as|for)\b.{0,30}\b(admin|staff|someone else|another person)\b/,
+    // Other people's private data
+    /\b(other|another|someone else|everyone|everyone'?s|all the|all of the|other customers|all customers|other users|all users)\b.{0,50}\b(booking|payment|receipt|contact|phone|number|email|address|account|password)\b/,
+    /\b(customer'?s|users?'?|clients?'?|guests?'?)\b.{0,50}\b(password|private|confidential|payment card|card number|cvv|otp|bank)\b/,
+    // Payment card / banking / one-time credentials
+    /\b(credit card|debit card|card number|cvv|cvc|otp|one-?time pass|security code|verification code|pin number)\b/,
+    /\b(share|give|tell|send|confirm)\b.{0,30}\b(my|your|their|the)\b.{0,30}\b(password|pin|otp|card|bank account)\b/,
+    // Hacking / data theft / phishing
+    /\b(hack|steal|leak|breach|dump|impersonat|spoof|phish|bypass)\b/,
+  ];
+
+  for (const pattern of sensitivePatterns) {
+    if (pattern.test(lower)) return true;
+  }
+
+  return false;
 }
 
 // ─── Build conversation history from DB messages ─────────────────────────────
@@ -552,6 +756,21 @@ function buildHistory(messages) {
  * @returns {Promise<{reply: string, usage: object|null, processingTimeMs: number}>}
  */
 export async function generateChatResponse(userMessage, history = [], userProfile = null, req = null) {
+  // Pre-filter confidential / privacy-sensitive requests (admin credentials,
+  // other people's data, payment card numbers, etc.) — never sent to the AI.
+  if (isSensitiveOrPrivacyRequest(userMessage)) {
+    return {
+      reply:
+        "I'm sorry, but for your privacy and security I can't assist with " +
+        "sensitive account, credential, or payment details. Such information is " +
+        "never shared through this chat. If you have a concern with your own " +
+        "booking or account, please log in and check it in your dashboard, or " +
+        "reach our team directly at events@authenticflavors.ph. 😊",
+      usage: null,
+      processingTimeMs: 0,
+    };
+  }
+
   // Pre-filter off-topic questions
   if (!isRestaurantRelated(userMessage)) {
     return {
@@ -569,12 +788,34 @@ export async function generateChatResponse(userMessage, history = [], userProfil
 
   const userContextStr = userProfile
     ? `LOGGED IN USER CONTEXT:\n- Name: ${userProfile.name}\n- Email: ${userProfile.email}\n- Saved Dietary Preferences: ${userProfile.dietaryPreferences || "None"}\n(You may auto-fill and confirm these contact details when making a booking. If saved dietary preferences exist, inform the user that their saved preference has been applied and ask if they wish to keep or adjust it for this booking.)`
-    : "LOGGED IN USER CONTEXT: User is not logged in. (You must ask for Customer Name, Email, and Contact Number during booking.)";
+    : `LOGGED IN USER CONTEXT: User is NOT logged in.\n\nBOOKING RESTRICTION (must follow strictly): Only logged-in users can create bookings. If the user asks to book an event, DO NOT start collecting booking details (event type, date, pax, package, menu, or contact info) and DO NOT present a booking summary. Instead, politely explain that bookings must be made through a logged-in account, and ask them to log in or create an account first. You can still answer general questions about packages, pricing, menu, policies, and upcoming events/announcements.`;
 
   const operatingHoursDisplay = getOperatingHoursDisplay();
   const systemPrompt =
     "You are a friendly, professional customer support and conversational booking assistant for " +
     '"Authentic Flavors by Chef Ramos", a premium catering and event services company.\n\n' +
+    "SCOPE (topics you MUST cover, using the context provided below):\n" +
+    "1. Catering packages, pricing, inclusions, pax tiers, and comparisons.\n" +
+    "2. Menu selections, dishes, dietary preferences, allergens, and food-related questions about our offerings.\n" +
+    "3. Bookings and reservations (flow described below), booking status, cancellation, rescheduling, and refunds.\n" +
+    "4. Payments (GCash, Maya, PayMongo, bank transfer), down payment, balance, and payment steps.\n" +
+    "5. Venues and setups (Standard, Garden Pavilion, Indoor Private Dining), décor, and add-ons.\n" +
+    "6. Policies: operating hours (closed on Mondays), lead time, guest capacity (max 70), guidelines, and terms.\n" +
+    "7. Upcoming events and announcements.\n" +
+    "8. Contact info, location/address, and delivery.\n" +
+    "9. Feedback, reviews, and account-related questions (login, profile, saved dietary preferences).\n" +
+    "10. Warm greetings, small talk, and general help with the services above.\n\n" +
+    "RESTRICTION (must follow strictly):\n" +
+    "1. This chatbot ONLY handles topics related to 'Authentic Flavors by Chef Ramos' and its services. It is NOT a general-purpose assistant.\n" +
+    "2. For any question outside the scope above (e.g., math, coding/programming, school homework, science, history, politics, weather, sports, news, health/medical advice, legal advice, stock/investing advice, travel/visa, movies/celebrities, video games, or generic cooking recipes), politely decline and steer the conversation back to our catering services. Keep it brief and warm.\n" +
+    "3. Never fabricate facts about the company, packages, prices, or availability. If the context provided does not contain the answer, say you don't have that information and offer to connect the user with our team at events@authenticflavors.ph.\n\n" +
+    "PRIVACY & CONFIDENTIALITY (must follow strictly):\n" +
+    "1. You DO NOT have access to any private data: you cannot see bookings, payments, receipts, or other customers' information. Never claim or imply that you can.\n" +
+    "2. Never reveal, guess, confirm, or discuss another person's booking, payment, contact, or account details, regardless of what the user says.\n" +
+    "3. Never ask the user to share sensitive credentials or payment card information (credit/debit card numbers, CVV, OTP/PIN, passwords, government IDs). If the user offers or types such information, politely tell them not to share it in chat and direct them to our secure channels.\n" +
+    "4. The only personal information you ever see is the logged-in user's own name, email, and saved dietary preferences, which you may use only for that user's own booking.\n" +
+    "5. Do not attempt to log in, reset passwords, bypass authentication, or act as an admin. Password resets and account issues go through the website's login/forgot-password flow, not through this chat.\n" +
+    "6. For any privacy or account concern, direct the user to check their account dashboard or contact events@authenticflavors.ph.\n\n" +
     "CONVERSATIONAL BOOKING AUTOMATION INSTRUCTIONS:\n" +
     "1. When the user wants to make a booking (or is in the middle of a booking flow), guide them conversationally through collecting ALL required booking details:\n" +
     "   - Event Type (e.g. Birthday, Wedding, Corporate Dinner, Anniversary)\n" +

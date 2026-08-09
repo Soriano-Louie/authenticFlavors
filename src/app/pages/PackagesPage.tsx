@@ -4,6 +4,22 @@ import { Star, Users, Search, Loader2, X } from "lucide-react";
 import { getPackages } from "../api/packageApi";
 import type { Package } from "../api/packageApi";
 
+// Normalize package images to a consistent 16:9 crop so cards render
+// with the same aspect ratio and zoom regardless of the source image.
+function getNormalizedImage(image: string | null): string {
+  if (!image) return "/packagesFood.png";
+  if (
+    image.includes("res.cloudinary.com") &&
+    image.includes("/image/upload/")
+  ) {
+    return image.replace(
+      "/image/upload/",
+      "/image/upload/w_720,h_405,c_fill,g_auto,f_auto,q_auto/",
+    );
+  }
+  return image;
+}
+
 // Transform database package to match expected structure
 function transformPackage(pkg: Package) {
   const includedItemIds = new Set(
@@ -40,7 +56,7 @@ function transformPackage(pkg: Package) {
   return {
     id: String(pkg.package_id),
     name: pkg.package_name,
-    image: pkg.image || "/packagesFood.png",
+    image: getNormalizedImage(pkg.image),
     dishes,
     guestRange: `Up to ${pkg.max_pax} guests`,
     pricePerPerson: startingPrice.toLocaleString(),
@@ -221,17 +237,14 @@ export function PackagesPage() {
                 {filtered.map((pkg) => (
                   <div
                     key={pkg.id}
-                    className="rounded-2xl overflow-hidden bg-white shadow-md hover:shadow-xl transition-all group"
+                    className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-md hover:shadow-xl transition-all group"
                   >
-                    <div
-                      className="relative overflow-hidden group-hover:scale-105 transition-transform duration-500"
-                      style={{
-                        height: "220px",
-                        backgroundImage: `url(${pkg.image})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                      }}
-                    >
+                    <div className="relative shrink-0 overflow-hidden group-hover:scale-105 transition-transform duration-500">
+                      <img
+                        src={pkg.image}
+                        alt={pkg.name}
+                        className="w-full h-[220px] object-cover"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/85 via-[#1A0E08]/20 to-transparent" />
 
                       <div className="absolute top-3 left-3 flex gap-2">
@@ -260,7 +273,7 @@ export function PackagesPage() {
                       </div>
                     </div>
 
-                    <div className="p-5">
+                    <div className="flex flex-1 flex-col p-5">
                       <p className="text-[#2C1810]/60 text-sm font-['Lato'] leading-relaxed mb-4 line-clamp-2">
                         {pkg.description}
                       </p>
