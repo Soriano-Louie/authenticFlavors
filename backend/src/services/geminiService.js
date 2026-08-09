@@ -463,7 +463,47 @@ async function buildRestaurantContext() {
     console.error("[GeminiService] Failed to fetch menu items:", err);
   }
 
-  // 8. Live announcements / upcoming events from database
+  // 8. Live upcoming event schedule (the "Calendar of Private Dining Schedules")
+  // Mirrors the homepage calendar: upcoming Reserved/Confirmed bookings only.
+  try {
+    const [upcomingEvents] = await pool.query(
+      `SELECT
+        DATE_FORMAT(b.event_date, '%Y-%m-%d') as event_date,
+        DATE_FORMAT(b.start_time, '%H:%i') as start_time,
+        b.number_of_pax,
+        p.package_name,
+        et.type_name as event_type
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN event_types et ON b.event_type_id = et.event_type_id
+       WHERE b.booking_status IN ('Reserved', 'Confirmed')
+         AND b.event_date >= CURDATE()
+       ORDER BY b.event_date ASC, b.start_time ASC
+       LIMIT 30`,
+    );
+    if (upcomingEvents.length > 0) {
+      const lines = [
+        "UPCOMING EVENT SCHEDULE / PRIVATE DINING CALENDAR (from database):",
+      ];
+      for (const ev of upcomingEvents) {
+        const time = ev.start_time
+          ? new Date(`2000-01-01T${ev.start_time}:00`).toLocaleString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          : "TBD";
+        lines.push(
+          `- ${ev.event_date} at ${time} | ${ev.event_type} | ${ev.package_name} | ${ev.number_of_pax} pax | ${ev.booking_status}`,
+        );
+      }
+      sections.push(lines.join("\n"));
+    }
+  } catch (err) {
+    console.error("[GeminiService] Failed to fetch upcoming event schedule:", err);
+  }
+
+  // 9. Live announcements from database
   // Formats DB dates that may arrive as Date objects or 'YYYY-MM-DD HH:MM:SS' strings.
   const formatDatePart = (value) => {
     if (!value) return "N/A";
@@ -801,7 +841,7 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     "4. Payments (GCash, Maya, PayMongo, bank transfer), down payment, balance, and payment steps.\n" +
     "5. Venues and setups (Standard, Garden Pavilion, Indoor Private Dining), décor, and add-ons.\n" +
     "6. Policies: operating hours (closed on Mondays), lead time, guest capacity (max 70), guidelines, and terms.\n" +
-    "7. Upcoming events and announcements.\n" +
+    "7. Upcoming event schedules / the Calendar of Private Dining Schedules (upcoming booked event dates, times, package, and guest count) AND announcements/postings. For \"upcoming events\" or \"private dining schedules\", list the UPCOMING EVENT SCHEDULE section first, then announcements.\n" +
     "8. Contact info, location/address, and delivery.\n" +
     "9. Feedback, reviews, and account-related questions (login, profile, saved dietary preferences).\n" +
     "10. Warm greetings, small talk, and general help with the services above.\n\n" +
