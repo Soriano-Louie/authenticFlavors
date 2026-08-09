@@ -21,6 +21,11 @@ import {
   type MenuChangeRequest,
 } from "../api/menuChangeApi";
 import {
+  submitVenueSetupRequest,
+  getBookingVenueSetupRequest,
+  type VenueSetupRequest,
+} from "../api/venueSetupApi";
+import {
   getMenuCategories,
   getMenuItems,
   type MenuCategory,
@@ -49,6 +54,7 @@ import {
   Eye,
   ExternalLink,
   Camera,
+  FileText,
 } from "lucide-react";
 
 const TABS = [
@@ -553,6 +559,17 @@ export function CustomerDashboard() {
     Record<number, MenuChangeRequest | null>
   >({});
 
+  // Venue Setup Request state
+  const [showVenueSetupModal, setShowVenueSetupModal] = useState(false);
+  const [venueSetupBooking, setVenueSetupBooking] = useState<Booking | null>(
+    null,
+  );
+  const [venueSetupNotes, setVenueSetupNotes] = useState<string>("");
+  const [submittingVenueSetup, setSubmittingVenueSetup] = useState(false);
+  const [venueSetupRequests, setVenueSetupRequests] = useState<
+    Record<number, VenueSetupRequest | null>
+  >({});
+
   const [uploadingPaymentId, setUploadingPaymentId] = useState<number | null>(
     null,
   );
@@ -742,6 +759,12 @@ export function CustomerDashboard() {
     loadPendingRequests();
   }, [accessToken, bookings]);
 
+  // Load venue setup requests for all bookings
+  useEffect(() => {
+    if (!accessToken || bookings.length === 0) return;
+    loadVenueSetupRequests(bookings.map((b) => b.booking_id));
+  }, [accessToken, bookings]);
+
   const handleOpenMenuChangeModal = async (booking: Booking) => {
     setMenuChangeBooking(booking);
     setShowMenuChangeModal(true);
@@ -805,6 +828,61 @@ export function CustomerDashboard() {
       );
     } finally {
       setSubmittingMenuChange(false);
+    }
+  };
+
+  const loadVenueSetupRequests = async (bookingIds: number[]) => {
+    if (!accessToken) return;
+    const map: Record<number, VenueSetupRequest | null> = {};
+    await Promise.all(
+      bookingIds.map(async (id) => {
+        try {
+          const res = await getBookingVenueSetupRequest(accessToken, id);
+          map[id] = res.request;
+        } catch {
+          map[id] = null;
+        }
+      }),
+    );
+    setVenueSetupRequests(map);
+  };
+
+  const handleOpenVenueSetupModal = (booking: Booking) => {
+    const existing = venueSetupRequests[booking.booking_id];
+    setVenueSetupBooking(booking);
+    setVenueSetupNotes(existing?.venue_setup_notes || booking.dietary_notes || "");
+    setShowVenueSetupModal(true);
+  };
+
+  const handleCloseVenueSetupModal = () => {
+    setShowVenueSetupModal(false);
+    setVenueSetupBooking(null);
+    setVenueSetupNotes("");
+  };
+
+  const handleSubmitVenueSetup = async () => {
+    if (!venueSetupBooking || !accessToken || !venueSetupNotes.trim()) return;
+    setSubmittingVenueSetup(true);
+    try {
+      await submitVenueSetupRequest(
+        accessToken,
+        venueSetupBooking.booking_id,
+        venueSetupNotes.trim(),
+      );
+      toast.success(
+        "Venue setup request submitted! The administrator will review it shortly.",
+      );
+      handleCloseVenueSetupModal();
+      const res = await getCustomerBookings(accessToken);
+      setBookings(res.bookings);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit venue setup request.",
+      );
+    } finally {
+      setSubmittingVenueSetup(false);
     }
   };
 
@@ -2650,6 +2728,132 @@ export function CustomerDashboard() {
         </div>
       )}
 
+      {/* Venue Setup Request Modal */}
+      {showVenueSetupModal && venueSetupBooking && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8] flex items-center gap-2">
+                  <FileText className="text-[#C8922A]" size={22} />
+                  Venue Setup Request
+                </h3>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                  Booking Reference:{" "}
+                  {venueSetupBooking.booking_reference ||
+                    `#${venueSetupBooking.booking_id}`}
+                </p>
+              </div>
+              <button
+                onClick={handleCloseVenueSetupModal}
+                className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {(() => {
+                const existing = venueSetupRequests[venueSetupBooking.booking_id];
+                if (existing && existing.status === "Changes_Requested") {
+                  return (
+                    <div className="bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-[#C8922A] font-['Lato'] mb-1">
+                        Admin Response
+                      </p>
+                      <p className="text-xs text-[#2C1810] font-['Lato'] leading-relaxed">
+                        {existing.admin_response}
+                      </p>
+                    </div>
+                  );
+                }
+                if (existing && existing.status === "Approved") {
+                  return (
+                    <div className="bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-[#7A8C5C] font-['Lato'] mb-1">
+                        Status
+                      </p>
+                      <p className="text-xs text-[#2C1810] font-['Lato']">
+                        Your venue setup request has been approved.
+                      </p>
+                    </div>
+                  );
+                }
+                if (existing && existing.status === "Declined") {
+                  return (
+                    <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-[#C4541A] font-['Lato'] mb-1">
+                        Status
+                      </p>
+                      <p className="text-xs text-[#2C1810] font-['Lato']">
+                        Your venue setup request was declined.
+                        {existing.admin_response && (
+                          <span className="block mt-1">
+                            Reason: {existing.admin_response}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {(venueSetupRequests[venueSetupBooking.booking_id]?.status !== "Approved" &&
+                venueSetupRequests[venueSetupBooking.booking_id]?.status !== "Declined") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                      Venue Setup Notes
+                    </label>
+                    <textarea
+                      value={venueSetupNotes}
+                      onChange={(e) => setVenueSetupNotes(e.target.value)}
+                      placeholder="Describe your venue setup requirements — speakers, table arrangements, decorations, special seating..."
+                      rows={5}
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                    />
+                    <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
+                      Your venue setup requests will be reviewed by our team
+                      after submission.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {(venueSetupRequests[venueSetupBooking.booking_id]?.status !== "Approved" &&
+              venueSetupRequests[venueSetupBooking.booking_id]?.status !== "Declined") && (
+              <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+                <button
+                  type="button"
+                  onClick={handleCloseVenueSetupModal}
+                  disabled={submittingVenueSetup}
+                  className="px-5 py-2.5 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitVenueSetup}
+                  disabled={submittingVenueSetup || !venueSetupNotes.trim()}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                >
+                  {submittingVenueSetup && (
+                    <Loader2 size={22} className="animate-spin" />
+                  )}
+                  {submittingVenueSetup
+                    ? "Submitting..."
+                    : venueSetupRequests[venueSetupBooking.booking_id]
+                      ? "Update Request"
+                      : "Submit Request"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Receipt View Modal */}
       {showReceiptModal && selectedReceiptUrl && (
         <div
@@ -2879,6 +3083,64 @@ export function CustomerDashboard() {
                   </div>
                 </div>
               )}
+
+              {/* Venue Setup Review */}
+              {(() => {
+                const venueReq = venueSetupRequests[selectedBooking.booking_id];
+                if (!venueReq) return null;
+
+                const statusStyles: Record<string, string> = {
+                  Pending: "bg-[#C8922A]/15 text-[#C8922A]",
+                  Approved: "bg-[#7A8C5C]/15 text-[#7A8C5C]",
+                  Changes_Requested: "bg-[#C8922A]/15 text-[#C8922A]",
+                  Declined: "bg-[#C4541A]/10 text-[#C4541A]",
+                };
+
+                return (
+                  <div>
+                    <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold mb-3">
+                      Venue Setup Request
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-['Lato'] ${statusStyles[venueReq.status] || "bg-gray-100 text-gray-600"}`}
+                        >
+                          {venueReq.status.replace("_", " ")}
+                        </span>
+                      </div>
+                      <div className="bg-[#F5F0E8] rounded-xl p-4 border border-[#C8922A]/10">
+                        <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider mb-1">
+                          Your Request
+                        </p>
+                        <p className="text-xs text-[#2C1810] font-['Lato'] leading-relaxed whitespace-pre-wrap">
+                          {venueReq.venue_setup_notes}
+                        </p>
+                      </div>
+                      {venueReq.admin_response && (
+                        <div className="bg-[#2C1810]/5 rounded-xl p-4 border border-[#C8922A]/10">
+                          <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider mb-1">
+                            Admin Response
+                          </p>
+                          <p className="text-xs text-[#2C1810] font-['Lato'] leading-relaxed whitespace-pre-wrap">
+                            {venueReq.admin_response}
+                          </p>
+                        </div>
+                      )}
+                      {venueReq.status === "Changes_Requested" && (
+                        <button
+                          onClick={() =>
+                            handleOpenVenueSetupModal(selectedBooking)
+                          }
+                          className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity"
+                        >
+                          Edit & Resubmit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Customer Information */}
               <div>

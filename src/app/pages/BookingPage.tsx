@@ -908,6 +908,10 @@ export function BookingPage() {
                   rows={4}
                   className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
                 />
+                <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
+                  Your venue setup requests will be reviewed by our team after
+                  booking submission.
+                </p>
               </div>
             </div>
           )}

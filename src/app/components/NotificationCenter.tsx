@@ -18,6 +18,7 @@ import {
   Sparkles,
   X,
   Loader2,
+  FileText,
 } from "lucide-react";
 
 interface NotificationCenterProps {
@@ -186,6 +187,8 @@ export function NotificationCenter({
       return <Calendar className="w-4 h-4 text-[#C8922A]" />;
     if (type.includes("feedback"))
       return <MessageSquare className="w-4 h-4 text-[#7A8C5C]" />;
+    if (type.includes("venue_setup"))
+      return <FileText className="w-4 h-4 text-[#C8922A]" />;
     return <Bell className="w-4 h-4 text-[#C8922A]" />;
   };
 

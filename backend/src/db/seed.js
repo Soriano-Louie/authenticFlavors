@@ -425,6 +425,28 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] booking_history table ensured.");
 
+    // 0.10 Create venue_setup_requests table for admin review of venue setup notes
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS venue_setup_requests (
+        request_id INT AUTO_INCREMENT PRIMARY KEY,
+        booking_id INT NOT NULL,
+        user_id INT NOT NULL,
+        venue_setup_notes TEXT NOT NULL,
+        admin_response TEXT NULL,
+        status ENUM('Pending', 'Approved', 'Changes_Requested', 'Declined') NOT NULL DEFAULT 'Pending',
+        reviewed_by INT NULL,
+        reviewed_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES users(user_id) ON DELETE SET NULL,
+        INDEX idx_venue_setup_requests_booking (booking_id),
+        INDEX idx_venue_setup_requests_user (user_id)
+      )
+    `);
+    console.log("[MIGRATION] venue_setup_requests table ensured.");
+
     // 0.5 Ensure account_status ENUM includes 'Pending'
     const [accountStatusCol] = await connection.query(
       "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account_status'",

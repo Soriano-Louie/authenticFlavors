@@ -297,6 +297,15 @@ export async function createBooking(req, res) {
       );
     }
 
+    // 9.5 Auto-create venue setup request if dietary_notes (venue setup notes) provided
+    if (dietary_notes && dietary_notes.trim()) {
+      await connection.query(
+        `INSERT INTO venue_setup_requests (booking_id, user_id, venue_setup_notes, status)
+         VALUES (?, ?, ?, 'Pending')`,
+        [booking_id, userId, dietary_notes.trim()],
+      );
+    }
+
     // 10. Automatically create THREE payment records
     const tzOffset = new Date().getTimezoneOffset() * 60000;
     const localToday = new Date(Date.now() - tzOffset)
