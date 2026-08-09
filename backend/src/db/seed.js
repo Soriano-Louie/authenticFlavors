@@ -482,7 +482,7 @@ export async function seedDatabaseIfEmpty() {
           CONCAT(u.first_name, ' ', u.last_name),
           CASE WHEN u.role = 'Admin' THEN 'Admin' ELSE 'Customer' END,
           'booking_submitted',
-          CONCAT('submitted Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('submitted Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id,
           b.created_at
         FROM bookings b
@@ -491,21 +491,21 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_confirmed',
-          CONCAT('confirmed Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('confirmed Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, b.updated_at
         FROM bookings b JOIN ${adminSub} u
         WHERE b.booking_status = 'Confirmed'
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_completed',
-          CONCAT('completed Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('completed Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, b.updated_at
         FROM bookings b JOIN ${adminSub} u
         WHERE b.booking_status = 'Completed'
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Customer', 'booking_cancelled_customer',
-          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, COALESCE(b.cancellation_processed_at, b.updated_at)
         FROM bookings b
         JOIN users u ON u.user_id = b.user_id
@@ -513,7 +513,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'booking_cancelled_admin',
-          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, b.updated_at
         FROM bookings b JOIN ${adminSub} u
         WHERE b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NULL
@@ -528,7 +528,7 @@ export async function seedDatabaseIfEmpty() {
               ELSE 'reservation'
             END,
             ' receipt for Booking #',
-            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+            COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))
           ),
           b.booking_id, p.receipt_uploaded_at
         FROM payments p
@@ -542,7 +542,7 @@ export async function seedDatabaseIfEmpty() {
             'approved the ',
             CASE p.payment_type WHEN 'DownPayment' THEN 'Down Payment' WHEN 'FinalPayment' THEN 'Final Payment' ELSE 'Reservation' END,
             ' for Booking #',
-            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+            COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))
           ),
           b.booking_id, p.verified_at
         FROM payments p
@@ -556,7 +556,7 @@ export async function seedDatabaseIfEmpty() {
             'rejected the ',
             CASE p.payment_type WHEN 'DownPayment' THEN 'Down Payment' WHEN 'FinalPayment' THEN 'Final Payment' ELSE 'Reservation' END,
             ' for Booking #',
-            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+            COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))
           ),
           b.booking_id, COALESCE(p.verified_at, p.updated_at)
         FROM payments p
@@ -570,7 +570,7 @@ export async function seedDatabaseIfEmpty() {
             'paid the ',
             CASE p.payment_type WHEN 'DownPayment' THEN 'down payment' WHEN 'FinalPayment' THEN 'final payment' ELSE 'reservation' END,
             ' for Booking #',
-            COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))
+            COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))
           ),
           b.booking_id, p.verified_at
         FROM payments p
@@ -580,7 +580,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'venue_setup_submitted',
-          CONCAT('submitted venue setup notes for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('submitted venue setup notes for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, v.created_at
         FROM venue_setup_requests v
         JOIN bookings b ON b.booking_id = v.booking_id
@@ -589,7 +589,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_approved',
-          CONCAT('approved the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('approved the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, v.reviewed_at
         FROM venue_setup_requests v
         JOIN bookings b ON b.booking_id = v.booking_id
@@ -598,7 +598,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_changes_requested',
-          CONCAT('requested changes for the venue setup of Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('requested changes for the venue setup of Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, v.reviewed_at
         FROM venue_setup_requests v
         JOIN bookings b ON b.booking_id = v.booking_id
@@ -607,7 +607,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'venue_setup_declined',
-          CONCAT('declined the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('declined the venue setup for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, v.reviewed_at
         FROM venue_setup_requests v
         JOIN bookings b ON b.booking_id = v.booking_id
@@ -616,7 +616,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'menu_change_requested',
-          CONCAT('requested a menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('requested a menu change for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, m.created_at
         FROM menu_change_requests m
         JOIN bookings b ON b.booking_id = m.booking_id
@@ -625,7 +625,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'menu_change_approved',
-          CONCAT('approved the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('approved the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, m.reviewed_at
         FROM menu_change_requests m
         JOIN bookings b ON b.booking_id = m.booking_id
@@ -634,7 +634,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           u.user_id, CONCAT(u.first_name, ' ', u.last_name), 'Admin', 'menu_change_rejected',
-          CONCAT('rejected the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('rejected the menu change for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, m.reviewed_at
         FROM menu_change_requests m
         JOIN bookings b ON b.booking_id = m.booking_id
@@ -643,7 +643,7 @@ export async function seedDatabaseIfEmpty() {
 
         UNION ALL SELECT
           cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'feedback_submitted',
-          CONCAT('submitted feedback for Booking #', COALESCE(b.booking_reference, CONCAT('BK-', b.booking_id))),
+          CONCAT('submitted feedback for Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, f.submitted_at
         FROM feedback f
         JOIN bookings b ON b.booking_id = f.booking_id

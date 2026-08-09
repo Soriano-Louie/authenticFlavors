@@ -504,7 +504,7 @@ export async function completeBooking(req, res) {
 
     // Get booking
     const [bookings] = await pool.query(
-      "SELECT event_date, booking_status, booking_reference FROM bookings WHERE booking_id = ? LIMIT 1",
+      "SELECT event_date, booking_status, booking_reference, ai_booking_reference FROM bookings WHERE booking_id = ? LIMIT 1",
       [bookingId],
     );
 
@@ -551,7 +551,7 @@ export async function completeBooking(req, res) {
       actorUserId: Number(req.auth?.sub) || null,
       actorRole: "Admin",
       activityType: "booking_completed",
-      action: `completed Booking #${booking.booking_reference || `BK-${String(bookingId).padStart(4, "0")}`}`,
+      action: `completed Booking #${booking.booking_reference || (booking.ai_booking_reference ? `#AF-${booking.ai_booking_reference}` : `#BK${String(bookingId).padStart(4, "0")}`)}`,
       bookingId,
     }).catch((err) =>
       console.error("Activity logging failed (booking_completed):", err),
