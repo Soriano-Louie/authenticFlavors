@@ -231,7 +231,7 @@ export async function getAllPackages(_req, res) {
 // ─── Admin: Create Package ──────────────────────────────────────────
 export async function createPackage(req, res) {
   try {
-    const { package_name, description, max_pax, pricing } = req.body;
+    const { package_name, description, max_pax, pricing, menu_inclusions } = req.body;
 
     // Validate required fields
     if (!package_name || !package_name.trim()) {
@@ -367,7 +367,7 @@ export async function createPackage(req, res) {
 export async function updatePackage(req, res) {
   try {
     const { id } = req.params;
-    const { package_name, description, max_pax, status, pricing } = req.body;
+    const { package_name, description, max_pax, status, pricing, menu_inclusions } = req.body;
 
     // Check package exists
     const [existing] = await pool.query(
