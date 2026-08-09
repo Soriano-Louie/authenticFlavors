@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { Toaster } from "sonner";
 import App from "./app/App.tsx";
 import { AuthProvider } from "./app/auth/AuthContext";
 import { TextSizeProvider } from "./app/accessibility/TextSizeContext";
@@ -8,6 +9,7 @@ createRoot(document.getElementById("root")!).render(
   <AuthProvider>
     <TextSizeProvider>
       <App />
+      <Toaster richColors position="top-center" />
     </TextSizeProvider>
   </AuthProvider>,
 );

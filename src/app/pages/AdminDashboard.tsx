@@ -106,6 +106,7 @@ import {
   EyeOff,
   BookOpen,
   LogOut,
+  Search,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -1425,10 +1426,17 @@ function OverviewSection() {
 }
 
 // Recent Activity List (reusable for both overview and full activity page)
-function RecentActivityList({ limit }: { limit?: number }) {
+function RecentActivityList({
+  limit,
+  showSearch,
+}: {
+  limit?: number;
+  showSearch?: boolean;
+}) {
   const { accessToken } = useAuth();
   const [activities, setActivities] = useState<AdminActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activitySearch, setActivitySearch] = useState("");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -1475,11 +1483,44 @@ function RecentActivityList({ limit }: { limit?: number }) {
     );
   }
 
-  const displayActivities = limit ? activities.slice(0, limit) : activities;
+  const normalizedQuery = activitySearch.trim().toLowerCase();
+  const filteredActivities = normalizedQuery
+    ? activities.filter((a) =>
+        [a.user, a.action, a.details, a.timestamp]
+          .filter(Boolean)
+          .some((field) => field.toLowerCase().includes(normalizedQuery)),
+      )
+    : activities;
+
+  const displayActivities = limit
+    ? filteredActivities.slice(0, limit)
+    : filteredActivities;
 
   return (
     <div className="space-y-3">
-      {displayActivities.map((activity) => {
+      {showSearch && (
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
+          />
+          <input
+            value={activitySearch}
+            onChange={(e) => setActivitySearch(e.target.value)}
+            placeholder="Search activity by name or action..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+          />
+        </div>
+      )}
+
+      {filteredActivities.length === 0 ? (
+        <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
+          {activitySearch.trim()
+            ? "No activity matches your search."
+            : "No recent activity found."}
+        </p>
+      ) : (
+        displayActivities.map((activity) => {
         const IconComponent = getIconComponent(activity.icon);
         return (
           <div
@@ -1505,7 +1546,8 @@ function RecentActivityList({ limit }: { limit?: number }) {
             </div>
           </div>
         );
-      })}
+        })
+      )}
     </div>
   );
 }
@@ -2022,7 +2064,7 @@ function ActivitySection() {
       <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810] mb-4">
         Recent Activity Feed
       </h2>
-      <RecentActivityList />
+      <RecentActivityList showSearch />
     </div>
   );
 }
@@ -2043,6 +2085,7 @@ function BookingsSection() {
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [remindingId, setRemindingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [bookingSearch, setBookingSearch] = useState("");
 
   const [venueSetupRequests, setVenueSetupRequests] = useState<
     Record<number, VenueSetupRequest>
@@ -2351,6 +2394,24 @@ function BookingsSection() {
     return `#${String(booking.booking_id).padStart(4, "0")}`;
   };
 
+  const filteredBookings = bookings.filter((b) => {
+    const q = bookingSearch.trim().toLowerCase();
+    if (!q) return true;
+    const haystack = [
+      getBookingReference(b),
+      b.first_name,
+      b.last_name,
+      b.contact_email,
+      b.package_name,
+      b.booking_status,
+      String(b.booking_id),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -2368,6 +2429,20 @@ function BookingsSection() {
           >
             Refresh
           </button>
+        </div>
+
+        {/* Search bookings */}
+        <div className="relative mb-4">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
+          />
+          <input
+            value={bookingSearch}
+            onChange={(e) => setBookingSearch(e.target.value)}
+            placeholder="Search by reference, customer, package, or status..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+          />
         </div>
 
         {/* Overdue Payments Alert */}
@@ -2436,13 +2511,15 @@ function BookingsSection() {
           <div className="flex justify-center py-10">
             <Loader2 className="animate-spin text-[#C8922A]" size={32} />
           </div>
-        ) : bookings.length === 0 ? (
+        ) : filteredBookings.length === 0 ? (
           <p className="text-sm font-['Lato'] text-[#2C1810]/50 py-10 text-center">
-            No bookings found.
+            {bookingSearch.trim()
+              ? "No bookings match your search."
+              : "No bookings found."}
           </p>
         ) : (
           <div className="space-y-4">
-            {bookings.map((booking) => {
+            {filteredBookings.map((booking) => {
               const payments = paymentsByBooking[booking.booking_id] || [];
               const isExpanded = expandedBookingId === booking.booking_id;
               const isPendingAction = actioningId === booking.booking_id;
@@ -3495,8 +3572,26 @@ function PackagesSection() {
                   placeholder="e.g. 70"
                   min="1"
                   max="70"
-                  className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40"
+                  className={`w-full px-3 py-2 rounded-xl border text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 ${
+                    formData.max_pax !== "" &&
+                    (isNaN(Number(formData.max_pax)) ||
+                      Number(formData.max_pax) < 1 ||
+                      Number(formData.max_pax) > 70)
+                      ? "border-[#C4541A]"
+                      : "border-[#C8922A]/30"
+                  }`}
                 />
+                {formData.max_pax !== "" &&
+                  (isNaN(Number(formData.max_pax)) ||
+                    Number(formData.max_pax) < 1 ||
+                    Number(formData.max_pax) > 70) && (
+                    <p className="mt-1 text-xs font-['Lato'] text-[#C4541A]">
+                      {isNaN(Number(formData.max_pax)) ||
+                      Number(formData.max_pax) < 1
+                        ? "Valid max pax is required (at least 1)."
+                        : "Maximum pax cannot exceed 70 (venue capacity)."}
+                    </p>
+                  )}
               </div>
 
               {/* Image Upload */}
