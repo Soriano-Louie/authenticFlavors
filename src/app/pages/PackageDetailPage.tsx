@@ -80,6 +80,10 @@ function transformPackage(
     guestRange: `Up to ${pkg.max_pax} guests`,
     pricePerPerson: startingPrice.toLocaleString(),
     description: pkg.description || "Catering package for your special event",
+    eventType: "Other",
+    packageType: "Food Package",
+    rating: 4.5,
+    serviceStyle: "Full Service Buffet",
     menu: menuData,
     inclusions: [
       "Premium table setup",

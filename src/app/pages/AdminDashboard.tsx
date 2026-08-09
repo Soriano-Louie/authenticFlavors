@@ -2142,38 +2142,65 @@ function BookingsSection() {
     }
   };
 
-  const handleVerifyPayment = async (
-    bookingId: number,
-    paymentId: number,
+  // Receipt verification confirmation dialog state
+  const [verifyingPayment, setVerifyingPayment] = useState<{
+    paymentId: number;
+    action: "approve" | "reject";
+    bookingRef: string;
+    paymentType: Payment["payment_type"];
+    amount: number;
+  } | null>(null);
+  const [verifyRemarks, setVerifyRemarks] = useState("");
+  const [submittingVerification, setSubmittingVerification] = useState(false);
+
+  const handleOpenVerifyDialog = (
+    booking: Booking,
+    payment: Payment,
     action: "approve" | "reject",
   ) => {
-    if (!accessToken) return;
-    const remarks = window.prompt(
-      action === "reject"
-        ? "Rejection reason (required):"
-        : "Optional remarks:",
-    );
-    if (remarks === null) return;
-    if (action === "reject" && !remarks.trim()) {
+    const bookingRef =
+      booking.booking_reference ||
+      (booking.ai_booking_reference
+        ? `#AF-${booking.ai_booking_reference}`
+        : `#BK${String(booking.booking_id).padStart(4, "0")}`);
+    setVerifyRemarks("");
+    setVerifyingPayment({
+      paymentId: payment.payment_id,
+      action,
+      bookingRef,
+      paymentType: payment.payment_type,
+      amount: payment.amount,
+    });
+  };
+
+  const handleConfirmVerification = async () => {
+    if (!accessToken || !verifyingPayment) return;
+    if (verifyingPayment.action === "reject" && !verifyRemarks.trim()) {
       toast.error("Please provide a rejection reason.");
       return;
     }
-    setActioningId(paymentId);
+    setSubmittingVerification(true);
     try {
       const res = await verifyReceipt(
         accessToken,
-        paymentId,
-        action,
-        remarks || undefined,
+        verifyingPayment.paymentId,
+        verifyingPayment.action,
+        verifyRemarks.trim() || undefined,
       );
-      toast.success(res.message || `Payment ${action}d successfully.`);
+      toast.success(
+        res.message || `Payment ${verifyingPayment.action}d successfully.`,
+      );
+      setVerifyingPayment(null);
+      setVerifyRemarks("");
       fetchBookings();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : `Failed to ${action} payment.`,
+        err instanceof Error
+          ? err.message
+          : `Failed to ${verifyingPayment.action} payment.`,
       );
     } finally {
-      setActioningId(null);
+      setSubmittingVerification(false);
     }
   };
 
@@ -2644,9 +2671,9 @@ function BookingsSection() {
                                         <div className="flex items-center gap-2 mt-2">
                                           <button
                                             onClick={() =>
-                                              handleVerifyPayment(
-                                                booking.booking_id,
-                                                payment.payment_id,
+                                              handleOpenVerifyDialog(
+                                                booking,
+                                                payment,
                                                 "approve",
                                               )
                                             }
@@ -2659,9 +2686,9 @@ function BookingsSection() {
                                           </button>
                                           <button
                                             onClick={() =>
-                                              handleVerifyPayment(
-                                                booking.booking_id,
-                                                payment.payment_id,
+                                              handleOpenVerifyDialog(
+                                                booking,
+                                                payment,
                                                 "reject",
                                               )
                                             }
@@ -2880,6 +2907,94 @@ function BookingsSection() {
                   <Loader2 size={16} className="animate-spin" />
                 )}
                 {submittingVenueSetup ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt Verification Confirmation Modal */}
+      {verifyingPayment && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl border border-[#C8922A]/20">
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
+              <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                {verifyingPayment.action === "approve" ? (
+                  <CheckCircle className="text-[#7A8C5C]" size={20} />
+                ) : (
+                  <XCircle className="text-[#C4541A]" size={20} />
+                )}
+                {verifyingPayment.action === "approve"
+                  ? "Approve Receipt?"
+                  : "Reject Receipt?"}
+              </h3>
+              <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
+                {paymentTypeLabel[verifyingPayment.paymentType] ||
+                  verifyingPayment.paymentType}{" "}
+                of {formatAmount(verifyingPayment.amount)} for{" "}
+                {verifyingPayment.bookingRef}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                  {verifyingPayment.action === "approve"
+                    ? "Optional Remarks"
+                    : "Rejection Reason"}{" "}
+                  {verifyingPayment.action === "reject" && (
+                    <span className="text-[#C4541A]">*</span>
+                  )}
+                </label>
+                <textarea
+                  value={verifyRemarks}
+                  onChange={(e) => setVerifyRemarks(e.target.value)}
+                  placeholder={
+                    verifyingPayment.action === "approve"
+                      ? "Optional note to the customer (e.g. amount received)..."
+                      : "Please explain why this receipt is being rejected..."
+                  }
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                />
+                <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
+                  {verifyingPayment.action === "approve"
+                    ? "The payment will be marked as Paid and the booking status will be updated."
+                    : "This reason will be sent to the customer via notification and email."}
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+              <button
+                onClick={() => {
+                  setVerifyingPayment(null);
+                  setVerifyRemarks("");
+                }}
+                disabled={submittingVerification}
+                className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmVerification}
+                disabled={
+                  submittingVerification ||
+                  (verifyingPayment.action === "reject" &&
+                    !verifyRemarks.trim())
+                }
+                className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                  verifyingPayment.action === "approve"
+                    ? "bg-gradient-to-r from-[#7A8C5C] to-[#5E6E43]"
+                    : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A]"
+                }`}
+              >
+                {submittingVerification && (
+                  <Loader2 size={16} className="animate-spin" />
+                )}
+                {submittingVerification
+                  ? "Processing..."
+                  : verifyingPayment.action === "approve"
+                    ? "Confirm Approval"
+                    : "Confirm Rejection"}
               </button>
             </div>
           </div>

@@ -719,17 +719,19 @@ export function BookingPage() {
                   Your Menu Selections
                 </p>
                 <div className="space-y-2 text-sm text-[#2C1810]/70 font-['Lato']">
-                  {selectedPackage.menuSections.map((section) => (
-                    <div
-                      key={section.label}
-                      className="flex items-start justify-between gap-3"
-                    >
-                      <span>{section.label}</span>
-                      <span className="text-right font-medium text-[#2C1810]">
-                        {menuChoices[section.label] || "—"}
-                      </span>
-                    </div>
-                  ))}
+                  {selectedPackage.menuSections.map(
+                    (section: { label: string; items: string[] }) => (
+                      <div
+                        key={section.label}
+                        className="flex items-start justify-between gap-3"
+                      >
+                        <span>{section.label}</span>
+                        <span className="text-right font-medium text-[#2C1810]">
+                          {menuChoices[section.label] || "—"}
+                        </span>
+                      </div>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -986,19 +988,21 @@ export function BookingPage() {
                     Menu Choices
                   </h4>
                   <div className="space-y-2 text-sm font-['Lato']">
-                    {selectedPackage.menuSections.map((section) => (
-                      <div
-                        key={section.label}
-                        className="flex items-start justify-between gap-3 border-b border-[#C8922A]/10 pb-2"
-                      >
-                        <span className="text-[#2C1810]/50">
-                          {section.label}
-                        </span>
-                        <span className="text-[#2C1810] font-medium text-right">
-                          {menuChoices[section.label] || "—"}
-                        </span>
-                      </div>
-                    ))}
+                    {selectedPackage.menuSections.map(
+                      (section: { label: string; items: string[] }) => (
+                        <div
+                          key={section.label}
+                          className="flex items-start justify-between gap-3 border-b border-[#C8922A]/10 pb-2"
+                        >
+                          <span className="text-[#2C1810]/50">
+                            {section.label}
+                          </span>
+                          <span className="text-[#2C1810] font-medium text-right">
+                            {menuChoices[section.label] || "—"}
+                          </span>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </div>
 

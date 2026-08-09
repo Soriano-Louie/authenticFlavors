@@ -51,6 +51,7 @@ export interface Booking {
   booking_reference: string | null;
   created_at: string;
   updated_at: string;
+  cancellation_requested_at: string | null;
   package_name?: string;
   type_name?: string;
   setup_name?: string;
