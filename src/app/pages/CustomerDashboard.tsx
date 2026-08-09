@@ -3599,7 +3599,7 @@ export function CustomerDashboard() {
                         setChangeEmailError(null);
                       }}
                       placeholder="Enter the 6-digit code"
-                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] font-['Lato']"
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] placeholder:tracking-normal font-['Lato']"
                     />
                     <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
                       Enter the verification code sent to {changeEmailAddress}.

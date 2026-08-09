@@ -669,9 +669,9 @@ export function LandingPage() {
           </div>
 
           <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8">
-            <div className="rounded-3xl bg-[#2C1810] p-6 sm:p-8 shadow-xl">
-              <div className="flex items-center justify-between gap-4">
-                <div>
+            <div className="min-w-0 rounded-3xl bg-[#2C1810] p-6 sm:p-8 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.3em] text-[#C8922A]">
                     Schedule view
                   </p>
@@ -679,12 +679,12 @@ export function LandingPage() {
                     {monthLabel}
                   </h3>
                 </div>
-                <div className="rounded-full border border-[#C8922A]/30 px-3 py-1.5">
+                <div className="shrink-0 rounded-full border border-[#C8922A]/30 px-3 py-1.5">
                   <span className="text-sm font-['Lato'] text-[#F5F0E8]">
                     {upcomingEvents.length} upcoming
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={goToPreviousMonth}
@@ -757,7 +757,7 @@ export function LandingPage() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-[#C8922A]/20 bg-[#F5F0E8] p-6 sm:p-8 shadow-sm">
+            <div className="min-w-0 rounded-3xl border border-[#C8922A]/20 bg-[#F5F0E8] p-6 sm:p-8 shadow-sm">
               {upcomingEventsLoading ? (
                 <div className="text-center py-8">
                   <Loader2
@@ -812,7 +812,7 @@ export function LandingPage() {
                         className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
                               {event.package_name}
                             </p>
@@ -820,7 +820,7 @@ export function LandingPage() {
                               {event.event_type}
                             </p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right shrink-0">
                             <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
                               {(() => {
                                 const dateObj = localDateFromStr(

@@ -743,6 +743,58 @@ function AdminSettingsSection() {
 
   return (
     <div className="space-y-6">
+      {/* Profile Photo */}
+      <div className={sectionCard}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className={sectionTitle}>
+              <Camera size={18} className="text-[#C8922A]" />
+              Profile Photo
+            </h3>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+              This photo appears across the Admin Dashboard.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-5">
+          {user?.profile_photo_url ? (
+            <img
+              src={user.profile_photo_url}
+              alt="Admin"
+              className="w-20 h-20 rounded-full object-cover border-2 border-[#C8922A]/40"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-2xl font-['Playfair_Display'] font-semibold">
+              {getAdminInitials()}
+            </div>
+          )}
+          <div>
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoUploading}
+              className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-[#C8922A] text-sm font-['Lato'] font-semibold hover:bg-[#C8922A]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {photoUploading ? "Uploading..." : "Change Photo"}
+            </button>
+            <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-2">
+              JPG, JPEG, or PNG. Max 5MB.
+            </p>
+            {photoError && (
+              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                {photoError}
+              </p>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Profile Information */}
       <div className={sectionCard}>
         <div className="flex items-center justify-between mb-4">
@@ -1017,58 +1069,6 @@ function AdminSettingsSection() {
         </button>
       </div>
 
-      {/* Profile Photo */}
-      <div className={sectionCard}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className={sectionTitle}>
-              <Camera size={18} className="text-[#C8922A]" />
-              Profile Photo
-            </h3>
-            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
-              This photo appears across the Admin Dashboard.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-5">
-          {user?.profile_photo_url ? (
-            <img
-              src={user.profile_photo_url}
-              alt="Admin"
-              className="w-20 h-20 rounded-full object-cover border-2 border-[#C8922A]/40"
-            />
-          ) : (
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-2xl font-['Playfair_Display'] font-semibold">
-              {getAdminInitials()}
-            </div>
-          )}
-          <div>
-            <button
-              onClick={() => photoInputRef.current?.click()}
-              disabled={photoUploading}
-              className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-[#C8922A] text-sm font-['Lato'] font-semibold hover:bg-[#C8922A]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {photoUploading ? "Uploading..." : "Change Photo"}
-            </button>
-            <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-2">
-              JPG, JPEG, or PNG. Max 5MB.
-            </p>
-            {photoError && (
-              <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
-                {photoError}
-              </p>
-            )}
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/jpeg,image/jpg,image/png"
-              className="hidden"
-              onChange={handlePhotoChange}
-            />
-          </div>
-        </div>
-      </div>
-
       {/* Verified Email Change Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1167,7 +1167,7 @@ function AdminSettingsSection() {
                         setEmailError(null);
                       }}
                       placeholder="Enter the 6-digit code"
-                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] font-['Lato']"
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] placeholder:tracking-normal font-['Lato']"
                     />
                     <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
                       Enter the verification code sent to {emailAddress}.

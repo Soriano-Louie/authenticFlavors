@@ -36,13 +36,13 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
+          <Link to="/" className="flex items-center gap-2 sm:gap-3 group min-w-0">
             <img
               src="/authentic_flavor_logo.png"
               alt="Authentic Flavors"
-              className="h-12 w-auto object-contain"
+              className="h-12 w-auto object-contain shrink-0"
             />
-            <div className="leading-none">
+            <div className="leading-none min-w-0">
               <p className="text-[#F5F0E8] text-base font-['Playfair_Display'] tracking-wide">
                 Authentic Flavors
               </p>
@@ -111,7 +111,7 @@ export function Navbar() {
 
           {/* Mobile Toggle */}
           <button
-            className="md:hidden text-[#F5F0E8] p-1"
+            className="md:hidden text-[#F5F0E8] p-1 shrink-0"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X size={28} /> : <Menu size={28} />}

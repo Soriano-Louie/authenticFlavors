@@ -23,10 +23,8 @@ export function Root() {
       style={{ fontFamily: "'Lato', sans-serif", backgroundColor: "#F5F0E8" }}
     >
       {!hideChrome && <Navbar />}
-      <div className={`fixed right-4 z-40 ${hideChrome ? "top-4" : "top-20"}`}>
-        <AccessibilityControls />
-      </div>
-      <main className="flex-1" style={{ paddingTop: hideChrome ? 0 : "64px" }}>
+      <AccessibilityControls offsetTop={hideChrome ? 16 : 80} />
+      <main className="flex-1" style={{ paddingTop: hideChrome ? 0 : "4rem" }}>
         <Outlet />
       </main>
       {!hideChrome && <Footer />}
