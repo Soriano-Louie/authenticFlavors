@@ -181,12 +181,12 @@ export function AboutPage() {
                 ].map(({ label, value }) => (
                   <div
                     key={label}
-                    className="flex justify-between items-center py-3 border-b border-[#C8922A]/15"
+                    className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-6 py-3 border-b border-[#C8922A]/15"
                   >
-                    <span className="text-[#2C1810]/60 text-sm font-['Lato']">
+                    <span className="text-[#2C1810]/60 text-xs sm:text-sm font-['Lato'] tracking-wide uppercase sm:normal-case">
                       {label}
                     </span>
-                    <span className="text-[#2C1810] text-sm font-['Lato'] font-medium">
+                    <span className="text-[#2C1810] text-sm font-['Lato'] font-medium sm:text-right leading-relaxed">
                       {value}
                     </span>
                   </div>

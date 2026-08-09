@@ -24,7 +24,7 @@ for (const key of required) {
 
 const corsOrigins = (process.env.CORS_ORIGIN ?? "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 export const env = {
