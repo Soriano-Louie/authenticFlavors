@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { pool } from "../db/pool.js";
 import { env, isProduction } from "../config/env.js";
 import {
@@ -14,11 +15,13 @@ import {
 import {
   sendVerificationCode,
   sendPasswordResetEmail,
+  sendEmailChangeVerificationEmail,
 } from "../services/emailService.js";
 import {
   generateVerificationCode,
   generateResetToken,
   hashResetToken,
+  hashVerificationCode,
 } from "../utils/tokens.js";
 import { logActivity } from "../services/activityService.js";
 import {
@@ -759,39 +762,26 @@ export async function updateProfile(req, res) {
     first_name,
     middle_name,
     last_name,
-    email,
     phone_number,
     dietary_preferences,
   } = parsed.data;
 
-  // Check if email is already taken by another user
-  const [existing] = await pool.query(
-    "SELECT user_id FROM users WHERE email = ? AND user_id != ? LIMIT 1",
-    [email, userId],
-  );
-
-  if (existing.length > 0) {
-    return res.status(409).json({
-      error: {
-        code: "EMAIL_IN_USE",
-        message: "Email is already registered.",
-        fieldErrors: { email: "Email is already registered." },
-      },
-    });
-  }
+  // NOTE: email is intentionally NOT updated here. Changing an email address
+  // requires going through the verified email-change flow
+  // (POST /api/auth/change-email/request + /verify) so the new address is
+  // confirmed via a one-time code before it is saved.
 
   // Update user profile
   await pool.query(
     `
       UPDATE users 
-      SET first_name = ?, middle_name = ?, last_name = ?, email = ?, phone_number = ?, dietary_preferences = ?
+      SET first_name = ?, middle_name = ?, last_name = ?, phone_number = ?, dietary_preferences = ?
       WHERE user_id = ?
     `,
     [
       first_name,
       middle_name,
       last_name,
-      email,
       phone_number,
       dietary_preferences,
       userId,
@@ -812,6 +802,303 @@ export async function updateProfile(req, res) {
 
   const user = normalizeUserRow(rows[0]);
   return res.status(200).json({ user });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Verified Email Change
+// ═════════════════════════════════════════════════════════════════════════════
+// Flow: current email → user enters new email → code sent to NEW email →
+// user enters code → code validated → new email saved. The email is NEVER
+// changed until the code has been successfully verified.
+
+const EMAIL_CHANGE_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const EMAIL_CHANGE_COOLDOWN_MS = 60 * 1000; // 60 seconds between sends
+const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
+
+export async function requestEmailChange(req, res) {
+  const userId = Number(req.auth.sub);
+  const newEmail = String(req.body.new_email ?? "").trim().toLowerCase();
+
+  if (!newEmail) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "New email is required.",
+        fieldErrors: { new_email: "New email is required." },
+      },
+    });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "New email is invalid.",
+        fieldErrors: { new_email: "New email is invalid." },
+      },
+    });
+  }
+
+  try {
+    // Load current user
+    const [users] = await pool.query(
+      "SELECT email FROM users WHERE user_id = ? LIMIT 1",
+      [userId],
+    );
+    if (users.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "User not found." },
+      });
+    }
+    const currentEmail = users[0].email;
+
+    // The new email must differ from the current one
+    if (newEmail === currentEmail.toLowerCase()) {
+      return res.status(400).json({
+        error: {
+          code: "SAME_EMAIL",
+          message: "New email must be different from your current email.",
+          fieldErrors: { new_email: "New email is different from your current email." },
+        },
+      });
+    }
+
+    // The new email must not already belong to another account
+    const [existing] = await pool.query(
+      "SELECT user_id FROM users WHERE email = ? AND user_id != ? LIMIT 1",
+      [newEmail, userId],
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({
+        error: {
+          code: "EMAIL_IN_USE",
+          message: "Email is already registered to another account.",
+          fieldErrors: { new_email: "Email is already registered." },
+        },
+      });
+    }
+
+    // Cooldown between resend requests
+    const [recent] = await pool.query(
+      `SELECT resend_at FROM email_change_verifications
+       WHERE user_id = ? AND new_email = ? AND is_used = FALSE
+       ORDER BY id DESC LIMIT 1`,
+      [userId, newEmail],
+    );
+    if (recent.length > 0 && recent[0].resend_at) {
+      const lastResend = new Date(recent[0].resend_at).getTime();
+      if (Date.now() - lastResend < EMAIL_CHANGE_COOLDOWN_MS) {
+        const remaining = Math.ceil(
+          (EMAIL_CHANGE_COOLDOWN_MS - (Date.now() - lastResend)) / 1000,
+        );
+        return res.status(429).json({
+          error: {
+            code: "RESEND_COOLDOWN",
+            message: `Please wait ${remaining} seconds before requesting a new code.`,
+          },
+        });
+      }
+    }
+
+    // Invalidate any previously unused codes for this user + new email
+    await pool.query(
+      `UPDATE email_change_verifications SET is_used = TRUE
+       WHERE user_id = ? AND new_email = ? AND is_used = FALSE`,
+      [userId, newEmail],
+    );
+
+    // Generate a secure code and store only its hash
+    const code = generateVerificationCode();
+    const now = new Date();
+    const expiresAt = new Date(Date.now() + EMAIL_CHANGE_CODE_TTL_MS);
+
+    const [insertResult] = await pool.query(
+      `INSERT INTO email_change_verifications
+         (user_id, current_email, new_email, code_hash, expires_at, resend_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        currentEmail,
+        newEmail,
+        hashVerificationCode(code),
+        expiresAt,
+        now,
+      ],
+    );
+    const verificationId = insertResult.insertId;
+
+    try {
+      await sendEmailChangeVerificationEmail(newEmail, code);
+    } catch (error) {
+      // Roll back the pending code so the user can retry cleanly
+      console.error("Failed to send email change verification:", error);
+      await pool.query(
+        "DELETE FROM email_change_verifications WHERE id = ?",
+        [verificationId],
+      );
+      return res.status(500).json({
+        error: {
+          code: "EMAIL_FAILED",
+          message: "Failed to send verification email. Please try again later.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      message: `A verification code has been sent to ${newEmail}.`,
+    });
+  } catch (error) {
+    console.error("requestEmailChange failed:", error);
+    return res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to request email change. Please try again.",
+      },
+    });
+  }
+}
+
+export async function verifyEmailChange(req, res) {
+  const userId = Number(req.auth.sub);
+  const newEmail = String(req.body.new_email ?? "").trim().toLowerCase();
+  const code = String(req.body.code ?? "").trim();
+
+  if (!newEmail || !code) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "New email and verification code are required.",
+      },
+    });
+  }
+
+  if (!/^\d{6}$/.test(code)) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Verification code must be a 6-digit number.",
+      },
+    });
+  }
+
+  try {
+    // Find the latest unused code for this user + new email
+    const [codes] = await pool.query(
+      `SELECT * FROM email_change_verifications
+       WHERE user_id = ? AND new_email = ? AND is_used = FALSE
+       ORDER BY id DESC LIMIT 1`,
+      [userId, newEmail],
+    );
+
+    if (codes.length === 0) {
+      return res.status(400).json({
+        error: {
+          code: "NO_CODE",
+          message: "No verification code found. Please request a new one.",
+        },
+      });
+    }
+
+    const verification = codes[0];
+
+    // Check expiration
+    if (new Date(verification.expires_at) < new Date()) {
+      return res.status(400).json({
+        error: {
+          code: "CODE_EXPIRED",
+          message: "Verification code has expired. Please request a new one.",
+        },
+      });
+    }
+
+    // Limit repeated attempts
+    if (verification.attempt_count >= EMAIL_CHANGE_MAX_ATTEMPTS) {
+      return res.status(429).json({
+        error: {
+          code: "TOO_MANY_ATTEMPTS",
+          message: "Too many verification attempts. Please request a new code.",
+        },
+      });
+    }
+
+    // Increment attempt count before verifying
+    await pool.query(
+      "UPDATE email_change_verifications SET attempt_count = attempt_count + 1 WHERE id = ?",
+      [verification.id],
+    );
+
+    // Compare against the stored hash (constant-time via crypto.timingSafeEqual)
+    const storedHash = Buffer.from(verification.code_hash, "hex");
+    const providedHash = Buffer.from(hashVerificationCode(code), "hex");
+    const codeMatches =
+      storedHash.length === providedHash.length &&
+      crypto.timingSafeEqual(storedHash, providedHash);
+
+    if (!codeMatches) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_CODE",
+          message: "Invalid verification code. Please try again.",
+        },
+      });
+    }
+
+    // Mark this code as used
+    await pool.query(
+      "UPDATE email_change_verifications SET is_used = TRUE WHERE id = ?",
+      [verification.id],
+    );
+
+    // Invalidate any other unused codes for this user + new email
+    await pool.query(
+      `UPDATE email_change_verifications SET is_used = TRUE
+       WHERE user_id = ? AND new_email = ? AND is_used = FALSE`,
+      [userId, newEmail],
+    );
+
+    // Now save the new email (only after successful verification)
+    await pool.query("UPDATE users SET email = ? WHERE user_id = ?", [
+      newEmail,
+      userId,
+    ]);
+
+    // Fetch the updated user
+    const [rows] = await pool.query(
+      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
+      [userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(500).json({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Account not found after email change.",
+        },
+      });
+    }
+
+    const user = normalizeUserRow(rows[0]);
+
+    await logActivity({
+      actorUserId: userId,
+      actorRole: "Customer",
+      activityType: "email_changed",
+      action: `changed their account email`,
+    });
+
+    return res.status(200).json({
+      user,
+      message: "Email changed successfully!",
+    });
+  } catch (error) {
+    console.error("verifyEmailChange failed:", error);
+    return res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to change email. Please try again.",
+      },
+    });
+  }
 }
 
 export async function uploadProfilePhoto(req, res) {

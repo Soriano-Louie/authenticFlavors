@@ -331,6 +331,27 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] email_verifications table ensured.");
 
+    // 0.31 Create email_change_verifications table
+    // Stores hashed one-time codes for verifying an email address change.
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS email_change_verifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        current_email VARCHAR(255) NOT NULL,
+        new_email VARCHAR(255) NOT NULL,
+        code_hash VARCHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        attempt_count INT DEFAULT 0,
+        is_used BOOLEAN DEFAULT FALSE,
+        resend_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id),
+        INDEX idx_new_email (new_email)
+      )
+    `);
+    console.log("[MIGRATION] email_change_verifications table ensured.");
+
     // 0.4 Create password_reset_tokens table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (

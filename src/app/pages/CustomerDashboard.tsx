@@ -237,8 +237,15 @@ const MOCK_PAYMENT_INSTRUCTIONS: PaymentInstruction[] = [
 ];
 
 export function CustomerDashboard() {
-  const { user, accessToken, updateProfile, changeProfilePhoto, logout } =
-    useAuth();
+  const {
+    user,
+    accessToken,
+    updateProfile,
+    changeProfilePhoto,
+    logout,
+    requestEmailChange,
+    verifyEmailChange,
+  } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
 
@@ -280,6 +287,20 @@ export function CustomerDashboard() {
   const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>(
     {},
   );
+
+  // Verified email change state
+  const [showChangeEmailModal, setShowChangeEmailModal] = useState(false);
+  const [changeEmailStep, setChangeEmailStep] = useState<"email" | "code">(
+    "email",
+  );
+  const [changeEmailAddress, setChangeEmailAddress] = useState("");
+  const [changeEmailCode, setChangeEmailCode] = useState("");
+  const [changeEmailError, setChangeEmailError] = useState<string | null>(null);
+  const [changeEmailLoading, setChangeEmailLoading] = useState(false);
+  const [changeEmailCooldown, setChangeEmailCooldown] = useState(0);
+  const [changeEmailFieldError, setChangeEmailFieldError] = useState<
+    string | null
+  >(null);
 
   // Booking details modal state
   const [showBookingDetailsModal, setShowBookingDetailsModal] = useState(false);
@@ -541,6 +562,137 @@ export function CustomerDashboard() {
       }
     } finally {
       setSettingsSaving(false);
+    }
+  };
+
+  // ─── Verified Email Change ───────────────────────────────────────────
+  const openChangeEmailModal = () => {
+    setChangeEmailAddress("");
+    setChangeEmailCode("");
+    setChangeEmailError(null);
+    setChangeEmailFieldError(null);
+    setChangeEmailStep("email");
+    setChangeEmailCooldown(0);
+    setShowChangeEmailModal(true);
+  };
+
+  const closeChangeEmailModal = () => {
+    // Keep the original email — nothing changes unless verification succeeds
+    setShowChangeEmailModal(false);
+    setChangeEmailAddress("");
+    setChangeEmailCode("");
+    setChangeEmailError(null);
+    setChangeEmailFieldError(null);
+    setChangeEmailStep("email");
+    setChangeEmailCooldown(0);
+  };
+
+  const startEmailCooldown = (seconds: number) => {
+    setChangeEmailCooldown(seconds);
+  };
+
+  useEffect(() => {
+    if (changeEmailCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setChangeEmailCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [changeEmailCooldown]);
+
+  const handleSendEmailCode = async () => {
+    setChangeEmailError(null);
+    setChangeEmailFieldError(null);
+
+    const trimmedEmail = changeEmailAddress.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setChangeEmailFieldError("Please enter your new email address.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setChangeEmailFieldError("Please enter a valid email address.");
+      return;
+    }
+    if (
+      user?.email &&
+      trimmedEmail === user.email.toLowerCase()
+    ) {
+      setChangeEmailFieldError(
+        "New email must be different from your current email.",
+      );
+      return;
+    }
+
+    setChangeEmailLoading(true);
+    try {
+      await requestEmailChange(trimmedEmail);
+      setChangeEmailAddress(trimmedEmail);
+      setChangeEmailStep("code");
+      startEmailCooldown(60);
+      toast.success(
+        `Verification code sent to ${trimmedEmail}. Check your inbox.`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to send verification code. Please try again.";
+      setChangeEmailError(message);
+      toast.error(message);
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    setChangeEmailError(null);
+
+    if (!/^\d{6}$/.test(changeEmailCode.trim())) {
+      setChangeEmailError("Verification code must be a 6-digit number.");
+      return;
+    }
+
+    setChangeEmailLoading(true);
+    try {
+      const updatedUser = await verifyEmailChange(
+        changeEmailAddress,
+        changeEmailCode.trim(),
+      );
+      setSettingsForm((prev) => ({
+        ...prev,
+        email: updatedUser.email || changeEmailAddress,
+      }));
+      setShowChangeEmailModal(false);
+      setChangeEmailCode("");
+      setChangeEmailAddress("");
+      toast.success("Email changed successfully!");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to verify the code. Please try again.";
+      setChangeEmailError(message);
+      toast.error(message);
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
+  const handleResendEmailCode = async () => {
+    setChangeEmailError(null);
+    setChangeEmailLoading(true);
+    try {
+      await requestEmailChange(changeEmailAddress);
+      startEmailCooldown(60);
+      toast.success("A new verification code has been sent.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to resend the verification code. Please try again.";
+      setChangeEmailError(message);
+      toast.error(message);
+    } finally {
+      setChangeEmailLoading(false);
     }
   };
 
@@ -2031,18 +2183,24 @@ export function CustomerDashboard() {
                 <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
                   Email
                 </label>
-                <input
-                  type="email"
-                  value={settingsForm.email}
-                  onChange={(e) =>
-                    setSettingsForm({ ...settingsForm, email: e.target.value })
-                  }
-                  className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
-                    settingsErrors.email
-                      ? "border-[#C4541A]"
-                      : "border-[#C8922A]/20 focus:border-[#C8922A]"
-                  }`}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={settingsForm.email}
+                    readOnly
+                    className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#EDE8DF] text-[#2C1810]/70 outline-none text-sm font-['Lato'] cursor-not-allowed"
+                  />
+                  <button
+                    onClick={openChangeEmailModal}
+                    className="shrink-0 px-4 py-3 rounded-xl border border-[#C8922A]/30 text-[#C8922A] text-sm font-['Lato'] font-semibold hover:bg-[#C8922A]/10 transition-colors cursor-pointer"
+                  >
+                    Change Email
+                  </button>
+                </div>
+                <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
+                  To change your email, a one-time verification code is sent to
+                  your new email address.
+                </p>
                 {settingsErrors.email && (
                   <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
                     {settingsErrors.email}
@@ -3332,6 +3490,166 @@ export function CustomerDashboard() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangeEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+            <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                Change Email
+              </h3>
+              <button
+                onClick={closeChangeEmailModal}
+                disabled={changeEmailLoading}
+                className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="bg-[#F5F0E8] p-4 rounded-xl mb-4">
+                <p className="text-xs text-[#2C1810]/50 font-['Lato'] uppercase tracking-wider mb-1">
+                  Current Email
+                </p>
+                <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                  {user?.email || "No email"}
+                </p>
+              </div>
+
+              {changeEmailStep === "email" ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      New Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={changeEmailAddress}
+                      onChange={(e) => {
+                        setChangeEmailAddress(e.target.value);
+                        setChangeEmailFieldError(null);
+                      }}
+                      placeholder="newemail@example.com"
+                      className={`w-full px-4 py-3 rounded-xl border bg-[#F5F0E8] text-[#2C1810] outline-none text-sm font-['Lato'] ${
+                        changeEmailFieldError
+                          ? "border-[#C4541A]"
+                          : "border-[#C8922A]/20 focus:border-[#C8922A]"
+                      }`}
+                    />
+                    {changeEmailFieldError && (
+                      <p className="text-[#C4541A] text-xs font-['Lato'] mt-1">
+                        {changeEmailFieldError}
+                      </p>
+                    )}
+                    <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
+                      A one-time verification code will be sent to this new
+                      address. Your email won't change until you verify it.
+                    </p>
+                  </div>
+
+                  {changeEmailError && (
+                    <p className="text-[#C4541A] text-xs font-['Lato']">
+                      {changeEmailError}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={handleSendEmailCode}
+                    disabled={changeEmailLoading}
+                    className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {changeEmailLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      "Send Verification Code"
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      New Email
+                    </label>
+                    <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                      {changeEmailAddress}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={changeEmailCode}
+                      onChange={(e) => {
+                        setChangeEmailCode(
+                          e.target.value.replace(/\D/g, "").slice(0, 6),
+                        );
+                        setChangeEmailError(null);
+                      }}
+                      placeholder="Enter the 6-digit code"
+                      className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-center text-2xl font-bold tracking-[0.5em] font-['Lato']"
+                    />
+                    <p className="text-[#2C1810]/50 text-xs font-['Lato'] mt-1">
+                      Enter the verification code sent to {changeEmailAddress}.
+                    </p>
+                  </div>
+
+                  {changeEmailError && (
+                    <p className="text-[#C4541A] text-xs font-['Lato']">
+                      {changeEmailError}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={handleVerifyEmailCode}
+                    disabled={changeEmailLoading}
+                    className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {changeEmailLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" /> Verifying...
+                      </>
+                    ) : (
+                      "Verify & Change Email"
+                    )}
+                  </button>
+
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => {
+                        setChangeEmailStep("email");
+                        setChangeEmailError(null);
+                        setChangeEmailCode("");
+                      }}
+                      disabled={changeEmailLoading}
+                      className="text-sm text-[#2C1810]/50 hover:text-[#2C1810] font-['Lato'] transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      ← Use a different email
+                    </button>
+                    <button
+                      onClick={handleResendEmailCode}
+                      disabled={changeEmailLoading || changeEmailCooldown > 0}
+                      className="text-sm text-[#C8922A] font-['Lato'] font-semibold hover:text-[#C4541A] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {changeEmailCooldown > 0
+                        ? `Resend in ${changeEmailCooldown}s`
+                        : "Resend code"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -11,6 +11,8 @@ import {
   resetPassword,
   updateProfile,
   uploadProfilePhoto,
+  requestEmailChange,
+  verifyEmailChange,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { uploadProfilePhoto as uploadProfilePhotoMiddleware } from "../middleware/upload.js";
@@ -33,6 +35,10 @@ authRouter.post(
 // Email verification
 authRouter.post("/send-verification", sendVerification);
 authRouter.post("/verify-email", verifyEmail);
+
+// Verified email change (requires login)
+authRouter.post("/change-email/request", requireAuth, requestEmailChange);
+authRouter.post("/change-email/verify", requireAuth, verifyEmailChange);
 
 // Password reset
 authRouter.post("/forgot-password", forgotPassword);

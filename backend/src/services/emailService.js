@@ -73,6 +73,49 @@ export async function sendVerificationCode(email, code) {
   );
 }
 
+export async function sendEmailChangeVerificationEmail(email, code) {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Confirm Your Email Change</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          We received a request to change the email address associated with your
+          Authentic Flavors account to this address. Use the verification code below
+          to confirm the change.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <span style="display: inline-block; font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #C8922A; background: #F5F0E8; padding: 12px 24px; border-radius: 8px; font-family: 'Courier New', monospace;">
+            ${code}
+          </span>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          This code will expire in <strong>10 minutes</strong>.
+        </p>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Your current email address will remain unchanged until you verify this code.
+        </p>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0;">
+          If you did not request this change, please ignore this email. Your email address
+          will not be changed.
+        </p>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(
+    email,
+    "Confirm Your Email Change – Authentic Flavors by Chef Ramos",
+    html,
+  );
+}
+
 export async function sendPasswordResetEmail(email, firstName, resetToken) {
   const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
 

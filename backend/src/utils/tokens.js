@@ -23,3 +23,10 @@ export function generateResetToken() {
 export function hashResetToken(raw) {
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
+
+/**
+ * Hash a verification code (SHA-256) so codes are never stored in plain text.
+ */
+export function hashVerificationCode(code) {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
+}

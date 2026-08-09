@@ -256,3 +256,47 @@ export function resetPassword(
     body: JSON.stringify(payload),
   });
 }
+
+// ─── Verified Email Change ────────────────────────────────────────────────
+
+export interface RequestEmailChangePayload {
+  new_email: string;
+}
+
+export interface VerifyEmailChangePayload {
+  new_email: string;
+  code: string;
+}
+
+export function requestEmailChange(
+  accessToken: string,
+  newEmail: string,
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/change-email/request", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ new_email: newEmail } satisfies RequestEmailChangePayload),
+  });
+}
+
+export function verifyEmailChange(
+  accessToken: string,
+  newEmail: string,
+  code: string,
+): Promise<AuthMeResponse & { message: string }> {
+  return request<AuthMeResponse & { message: string }>(
+    "/api/auth/change-email/verify",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        new_email: newEmail,
+        code,
+      } satisfies VerifyEmailChangePayload),
+    },
+  );
+}

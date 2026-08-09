@@ -16,6 +16,8 @@ import {
   register as apiRegister,
   updateProfile as apiUpdateProfile,
   uploadProfilePhoto as apiUploadProfilePhoto,
+  requestEmailChange as apiRequestEmailChange,
+  verifyEmailChange as apiVerifyEmailChange,
   type AuthUser,
   type LoginPayload,
   type RegisterPayload,
@@ -32,6 +34,8 @@ interface AuthContextValue {
   refreshUser: () => Promise<AuthUser | null>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<AuthUser>;
   changeProfilePhoto: (file: File) => Promise<AuthUser>;
+  requestEmailChange: (newEmail: string) => Promise<{ message: string }>;
+  verifyEmailChange: (newEmail: string, code: string) => Promise<AuthUser>;
   setAuth: (accessToken: string, user: AuthUser) => void;
 }
 
@@ -114,6 +118,28 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [accessToken],
   );
 
+  const requestEmailChange = useCallback(
+    async (newEmail: string) => {
+      if (!accessToken) {
+        throw new Error("No access token available");
+      }
+      return apiRequestEmailChange(accessToken, newEmail);
+    },
+    [accessToken],
+  );
+
+  const verifyEmailChange = useCallback(
+    async (newEmail: string, code: string) => {
+      if (!accessToken) {
+        throw new Error("No access token available");
+      }
+      const result = await apiVerifyEmailChange(accessToken, newEmail, code);
+      setUser(result.user);
+      return result.user;
+    },
+    [accessToken],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -125,6 +151,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refreshUser,
       updateProfile,
       changeProfilePhoto,
+      requestEmailChange,
+      verifyEmailChange,
       setAuth,
     }),
     [
@@ -137,6 +165,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refreshUser,
       updateProfile,
       changeProfilePhoto,
+      requestEmailChange,
+      verifyEmailChange,
       setAuth,
     ],
   );
