@@ -697,6 +697,21 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added 'Pending' to users.account_status ENUM.");
     }
 
+    // 0.5.1 Add token_version column for single-session enforcement.
+    // Bumped on every login/password change/reset so all previous sessions
+    // (stale access + refresh JWTs) are invalidated at once.
+    const [tokenVersionCol] = await connection.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'token_version'`,
+      [connection.config.database],
+    );
+    if (tokenVersionCol.length === 0) {
+      await connection.query(
+        "ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0",
+      );
+      console.log("[MIGRATION] Added token_version to users table.");
+    }
+
     // 1. Seed event_types
     const [eventTypes] = await connection.query(
       "SELECT COUNT(*) as count FROM event_types",

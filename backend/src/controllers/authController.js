@@ -182,17 +182,34 @@ function normalizeUserRow(row) {
   };
 }
 
-function issueTokens(user) {
+function issueTokens(user, tokenVersion) {
   const payload = {
     sub: String(user.user_id),
     role: user.role,
     email: user.email,
+    ver: tokenVersion ?? 0,
   };
 
   return {
     accessToken: signAccessToken(payload),
     refreshToken: signRefreshToken(payload),
   };
+}
+
+/**
+ * Invalidate every existing session for a user by bumping token_version,
+ * then return the new version so fresh tokens can be issued against it.
+ */
+async function bumpTokenVersion(userId) {
+  await pool.query(
+    "UPDATE users SET token_version = token_version + 1 WHERE user_id = ?",
+    [userId],
+  );
+  const [rows] = await pool.query(
+    "SELECT token_version FROM users WHERE user_id = ? LIMIT 1",
+    [userId],
+  );
+  return Number(rows[0]?.token_version ?? 0);
 }
 
 export async function register(req, res) {
@@ -477,7 +494,8 @@ export async function verifyEmail(req, res) {
   }
 
   const user = normalizeUserRow(rows[0]);
-  const { accessToken, refreshToken } = issueTokens(user);
+  const tokenVersion = await bumpTokenVersion(user.user_id);
+  const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
 
   res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
 
@@ -546,7 +564,11 @@ export async function login(req, res) {
   }
 
   const user = normalizeUserRow(userRow);
-  const { accessToken, refreshToken } = issueTokens(user);
+
+  // Single-session: bump token_version so every previously issued
+  // access/refresh token (other devices) is invalidated immediately.
+  const tokenVersion = await bumpTokenVersion(user.user_id);
+  const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
 
   res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
 
@@ -662,6 +684,12 @@ export async function resetPassword(req, res) {
     resetRecord.user_id,
   ]);
 
+  // Invalidate all existing sessions (any device logged in before the reset)
+  await pool.query(
+    "UPDATE users SET token_version = token_version + 1 WHERE user_id = ?",
+    [resetRecord.user_id],
+  );
+
   // Mark the token as used
   await pool.query(
     "UPDATE password_reset_tokens SET is_used = TRUE WHERE id = ?",
@@ -713,7 +741,7 @@ export async function refresh(req, res) {
     const userId = Number(decoded.sub);
 
     const [rows] = await pool.query(
-      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id FROM users WHERE user_id = ? LIMIT 1",
+      "SELECT user_id, first_name, middle_name, last_name, email, phone_number, role, account_status, created_at, updated_at, dietary_preferences, profile_photo_url, profile_photo_public_id, token_version FROM users WHERE user_id = ? LIMIT 1",
       [userId],
     );
 
@@ -726,8 +754,22 @@ export async function refresh(req, res) {
       });
     }
 
+    // Single-session: if this refresh token predates the user's latest login
+    // (or password change/reset), the session has been superseded.
+    if (Number(rows[0].token_version) !== Number(decoded.ver)) {
+      return res.status(401).json({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Session is no longer valid. Please sign in again.",
+        },
+      });
+    }
+
     const user = normalizeUserRow(rows[0]);
-    const { accessToken, refreshToken: nextRefreshToken } = issueTokens(user);
+    const { accessToken, refreshToken: nextRefreshToken } = issueTokens(
+      user,
+      Number(rows[0].token_version),
+    );
 
     res.cookie(env.refreshCookieName, nextRefreshToken, cookieConfig(req));
 
@@ -1079,6 +1121,13 @@ export async function verifyEmailChange(req, res) {
 
     const user = normalizeUserRow(rows[0]);
 
+    // Changing the account email is security-sensitive: bump the session
+    // version so every other device is signed out, then reissue tokens for
+    // the current device so it stays signed in.
+    const tokenVersion = await bumpTokenVersion(userId);
+    const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
+    res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+
     await logActivity({
       actorUserId: userId,
       actorRole: user.role === "Admin" ? "Admin" : "Customer",
@@ -1088,6 +1137,7 @@ export async function verifyEmailChange(req, res) {
 
     return res.status(200).json({
       user,
+      accessToken,
       message: "Email changed successfully!",
     });
   } catch (error) {
@@ -1141,7 +1191,7 @@ export async function changePassword(req, res) {
 
   try {
     const [users] = await pool.query(
-      "SELECT user_id, password_hash, role FROM users WHERE user_id = ? LIMIT 1",
+      "SELECT user_id, email, password_hash, role FROM users WHERE user_id = ? LIMIT 1",
       [userId],
     );
 
@@ -1173,6 +1223,19 @@ export async function changePassword(req, res) {
       userId,
     ]);
 
+    // Invalidate every other active session (password change = security event),
+    // then reissue tokens for the CURRENT device so it stays signed in.
+    const tokenVersion = await bumpTokenVersion(userId);
+    const { accessToken, refreshToken } = issueTokens(
+      {
+        user_id: users[0].user_id,
+        role: users[0].role,
+        email: users[0].email,
+      },
+      tokenVersion,
+    );
+    res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+
     await logActivity({
       actorUserId: userId,
       actorRole: users[0].role === "Admin" ? "Admin" : "Customer",
@@ -1180,7 +1243,9 @@ export async function changePassword(req, res) {
       action: "changed their account password",
     });
 
-    return res.status(200).json({ message: "Password changed successfully." });
+    return res
+      .status(200)
+      .json({ message: "Password changed successfully.", accessToken });
   } catch (error) {
     console.error("changePassword failed:", error);
     return res.status(500).json({

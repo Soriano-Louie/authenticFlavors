@@ -1,6 +1,7 @@
 import { verifyAccessToken } from "../utils/jwt.js";
+import { pool } from "../db/pool.js";
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith("Bearer ")) {
@@ -11,6 +12,27 @@ export function requireAuth(req, res, next) {
 
   try {
     const decoded = verifyAccessToken(token);
+
+    // Single-session: the access token must carry the user's CURRENT
+    // token_version. If it's stale (a newer login/password change happened),
+    // treat the request as unauthenticated immediately.
+    const [rows] = await pool.query(
+      "SELECT token_version FROM users WHERE user_id = ? LIMIT 1",
+      [Number(decoded.sub)],
+    );
+
+    if (
+      rows.length === 0 ||
+      Number(rows[0].token_version) !== Number(decoded.ver)
+    ) {
+      return res.status(401).json({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Session is no longer valid. Please sign in again.",
+        },
+      });
+    }
+
     req.auth = decoded;
     return next();
   } catch {

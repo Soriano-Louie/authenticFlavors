@@ -464,6 +464,8 @@ function AdminSettingsSection() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showPasswordConfirmModal, setShowPasswordConfirmModal] =
+    useState(false);
 
   // Profile photo
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -699,6 +701,12 @@ function AdminSettingsSection() {
       setPasswordErrors(errs);
       return;
     }
+    // Prompt before applying: changing the password signs the account out
+    // on every other device (single-session enforcement).
+    setShowPasswordConfirmModal(true);
+  };
+
+  const confirmPasswordChange = async () => {
     setPasswordSaving(true);
     try {
       await changePassword({
@@ -706,6 +714,7 @@ function AdminSettingsSection() {
         new_password: passwordForm.new_password,
         confirm_password: passwordForm.confirm_password,
       });
+      setShowPasswordConfirmModal(false);
       setPasswordSaved(true);
       setPasswordForm({
         current_password: "",
@@ -713,7 +722,9 @@ function AdminSettingsSection() {
         confirm_password: "",
       });
       setTimeout(() => setPasswordSaved(false), 3000);
-      toast.success("Password changed successfully!");
+      toast.success(
+        "Password changed successfully! You've been signed out of all other devices.",
+      );
     } catch (error) {
       if (error && typeof error === "object" && "fieldErrors" in error) {
         setPasswordErrors(error.fieldErrors as Record<string, string>);
@@ -725,6 +736,7 @@ function AdminSettingsSection() {
               : "Failed to change password. Please try again.",
         });
       }
+      setShowPasswordConfirmModal(false);
     } finally {
       setPasswordSaving(false);
     }
@@ -1068,6 +1080,62 @@ function AdminSettingsSection() {
           )}
         </button>
       </div>
+
+      {/* Password Change Confirmation Modal */}
+      {showPasswordConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+            <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                Change Password
+              </h3>
+              <button
+                onClick={() => setShowPasswordConfirmModal(false)}
+                disabled={passwordSaving}
+                className="text-[#2C1810]/40 hover:text-[#2C1810] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="flex items-start gap-3 bg-[#C8922A]/10 border border-[#C8922A]/30 p-4 rounded-xl mb-4">
+                <Shield size={20} className="text-[#C8922A] shrink-0 mt-0.5" />
+                <p className="text-sm text-[#2C1810]/80 font-['Lato']">
+                  Changing your password will sign you out of the account on
+                  all <span className="font-semibold">other devices</span>.
+                  Your current device will stay signed in.
+                </p>
+              </div>
+              <p className="text-xs text-[#2C1810]/50 font-['Lato'] mb-5">
+                This is done for your security. Anyone else using your account
+                will need to sign in again with the new password.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPasswordConfirmModal(false)}
+                  disabled={passwordSaving}
+                  className="flex-1 py-2.5 rounded-full border border-[#2C1810]/20 text-[#2C1810]/70 text-sm font-['Lato'] font-semibold hover:bg-[#F5F0E8] transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPasswordChange}
+                  disabled={passwordSaving}
+                  className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {passwordSaving ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" /> Updating...
+                    </>
+                  ) : (
+                    "Confirm Change"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verified Email Change Modal */}
       {showEmailModal && (

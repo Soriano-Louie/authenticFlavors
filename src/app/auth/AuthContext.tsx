@@ -71,6 +71,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
     refreshUser().finally(() => setIsBootstrapping(false));
   }, [refreshUser]);
 
+  // Single-session: if any API call reports the session was revoked
+  // (logged in elsewhere, password/email changed, account suspended),
+  // clear the local session so the guards redirect to the sign-in page.
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setAccessToken(null);
+      setUser(null);
+    };
+    window.addEventListener(
+      "authenticflavors:unauthorized",
+      handleSessionExpired,
+    );
+    return () =>
+      window.removeEventListener(
+        "authenticflavors:unauthorized",
+        handleSessionExpired,
+      );
+  }, []);
+
   const login = useCallback(async (payload: LoginPayload) => {
     const result = await apiLogin(payload);
     setAccessToken(result.accessToken);
@@ -140,6 +159,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
         throw new Error("No access token available");
       }
       const result = await apiVerifyEmailChange(accessToken, newEmail, code);
+      if (result.accessToken) {
+        setAccessToken(result.accessToken);
+      }
       setUser(result.user);
       return result.user;
     },
@@ -155,7 +177,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!accessToken) {
         throw new Error("No access token available");
       }
-      return apiChangePassword(accessToken, payload);
+      const result = await apiChangePassword(accessToken, payload);
+      // The backend reissues a token pair for THIS device (other devices
+      // are signed out), so refresh the in-memory access token.
+      if (result.accessToken) {
+        setAccessToken(result.accessToken);
+      }
+      return result;
     },
     [accessToken],
   );

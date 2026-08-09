@@ -81,11 +81,25 @@ export class ApiError extends Error {
   }
 }
 
-async function parseResponse<T>(response: Response): Promise<T> {
+async function parseResponse<T>(
+  response: Response,
+  dispatchSessionExpired = false,
+): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T &
     ApiErrorShape;
 
   if (!response.ok) {
+    // A 401 "UNAUTHORIZED" on a request that carried an access token means
+    // the session was revoked (single-session takeover, password change,
+    // account suspension, etc.). Broadcast it so the app signs the user out.
+    if (
+      dispatchSessionExpired &&
+      response.status === 401 &&
+      payload.error?.code === "UNAUTHORIZED"
+    ) {
+      window.dispatchEvent(new Event("authenticflavors:unauthorized"));
+    }
+
     const message = payload.error?.message ?? "Request failed.";
     throw new ApiError(
       response.status,
@@ -100,6 +114,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = options.headers as Record<string, string> | undefined;
+  const hadAuthHeader = Boolean(headers && "Authorization" in headers);
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
@@ -109,7 +126,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  return parseResponse<T>(response);
+  return parseResponse<T>(response, hadAuthHeader);
 }
 
 export interface RegisterResponse {
@@ -182,6 +199,12 @@ export function uploadProfilePhoto(
   }).then(async (response) => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (
+        response.status === 401 &&
+        (payload as ApiErrorShape).error?.code === "UNAUTHORIZED"
+      ) {
+        window.dispatchEvent(new Event("authenticflavors:unauthorized"));
+      }
       const message =
         payload.error?.message ?? "Failed to upload profile photo.";
       throw new ApiError(
@@ -285,8 +308,8 @@ export function verifyEmailChange(
   accessToken: string,
   newEmail: string,
   code: string,
-): Promise<AuthMeResponse & { message: string }> {
-  return request<AuthMeResponse & { message: string }>(
+): Promise<AuthMeResponse & { message: string; accessToken: string }> {
+  return request<AuthMeResponse & { message: string; accessToken: string }>(
     "/api/auth/change-email/verify",
     {
       method: "POST",
@@ -312,12 +335,15 @@ export interface ChangePasswordPayload {
 export function changePassword(
   accessToken: string,
   payload: ChangePasswordPayload,
-): Promise<{ message: string }> {
-  return request<{ message: string }>("/api/auth/change-password", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+): Promise<{ message: string; accessToken: string }> {
+  return request<{ message: string; accessToken: string }>(
+    "/api/auth/change-password",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+  );
 }
