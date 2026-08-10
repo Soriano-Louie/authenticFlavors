@@ -1352,8 +1352,6 @@ function MenuManagementSection() {
   const [editingItem, setEditingItem] = useState<AdminMenuItem | null>(null);
   const [deletingItem, setDeletingItem] = useState<AdminMenuItem | null>(null);
   const [itemForm, setItemForm] = useState<ItemFormData>(emptyItemForm);
-  const [itemImageFile, setItemImageFile] = useState<File | null>(null);
-  const [itemImagePreview, setItemImagePreview] = useState<string | null>(null);
   const [submittingItem, setSubmittingItem] = useState(false);
 
   const fetchCategories = async () => {
@@ -1478,8 +1476,6 @@ function MenuManagementSection() {
   const handleAddItem = () => {
     setEditingItem(null);
     setItemForm(emptyItemForm);
-    setItemImageFile(null);
-    setItemImagePreview(null);
     setShowItemModal(true);
   };
 
@@ -1492,8 +1488,6 @@ function MenuManagementSection() {
       additional_price: String(item.additional_price),
       availability_status: item.availability_status,
     });
-    setItemImageFile(null);
-    setItemImagePreview(item.image || null);
     setShowItemModal(true);
   };
 
@@ -1501,18 +1495,6 @@ function MenuManagementSection() {
     setShowItemModal(false);
     setEditingItem(null);
     setItemForm(emptyItemForm);
-    setItemImageFile(null);
-    setItemImagePreview(null);
-  };
-
-  const handleItemImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setItemImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setItemImagePreview(reader.result as string);
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleItemSubmit = async () => {
@@ -1530,10 +1512,6 @@ function MenuManagementSection() {
       formPayload.append("description", itemForm.description.trim());
       formPayload.append("additional_price", itemForm.additional_price);
       formPayload.append("availability_status", itemForm.availability_status);
-
-      if (itemImageFile) {
-        formPayload.append("image", itemImageFile);
-      }
 
       if (editingItem) {
         await updateAdminMenuItem(
@@ -2080,47 +2058,6 @@ function MenuManagementSection() {
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                   </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
-                  Item Image
-                </label>
-                <div className="flex items-center gap-4">
-                  {itemImagePreview ? (
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[#C8922A]/20">
-                      <img
-                        src={itemImagePreview}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={() => {
-                          setItemImageFile(null);
-                          setItemImagePreview(null);
-                        }}
-                        className="absolute top-1 right-1 p-0.5 rounded-full bg-[#C4541A]/80 text-white"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="w-16 h-16 rounded-xl border-2 border-dashed border-[#C8922A]/30 flex flex-col items-center justify-center cursor-pointer hover:border-[#C8922A] transition-colors">
-                      <ImagePlus size={20} className="text-[#C8922A]/50" />
-                      <span className="text-[9px] font-['Lato'] text-[#C8922A]/50 mt-0.5">
-                        Upload
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        onChange={handleItemImageSelect}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">
-                    JPEG, PNG, GIF, WebP. Max 5MB.
-                  </span>
                 </div>
               </div>
             </div>
