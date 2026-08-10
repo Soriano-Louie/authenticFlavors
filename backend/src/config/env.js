@@ -54,7 +54,7 @@ export const env = {
   brevoApiKey: process.env.BREVO_API_KEY,
   senderEmail: process.env.BREVO_SENDER_EMAIL,
   senderName: process.env.BREVO_SENDER_NAME,
-  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
+  frontendUrl: process.env.FRONTEND_URL ?? "https://authentic-flavors.vercel.app",
 };
 
 export const isProduction = env.nodeEnv === "production";

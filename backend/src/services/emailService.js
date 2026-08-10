@@ -427,7 +427,7 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
       </div>
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <div style="text-align: center; margin-bottom: 16px;">
-          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Booking Confirmed</span>
+          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Booking Confirmed</span>
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Great news! Your booking is confirmed.</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
@@ -447,7 +447,7 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
           Please log into your dashboard to check your payment schedule and manage your event details.
         </p>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             Go to Dashboard
           </a>
         </div>
@@ -553,9 +553,9 @@ export async function sendPaymentApprovedEmail(email, firstName, paymentDetails)
       </div>
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <div style="text-align: center; margin-bottom: 16px;">
-          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Payment Approved</span>
+          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Payment Approved</span>
         </div>
-        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Payment Received & Verified</h2>
+        <h2 style="color: #C4541A; font-size: 18px; margin: 0 0 12px;">Payment Received & Verified</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Hello${firstName ? ` ${firstName}` : ""},
         </p>
@@ -565,12 +565,12 @@ export async function sendPaymentApprovedEmail(email, firstName, paymentDetails)
         <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <table style="width: 100%; font-size: 14px; color: #2C1810;">
             <tr><td style="padding: 4px 0;">Payment Type:</td><td style="font-weight: bold; text-align: right;">${paymentTypeLabel}</td></tr>
-            <tr><td style="padding: 4px 0;">Amount Paid:</td><td style="font-weight: bold; text-align: right; color: #7A8C5C;">${formattedAmount}</td></tr>
+            <tr><td style="padding: 4px 0;">Amount Paid:</td><td style="font-weight: bold; text-align: right; color: #C4541A;">${formattedAmount}</td></tr>
             ${booking_reference ? `<tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference}</td></tr>` : ""}
           </table>
         </div>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Account Dashboard
           </a>
         </div>
@@ -778,7 +778,7 @@ export async function sendMenuChangeApprovedCustomerEmail(email, firstName, deta
       </div>
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <div style="text-align: center; margin-bottom: 16px;">
-          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Menu Change Approved</span>
+          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Menu Change Approved</span>
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Your Menu Change Was Approved!</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
@@ -789,10 +789,10 @@ export async function sendMenuChangeApprovedCustomerEmail(email, firstName, deta
         </p>
         <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <p style="font-size: 13px; color: #2C1810; margin: 0 0 8px;"><strong>Updated Menu Selections:</strong></p>
-          <p style="font-size: 13px; color: #7A8C5C; font-weight: bold; margin: 0;">${Array.isArray(updated_items) ? updated_items.join(", ") : updated_items}</p>
+          <p style="font-size: 13px; color: #C4541A; font-weight: bold; margin: 0;">${Array.isArray(updated_items) ? updated_items.join(", ") : updated_items}</p>
         </div>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
           </a>
         </div>
@@ -870,7 +870,7 @@ export async function sendVenueSetupApprovedCustomerEmail(email, firstName, deta
       </div>
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <div style="text-align: center; margin-bottom: 16px;">
-          <span style="display: inline-block; background-color: #7A8C5C; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Venue Setup Approved</span>
+          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Venue Setup Approved</span>
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Your Venue Setup Request Was Approved!</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
@@ -880,7 +880,7 @@ export async function sendVenueSetupApprovedCustomerEmail(email, firstName, deta
           Your venue setup request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) has been approved.
         </p>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7A8C5C, #5C6C42); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
           </a>
         </div>
