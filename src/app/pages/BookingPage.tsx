@@ -125,6 +125,8 @@ function transformPackage(
   );
   const hasInclusions = includedItemIds.size > 0;
 
+  const menuItemPrices: Record<string, number> = {};
+
   const menuSections = categories
     .map((category) => {
       const categoryItems = items
@@ -133,7 +135,10 @@ function transformPackage(
             return false;
           return item.category_id === category.category_id;
         })
-        .map((item) => item.item_name);
+        .map((item) => {
+          menuItemPrices[item.item_name] = Number(item.additional_price || 0);
+          return item.item_name;
+        });
 
       return {
         label: category.category_name,
@@ -156,6 +161,7 @@ function transformPackage(
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,
     menuSections,
+    menuItemPrices,
     inclusions: [
       "Premium table setup",
       "Service staff",
@@ -309,8 +315,21 @@ export function BookingPage() {
   }, [selectedPackageId, packages]);
 
   const totalEstimate = useMemo(() => {
-    return getPackagePriceForPax(selectedPackage, guestCount);
-  }, [selectedPackage, guestCount]);
+    const base = getPackagePriceForPax(selectedPackage, guestCount);
+    if (!selectedPackage || !selectedPackage.menuItemPrices) return base;
+    return Object.values(menuChoices).reduce((sum, itemName) => {
+      if (!itemName) return sum;
+      return sum + (Number(selectedPackage.menuItemPrices[itemName]) || 0);
+    }, base);
+  }, [selectedPackage, guestCount, menuChoices]);
+
+  const menuSurcharge = useMemo(() => {
+    if (!selectedPackage?.menuItemPrices) return 0;
+    return Object.values(menuChoices).reduce((sum, itemName) => {
+      if (!itemName) return sum;
+      return sum + (Number(selectedPackage.menuItemPrices[itemName]) || 0);
+    }, 0);
+  }, [selectedPackage, menuChoices]);
 
   const hasAllMenuChoices = useMemo(() => {
     if (!selectedPackage) return false;
@@ -702,10 +721,7 @@ export function BookingPage() {
                       Estimated total
                     </p>
                     <p className="text-3xl font-semibold text-[#C8922A]">
-                      ₱
-                      {Number(
-                        getPackagePriceForPax(selectedPackage, guestCount),
-                      ).toLocaleString()}
+                      ₱{totalEstimate.toLocaleString()}
                     </p>
                     <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1">
                       for {guestCount} pax
@@ -720,17 +736,31 @@ export function BookingPage() {
                 </p>
                 <div className="space-y-2 text-sm text-[#2C1810]/70 font-['Lato']">
                   {selectedPackage.menuSections.map(
-                    (section: { label: string; items: string[] }) => (
-                      <div
-                        key={section.label}
-                        className="flex items-start justify-between gap-3"
-                      >
-                        <span>{section.label}</span>
-                        <span className="text-right font-medium text-[#2C1810]">
-                          {menuChoices[section.label] || "—"}
-                        </span>
-                      </div>
-                    ),
+                    (section: { label: string; items: string[] }) => {
+                      const choice = menuChoices[section.label] || "—";
+                      const choicePrice =
+                        choice !== "—"
+                          ? Number(
+                              selectedPackage.menuItemPrices?.[choice] || 0,
+                            )
+                          : 0;
+                      return (
+                        <div
+                          key={section.label}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <span>{section.label}</span>
+                          <span className="text-right font-medium text-[#2C1810]">
+                            {choice}
+                            {choicePrice > 0 && (
+                              <span className="ml-1 font-['Lato'] font-semibold text-[#C4541A]">
+                                +₱{choicePrice.toLocaleString()}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    },
                   )}
                 </div>
               </div>
@@ -769,6 +799,9 @@ export function BookingPage() {
                           {section.items.map((item: string) => {
                             const isSelected =
                               menuChoices[section.label] === item;
+                            const itemPrice = Number(
+                              selectedPackage.menuItemPrices?.[item] || 0,
+                            );
 
                             return (
                               <button
@@ -788,7 +821,14 @@ export function BookingPage() {
                                 >
                                   {isSelected ? <Check size={12} /> : null}
                                 </span>
-                                <span>{item}</span>
+                                <span className="flex-1 flex items-center justify-between gap-2">
+                                  <span>{item}</span>
+                                  {itemPrice > 0 && (
+                                    <span className="whitespace-nowrap font-['Lato'] font-semibold text-[#C4541A]">
+                                      +₱{itemPrice.toLocaleString()}
+                                    </span>
+                                  )}
+                                </span>
                               </button>
                             );
                           })}
@@ -989,19 +1029,33 @@ export function BookingPage() {
                   </h4>
                   <div className="space-y-2 text-sm font-['Lato']">
                     {selectedPackage.menuSections.map(
-                      (section: { label: string; items: string[] }) => (
-                        <div
-                          key={section.label}
-                          className="flex items-start justify-between gap-3 border-b border-[#C8922A]/10 pb-2"
-                        >
-                          <span className="text-[#2C1810]/50">
-                            {section.label}
-                          </span>
-                          <span className="text-[#2C1810] font-medium text-right">
-                            {menuChoices[section.label] || "—"}
-                          </span>
-                        </div>
-                      ),
+                      (section: { label: string; items: string[] }) => {
+                        const choice = menuChoices[section.label] || "—";
+                        const choicePrice =
+                          choice !== "—"
+                            ? Number(
+                                selectedPackage.menuItemPrices?.[choice] || 0,
+                              )
+                            : 0;
+                        return (
+                          <div
+                            key={section.label}
+                            className="flex items-start justify-between gap-3 border-b border-[#C8922A]/10 pb-2"
+                          >
+                            <span className="text-[#2C1810]/50">
+                              {section.label}
+                            </span>
+                            <span className="text-[#2C1810] font-medium text-right">
+                              {choice}
+                              {choicePrice > 0 && (
+                                <span className="ml-1 font-['Lato'] font-semibold text-[#C4541A]">
+                                  +₱{choicePrice.toLocaleString()}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      },
                     )}
                   </div>
                 </div>
@@ -1078,8 +1132,20 @@ export function BookingPage() {
                   </div>
                   <div className="flex justify-between text-sm font-['Lato'] mb-3">
                     <span className="text-[#F5F0E8]/60">Package Total</span>
-                    <span>₱{totalEstimate.toLocaleString()}</span>
+                    <span>
+                      ₱
+                      {getPackagePriceForPax(
+                        selectedPackage,
+                        guestCount,
+                      ).toLocaleString()}
+                    </span>
                   </div>
+                  {menuSurcharge > 0 && (
+                    <div className="flex justify-between text-sm font-['Lato'] mb-3">
+                      <span className="text-[#F5F0E8]/60">Menu Add-ons</span>
+                      <span>+₱{menuSurcharge.toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="border-t border-[#C8922A]/30 pt-3 flex justify-between">
                     <span className="font-['Playfair_Display'] text-lg">
                       Estimated Total
