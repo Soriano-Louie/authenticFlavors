@@ -16,6 +16,7 @@ import { venueSetupRouter } from "./routes/venueSetupRoutes.js";
 
 export function createApp() {
   const app = express();
+  app.disable("x-powered-by");
 
   app.use(
     cors({
@@ -44,6 +45,15 @@ export function createApp() {
       credentials: true,
     }),
   );
+
+  // Baseline security headers for the API (JSON responses; CSP is a
+  // frontend/Vercel concern since the SPA is served statically).
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
 
   app.use(express.json());
   app.use(cookieParser());
