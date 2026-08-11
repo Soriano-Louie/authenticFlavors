@@ -15,28 +15,58 @@ export async function getPackages(_req, res) {
       "SELECT * FROM packages WHERE status = 'Active' ORDER BY package_name",
     );
 
-    // Fetch pricing for all packages
-    const packagesWithPricing = await Promise.all(
-      rows.map(async (pkg) => {
-        const [pricingRows] = await pool.query(
-          "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
-          [pkg.package_id],
-        );
-        const [inclusionRows] = await pool.query(
-          `SELECT pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
-           FROM package_menu_inclusions pmi
-           JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
-           JOIN menu_categories mc ON mi.category_id = mc.category_id
-           WHERE pmi.package_id = ? ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
-          [pkg.package_id],
-        );
-        return {
-          ...pkg,
-          pricing: pricingRows,
-          menu_inclusions: inclusionRows,
+    let packagesWithPricing = [];
+
+    if (rows.length > 0) {
+      const ids = rows.map((pkg) => pkg.package_id);
+      const placeholders = ids.map(() => "?").join(",");
+
+      // Batch-fetch pricing and inclusions for ALL packages in two queries
+      // instead of two queries per package (avoids the N+1 problem).
+      const [pricingRows] = await pool.query(
+        `SELECT package_id, pax_count, price FROM package_pricing
+         WHERE package_id IN (${placeholders}) ORDER BY pax_count`,
+        ids,
+      );
+
+      const [inclusionRows] = await pool.query(
+        `SELECT pmi.package_id, pmi.inclusion_id, pmi.menu_item_id, pmi.display_order, mi.item_name, mi.category_id, mc.category_name
+         FROM package_menu_inclusions pmi
+         JOIN menu_items mi ON pmi.menu_item_id = mi.menu_item_id
+         JOIN menu_categories mc ON mi.category_id = mc.category_id
+         WHERE pmi.package_id IN (${placeholders})
+         ORDER BY pmi.display_order, mc.display_order, mc.category_name, mi.item_name`,
+        ids,
+      );
+
+      const pricingByPackage = new Map();
+      for (const row of pricingRows) {
+        const list = pricingByPackage.get(row.package_id);
+        if (list) list.push({ pax_count: row.pax_count, price: row.price });
+        else pricingByPackage.set(row.package_id, [{ pax_count: row.pax_count, price: row.price }]);
+      }
+
+      const inclusionsByPackage = new Map();
+      for (const row of inclusionRows) {
+        const entry = {
+          inclusion_id: row.inclusion_id,
+          menu_item_id: row.menu_item_id,
+          display_order: row.display_order,
+          item_name: row.item_name,
+          category_id: row.category_id,
+          category_name: row.category_name,
         };
-      }),
-    );
+        const list = inclusionsByPackage.get(row.package_id);
+        if (list) list.push(entry);
+        else inclusionsByPackage.set(row.package_id, [entry]);
+      }
+
+      packagesWithPricing = rows.map((pkg) => ({
+        ...pkg,
+        pricing: pricingByPackage.get(pkg.package_id) ?? [],
+        menu_inclusions: inclusionsByPackage.get(pkg.package_id) ?? [],
+      }));
+    }
 
     res.status(200).json({ packages: packagesWithPricing });
   } catch (error) {

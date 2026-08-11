@@ -9,6 +9,7 @@ import {
   cancelBookingSession,
 } from "../controllers/chatbotController.js";
 import { requireAuth } from "../middleware/auth.js";
+import { chatLimiter } from "../middleware/rateLimit.js";
 
 export const chatbotRouter = Router();
 
@@ -30,6 +31,7 @@ chatbotRouter.post(
     }
     return next();
   },
+  chatLimiter,
   sendMessage,
 );
 

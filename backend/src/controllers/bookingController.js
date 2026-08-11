@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { pool } from "../db/pool.js";
 import {
   getPhilippineDateString,
@@ -240,12 +241,12 @@ export async function createBooking(req, res) {
       });
     }
 
-    // Generate unique 6-digit ref only for AI/chatbot bookings
+    // Generate unique 6-digit refs (crypto-random with uniqueness retry)
     const ai_booking_reference = is_ai_booking
-      ? Math.floor(100000 + Math.random() * 900000)
+      ? await generateUniqueBookingReference(connection, "ai")
       : null;
     const booking_reference = !is_ai_booking
-      ? `BK-${Math.floor(100000 + Math.random() * 900000)}`
+      ? await generateUniqueBookingReference(connection, "bk")
       : null;
 
     // Setup booking summary JSON
@@ -394,8 +395,32 @@ export async function createBooking(req, res) {
   }
 }
 
+// Generate a crypto-random booking reference and retry until it is unique.
+async function generateUniqueBookingReference(connection, kind) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const digits = crypto.randomInt(100000, 1000000);
+    const ref = kind === "ai" ? String(digits) : `BK-${digits}`;
+    const column =
+      kind === "ai" ? "ai_booking_reference" : "booking_reference";
+    const [rows] = await connection.query(
+      `SELECT booking_id FROM bookings WHERE ${column} = ? LIMIT 1`,
+      [ref],
+    );
+    if (rows.length === 0) return ref;
+  }
+  throw new Error("Unable to generate a unique booking reference.");
+}
+
 // Auto-complete past confirmed/reserved bookings
 export async function autoCompletePastBookings() {
+  // Skip the UPDATE entirely (and its table scan) when nothing is due.
+  const [due] = await pool.query(
+    `SELECT booking_id FROM bookings
+     WHERE booking_status IN ('Confirmed', 'Reserved') AND event_date < CURDATE()
+     LIMIT 1`,
+  );
+  if (due.length === 0) return;
+
   await pool.query(
     `UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
      WHERE booking_status IN ('Confirmed', 'Reserved') AND event_date < CURDATE()`,
@@ -421,24 +446,31 @@ export async function getBookings(req, res) {
       [userId],
     );
 
-    // Fetch menu selections for each booking
-    const bookingsWithDetails = await Promise.all(
-      bookings.map(async (booking) => {
-        const [menuSelections] = await pool.query(
-          `SELECT mi.item_name, mc.category_name
-           FROM booking_menu_selections bms
-           JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
-           JOIN menu_categories mc ON bms.category_id = mc.category_id
-           WHERE bms.booking_id = ?`,
-          [booking.booking_id],
-        );
+    // Fetch menu selections for all bookings in one query (avoids N+1)
+    const menuByBooking = new Map();
+    if (bookings.length > 0) {
+      const ids = bookings.map((b) => b.booking_id);
+      const placeholders = ids.map(() => "?").join(",");
+      const [menuSelections] = await pool.query(
+        `SELECT bms.booking_id, mi.item_name, mc.category_name
+         FROM booking_menu_selections bms
+         JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+         JOIN menu_categories mc ON bms.category_id = mc.category_id
+         WHERE bms.booking_id IN (${placeholders})`,
+        ids,
+      );
+      for (const row of menuSelections) {
+        const list = menuByBooking.get(row.booking_id);
+        const entry = { item_name: row.item_name, category_name: row.category_name };
+        if (list) list.push(entry);
+        else menuByBooking.set(row.booking_id, [entry]);
+      }
+    }
 
-        return {
-          ...booking,
-          menu_selections: menuSelections,
-        };
-      }),
-    );
+    const bookingsWithDetails = bookings.map((booking) => ({
+      ...booking,
+      menu_selections: menuByBooking.get(booking.booking_id) ?? [],
+    }));
 
     res.status(200).json({ bookings: bookingsWithDetails });
   } catch (error) {
@@ -466,24 +498,31 @@ export async function getAdminBookings(req, res) {
        ORDER BY b.created_at DESC`,
     );
 
-    // Fetch menu selections for each booking
-    const bookingsWithDetails = await Promise.all(
-      bookings.map(async (booking) => {
-        const [menuSelections] = await pool.query(
-          `SELECT mi.item_name, mc.category_name
-           FROM booking_menu_selections bms
-           JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
-           JOIN menu_categories mc ON bms.category_id = mc.category_id
-           WHERE bms.booking_id = ?`,
-          [booking.booking_id],
-        );
+    // Fetch menu selections for all bookings in one query (avoids N+1)
+    const menuByBooking = new Map();
+    if (bookings.length > 0) {
+      const ids = bookings.map((b) => b.booking_id);
+      const placeholders = ids.map(() => "?").join(",");
+      const [menuSelections] = await pool.query(
+        `SELECT bms.booking_id, mi.item_name, mc.category_name
+         FROM booking_menu_selections bms
+         JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+         JOIN menu_categories mc ON bms.category_id = mc.category_id
+         WHERE bms.booking_id IN (${placeholders})`,
+        ids,
+      );
+      for (const row of menuSelections) {
+        const list = menuByBooking.get(row.booking_id);
+        const entry = { item_name: row.item_name, category_name: row.category_name };
+        if (list) list.push(entry);
+        else menuByBooking.set(row.booking_id, [entry]);
+      }
+    }
 
-        return {
-          ...booking,
-          menu_selections: menuSelections,
-        };
-      }),
-    );
+    const bookingsWithDetails = bookings.map((booking) => ({
+      ...booking,
+      menu_selections: menuByBooking.get(booking.booking_id) ?? [],
+    }));
 
     res.status(200).json({ bookings: bookingsWithDetails });
   } catch (error) {
@@ -499,16 +538,20 @@ export async function getAdminBookings(req, res) {
 
 // Manually complete booking (Admin only)
 export async function completeBooking(req, res) {
+  const connection = await pool.getConnection();
   try {
     const bookingId = Number(req.params.id);
 
-    // Get booking
-    const [bookings] = await pool.query(
-      "SELECT event_date, booking_status, booking_reference, ai_booking_reference FROM bookings WHERE booking_id = ? LIMIT 1",
+    // Lock the row so only one request can complete the booking.
+    await connection.beginTransaction();
+
+    const [bookings] = await connection.query(
+      "SELECT event_date, booking_status, booking_reference, ai_booking_reference FROM bookings WHERE booking_id = ? LIMIT 1 FOR UPDATE",
       [bookingId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -521,6 +564,7 @@ export async function completeBooking(req, res) {
     const eventDateStr = toPhilippineDateString(booking.event_date);
 
     if (eventDateStr > todayStr) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -533,6 +577,7 @@ export async function completeBooking(req, res) {
       booking.booking_status !== "Confirmed" &&
       booking.booking_status !== "Reserved"
     ) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -542,10 +587,22 @@ export async function completeBooking(req, res) {
       });
     }
 
-    await pool.query(
-      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
+    const [updateResult] = await connection.query(
+      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved')",
       [bookingId],
     );
+
+    if (updateResult.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
+
+    await connection.commit();
 
     logActivity({
       actorUserId: Number(req.auth?.sub) || null,
@@ -562,6 +619,7 @@ export async function completeBooking(req, res) {
       booking_status: "Completed",
     });
   } catch (error) {
+    await connection.rollback();
     console.error("Complete booking failed:", error);
     res.status(500).json({
       error: {
@@ -569,6 +627,8 @@ export async function completeBooking(req, res) {
         message: "Failed to mark booking as completed.",
       },
     });
+  } finally {
+    connection.release();
   }
 }
 
@@ -579,17 +639,23 @@ export async function verifyBooking(req, res) {
     const bookingId = Number(req.params.id);
     const { admin_remarks } = req.body;
 
+    // Lock the booking row for the whole check-and-update to prevent
+    // concurrent verifications from computing stale balances.
+    await connection.beginTransaction();
+
     const [bookings] = await connection.query(
       `SELECT b.booking_id, b.user_id, b.booking_status, b.amount_paid, b.remaining_balance, b.total_price,
               b.booking_reference, b.ai_booking_reference, b.event_date, u.email, u.first_name, p.package_name
        FROM bookings b
        JOIN users u ON b.user_id = u.user_id
        LEFT JOIN packages p ON b.package_id = p.package_id
-       WHERE b.booking_id = ? LIMIT 1`,
+       WHERE b.booking_id = ? LIMIT 1
+       FOR UPDATE`,
       [bookingId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -598,6 +664,7 @@ export async function verifyBooking(req, res) {
     const booking = bookings[0];
 
     if (booking.booking_status !== "Pending") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -605,8 +672,6 @@ export async function verifyBooking(req, res) {
         },
       });
     }
-
-    await connection.beginTransaction();
 
     const amountPaid = parseFloat(booking.amount_paid || 0);
     const remainingBalance = parseFloat(
@@ -616,12 +681,22 @@ export async function verifyBooking(req, res) {
     const newBookingStatus =
       newRemainingBalance <= 0 ? "Confirmed" : "Reserved";
 
-    await connection.query(
+    const [updateResult] = await connection.query(
       `UPDATE bookings 
        SET booking_status = ?, amount_paid = ?, remaining_balance = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ?`,
+       WHERE booking_id = ? AND booking_status = 'Pending'`,
       [newBookingStatus, amountPaid, newRemainingBalance, bookingId],
     );
+
+    if (updateResult.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
 
     await connection.commit();
 
@@ -795,15 +870,20 @@ export async function rejectBooking(req, res) {
     const bookingId = Number(req.params.id);
     const { admin_remarks } = req.body;
 
+    // Lock the booking row so concurrent requests cannot double-process it.
+    await connection.beginTransaction();
+
     const [bookings] = await connection.query(
       `SELECT b.booking_id, b.user_id, b.booking_status, b.booking_reference, b.ai_booking_reference, b.event_date, u.email, u.first_name
        FROM bookings b
        JOIN users u ON b.user_id = u.user_id
-       WHERE b.booking_id = ? LIMIT 1`,
+       WHERE b.booking_id = ? LIMIT 1
+       FOR UPDATE`,
       [bookingId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -812,6 +892,7 @@ export async function rejectBooking(req, res) {
     const booking = bookings[0];
 
     if (booking.booking_status !== "Pending") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -820,14 +901,22 @@ export async function rejectBooking(req, res) {
       });
     }
 
-    await connection.beginTransaction();
-
-    await connection.query(
+    const [updateResult] = await connection.query(
       `UPDATE bookings 
        SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ?`,
+       WHERE booking_id = ? AND booking_status = 'Pending'`,
       [bookingId],
     );
+
+    if (updateResult.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
 
     await connection.commit();
 
@@ -903,16 +992,21 @@ export async function requestCancellation(req, res) {
       });
     }
 
+    // Lock the booking row so concurrent requests cannot double-process it.
+    await connection.beginTransaction();
+
     // Get booking details
     const [bookings] = await connection.query(
       `SELECT b.*, p.package_name 
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
-       WHERE b.booking_id = ? LIMIT 1`,
+       WHERE b.booking_id = ? LIMIT 1
+       FOR UPDATE`,
       [bookingId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -922,6 +1016,7 @@ export async function requestCancellation(req, res) {
 
     // Verify user owns this booking
     if (booking.user_id !== userId) {
+      await connection.rollback();
       return res.status(403).json({
         error: {
           code: "FORBIDDEN",
@@ -932,6 +1027,7 @@ export async function requestCancellation(req, res) {
 
     // Check if booking is already cancelled or completed
     if (booking.booking_status === "Cancelled") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -941,6 +1037,7 @@ export async function requestCancellation(req, res) {
     }
 
     if (booking.booking_status === "Completed") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -949,13 +1046,16 @@ export async function requestCancellation(req, res) {
       });
     }
 
-    // Calculate days before event
-    const eventDate = new Date(booking.event_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    eventDate.setHours(0, 0, 0, 0);
-    const daysBeforeEvent = Math.floor(
-      (eventDate - today) / (1000 * 60 * 60 * 24),
+    // Calculate days before event using Philippine calendar days so the
+    // cancellation penalty is not off by one across UTC/PH boundaries.
+    const todayMs = new Date(
+      `${getPhilippineDateString()}T00:00:00Z`,
+    ).getTime();
+    const eventMs = new Date(
+      `${toPhilippineDateString(booking.event_date)}T00:00:00Z`,
+    ).getTime();
+    const daysBeforeEvent = Math.round(
+      (eventMs - todayMs) / (24 * 60 * 60 * 1000),
     );
 
     // Determine cancellation policy and calculate amount due
@@ -983,8 +1083,8 @@ export async function requestCancellation(req, res) {
 
     await connection.beginTransaction();
 
-    // Update booking with cancellation details
-    await connection.query(
+    // Update booking with cancellation details (only if not already cancelled)
+    const [cancelUpdate] = await connection.query(
       `UPDATE bookings 
        SET booking_status = 'Cancelled',
            cancellation_requested_at = CURRENT_TIMESTAMP,
@@ -993,9 +1093,19 @@ export async function requestCancellation(req, res) {
            amount_due_on_cancellation = ?,
            cancellation_notes = ?,
            updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ?`,
+       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
       [policyApplied, amountDue, cancellation_reason || null, bookingId],
     );
+
+    if (cancelUpdate.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
 
     // Cancel any existing pending payments for this booking FIRST
     // (before inserting new cancellation charge, to avoid cancelling it)
@@ -1008,24 +1118,36 @@ export async function requestCancellation(req, res) {
 
     // If additional amount is due, create a cancellation charge payment record
     if (additionalAmountDue > 0) {
-      // Due date: 7 days from today (Philippine time)
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 7);
-      const dueDateStr = dueDate.toLocaleDateString("sv-SE", {
-        timeZone: "Asia/Manila",
-      });
-
-      await connection.query(
-        `INSERT INTO payments 
-         (booking_id, payment_type, amount, due_date, payment_status, is_cancellation_charge, admin_remarks)
-         VALUES (?, 'CancellationCharge', ?, ?, 'Pending', TRUE, ?)`,
-        [
-          bookingId,
-          additionalAmountDue,
-          dueDateStr,
-          `Cancellation charge - ${policyApplied}. Event: ${booking.event_date}. Days before event: ${daysBeforeEvent}`,
-        ],
+      // Defense-in-depth: never insert a second cancellation charge if one
+      // already exists (e.g. for a previously cancelled booking).
+      const [existingCharges] = await connection.query(
+        `SELECT payment_id FROM payments
+         WHERE booking_id = ? AND payment_type = 'CancellationCharge'
+           AND payment_status IN ('Pending', 'Overdue', 'For_Verification')
+         LIMIT 1`,
+        [bookingId],
       );
+
+      if (existingCharges.length === 0) {
+        // Due date: 7 days from today (Philippine time)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 7);
+        const dueDateStr = dueDate.toLocaleDateString("sv-SE", {
+          timeZone: "Asia/Manila",
+        });
+
+        await connection.query(
+          `INSERT INTO payments 
+           (booking_id, payment_type, amount, due_date, payment_status, is_cancellation_charge, admin_remarks)
+           VALUES (?, 'CancellationCharge', ?, ?, 'Pending', TRUE, ?)`,
+          [
+            bookingId,
+            additionalAmountDue,
+            dueDateStr,
+            `Cancellation charge - ${policyApplied}. Event: ${booking.event_date}. Days before event: ${daysBeforeEvent}`,
+          ],
+        );
+      }
     }
 
     await connection.commit();
@@ -1138,13 +1260,15 @@ export async function getCancellationDetails(req, res) {
       });
     }
 
-    // Calculate days before event
-    const eventDate = new Date(booking.event_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    eventDate.setHours(0, 0, 0, 0);
-    const daysBeforeEvent = Math.floor(
-      (eventDate - today) / (1000 * 60 * 60 * 24),
+    // Calculate days before event using Philippine calendar days
+    const todayMs = new Date(
+      `${getPhilippineDateString()}T00:00:00Z`,
+    ).getTime();
+    const eventMs = new Date(
+      `${toPhilippineDateString(booking.event_date)}T00:00:00Z`,
+    ).getTime();
+    const daysBeforeEvent = Math.round(
+      (eventMs - todayMs) / (24 * 60 * 60 * 1000),
     );
 
     // Determine what policy would apply

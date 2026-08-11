@@ -17,7 +17,7 @@ export async function requireAuth(req, res, next) {
     // token_version. If it's stale (a newer login/password change happened),
     // treat the request as unauthenticated immediately.
     const [rows] = await pool.query(
-      "SELECT token_version FROM users WHERE user_id = ? LIMIT 1",
+      "SELECT token_version, role FROM users WHERE user_id = ? LIMIT 1",
       [Number(decoded.sub)],
     );
 
@@ -33,7 +33,9 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    req.auth = decoded;
+    // Use the CURRENT DB role rather than the role baked into the JWT, so a
+    // demoted admin loses privileges immediately (not at token expiry).
+    req.auth = { ...decoded, role: rows[0].role };
     return next();
   } catch {
     return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Invalid or expired access token." } });

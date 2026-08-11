@@ -19,7 +19,7 @@ export interface NotificationsResponse {
 
 const API_BASE_URL =
   (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
-  "https://authenticflavors.onrender.com";
+  "";
 
 export async function fetchNotifications(
   token: string,

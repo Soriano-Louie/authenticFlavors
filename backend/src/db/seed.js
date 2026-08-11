@@ -88,6 +88,46 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added booking_reference column.");
     }
 
+    // 0.19 Enforce uniqueness on booking references at the DB level so two
+    // bookings can never share a reference even if two requests race.
+    const [refIndexes] = await connection.query(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND INDEX_NAME = 'uq_booking_reference'`,
+      [connection.config.database],
+    );
+    if (refIndexes.length === 0) {
+      try {
+        await connection.query(
+          "ALTER TABLE bookings ADD UNIQUE KEY uq_booking_reference (booking_reference)",
+        );
+        console.log("[MIGRATION] Added unique index on booking_reference.");
+      } catch (err) {
+        console.warn(
+          "[MIGRATION] Could not add unique index on booking_reference (duplicates may exist):",
+          err.message,
+        );
+      }
+    }
+
+    const [aiRefIndexes] = await connection.query(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND INDEX_NAME = 'uq_ai_booking_reference'`,
+      [connection.config.database],
+    );
+    if (aiRefIndexes.length === 0) {
+      try {
+        await connection.query(
+          "ALTER TABLE bookings ADD UNIQUE KEY uq_ai_booking_reference (ai_booking_reference)",
+        );
+        console.log("[MIGRATION] Added unique index on ai_booking_reference.");
+      } catch (err) {
+        console.warn(
+          "[MIGRATION] Could not add unique index on ai_booking_reference (duplicates may exist):",
+          err.message,
+        );
+      }
+    }
+
     // 0.2 Add custom_event_type column to bookings table
     const [customEventTypeColumn] = await connection.query(
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -213,6 +253,7 @@ export async function seedDatabaseIfEmpty() {
         admin_remarks TEXT NULL,
         is_cancellation_charge BOOLEAN DEFAULT FALSE,
         cancellation_reference VARCHAR(255) NULL,
+        reminder_sent_at DATETIME NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE
@@ -305,6 +346,11 @@ export async function seedDatabaseIfEmpty() {
         "ADD COLUMN cancellation_reference VARCHAR(255) NULL",
       );
     }
+    if (!paymentExtraColumnNames.includes("reminder_sent_at")) {
+      paymentExtraAlterations.push(
+        "ADD COLUMN reminder_sent_at DATETIME NULL",
+      );
+    }
     if (paymentExtraAlterations.length > 0) {
       const alterSql = `ALTER TABLE payments ${paymentExtraAlterations.join(", ")}`;
       await connection.query(alterSql);
@@ -319,7 +365,7 @@ export async function seedDatabaseIfEmpty() {
       CREATE TABLE IF NOT EXISTS email_verifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         email VARCHAR(255) NOT NULL,
-        code VARCHAR(6) NOT NULL,
+        code VARCHAR(64) NOT NULL,
         expires_at DATETIME NOT NULL,
         is_used BOOLEAN DEFAULT FALSE,
         attempt_count INT DEFAULT 0,
@@ -330,6 +376,12 @@ export async function seedDatabaseIfEmpty() {
       )
     `);
     console.log("[MIGRATION] email_verifications table ensured.");
+
+    // 0.30 Widen email_verifications.code so SHA-256 hashes (64 chars) fit.
+    await connection.query(
+      "ALTER TABLE email_verifications MODIFY COLUMN code VARCHAR(64) NOT NULL",
+    );
+    console.log("[MIGRATION] email_verifications.code widened to VARCHAR(64).");
 
     // 0.31 Create email_change_verifications table
     // Stores hashed one-time codes for verifying an email address change.

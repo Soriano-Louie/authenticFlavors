@@ -40,7 +40,7 @@ export interface PaymentInstruction {
 
 const API_BASE_URL =
   (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
-  "https://authenticflavors.onrender.com";
+  "";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
@@ -124,7 +124,7 @@ export function uploadReceiptFile(
 
   const API_BASE_URL =
     (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
-    "https://authenticflavors.onrender.com";
+    "";
 
   return fetch(`${API_BASE_URL}/api/payments/upload-receipt-file`, {
     method: "POST",

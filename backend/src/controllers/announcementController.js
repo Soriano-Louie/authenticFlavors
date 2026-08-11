@@ -3,6 +3,7 @@ import {
   uploadToCloudinary,
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
+import { getPhilippineDateTimeString } from "../utils/timezone.js";
 
 /**
  * GET /api/announcements/public
@@ -10,13 +11,17 @@ import {
  */
 export async function getPublicAnnouncements(req, res, next) {
   try {
+    // Compare against the Philippine time to avoid drifting with the MySQL
+    // server's own timezone (publish_date is stored as PH wall-clock time).
+    const nowPH = getPhilippineDateTimeString();
     const [announcements] = await pool.query(
       `SELECT id, title, content, publish_date, expiration_date, image_url, created_at
        FROM announcements
        WHERE status = 'published'
-         AND publish_date <= NOW()
-         AND (expiration_date IS NULL OR expiration_date >= NOW())
+         AND publish_date <= ?
+         AND (expiration_date IS NULL OR expiration_date >= ?)
        ORDER BY publish_date DESC, created_at DESC`,
+      [nowPH, nowPH],
     );
 
     res.json({ announcements });
@@ -70,15 +75,6 @@ export async function createAnnouncement(req, res, next) {
       return res
         .status(400)
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
-    }
-
-    // Validate publish_date is not in the past
-    const publishDateTime = new Date(publish_date);
-    const currentDateTime = new Date();
-    if (publishDateTime < currentDateTime) {
-      return res
-        .status(400)
-        .json({ error: { message: "Publish date cannot be in the past." } });
     }
 
     // Validate expiration_date is after publish_date
@@ -174,17 +170,6 @@ export async function updateAnnouncement(req, res, next) {
       return res
         .status(400)
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
-    }
-
-    // Validate publish_date is not in the past
-    if (publish_date) {
-      const publishDateTime = new Date(publish_date);
-      const currentDateTime = new Date();
-      if (publishDateTime < currentDateTime) {
-        return res
-          .status(400)
-          .json({ error: { message: "Publish date cannot be in the past." } });
-      }
     }
 
     // Validate expiration_date is after publish_date

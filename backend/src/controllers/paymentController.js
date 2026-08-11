@@ -18,10 +18,13 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
 // Auto-update overdue payments (run on every payment fetch)
 // ──────────────────────────────────────────
 export async function autoUpdateOverduePayments() {
+  // CancellationCharge rows are excluded: they are short-lived debts created
+  // on cancellation and must not be swept into the overdue-cancel flow.
   await pool.query(
     `UPDATE payments 
      SET payment_status = 'Overdue' 
      WHERE payment_status = 'Pending' 
+       AND payment_type != 'CancellationCharge'
        AND due_date < CURDATE()`,
   );
 }
@@ -144,7 +147,34 @@ export async function uploadReceiptFile(req, res) {
     // Upload to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, "receipts");
 
-    await connection.query(
+    // Re-check the payment status under lock before persisting, so a slow
+    // Cloudinary upload can never overwrite a payment the admin just verified.
+    await connection.beginTransaction();
+    const [lockedPayments] = await connection.query(
+      `SELECT payment_id, payment_status FROM payments
+       WHERE payment_id = ? FOR UPDATE`,
+      [payment_id],
+    );
+    const lockedPayment = lockedPayments[0];
+    if (
+      !lockedPayment ||
+      (lockedPayment.payment_status !== "Pending" &&
+        lockedPayment.payment_status !== "Rejected")
+    ) {
+      await connection.rollback();
+      if (result?.public_id) {
+        await deleteFromCloudinary(result.public_id).catch(() => {});
+      }
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Receipt can only be uploaded for pending or rejected payments.",
+        },
+      });
+    }
+
+    const [receiptUpdate] = await connection.query(
       `UPDATE payments 
        SET receipt_url = ?, 
            receipt_public_id = ?, 
@@ -152,9 +182,21 @@ export async function uploadReceiptFile(req, res) {
            payment_status = 'For_Verification',
            payment_reference = NULL,
            payment_method = 'Receipt'
-       WHERE payment_id = ?`,
+       WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected')`,
       [result.secure_url, result.public_id, payment_id],
     );
+
+    if (receiptUpdate.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Payment status changed while uploading. Please try again.",
+        },
+      });
+    }
+
+    await connection.commit();
 
     const paymentTypeLabel =
       payment.payment_type === "Reservation"
@@ -198,6 +240,7 @@ export async function uploadReceiptFile(req, res) {
       receipt_public_id: result.public_id,
     });
   } catch (error) {
+    await connection.rollback();
     console.error("Upload receipt file failed:", error);
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to upload receipt." },
@@ -358,6 +401,9 @@ export async function verifyReceipt(req, res) {
       });
     }
 
+    // Lock the payment row so a payment cannot be verified twice concurrently.
+    await connection.beginTransaction();
+
     // Get payment details
     const [payments] = await connection.query(
       `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status,
@@ -365,11 +411,13 @@ export async function verifyReceipt(req, res) {
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_id = ?`,
+       WHERE p.payment_id = ?
+       FOR UPDATE`,
       [paymentId],
     );
 
     if (payments.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Payment not found." },
       });
@@ -378,6 +426,7 @@ export async function verifyReceipt(req, res) {
     const payment = payments[0];
 
     if (payment.payment_status !== "For_Verification") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -400,17 +449,27 @@ export async function verifyReceipt(req, res) {
     if (action === "approve") {
       const paidAt = getPhilippineDateTimeString();
 
-      // Update payment as paid
-      await connection.query(
+      // Update payment as paid (guarded so it can only happen once)
+      const [payUpdate] = await connection.query(
         `UPDATE payments 
          SET payment_status = 'Paid', 
              paid_at = ?, 
              verified_by = ?, 
              verified_at = ?,
              admin_remarks = ?
-         WHERE payment_id = ?`,
+         WHERE payment_id = ? AND payment_status = 'For_Verification'`,
         [paidAt, adminId, paidAt, admin_remarks || null, paymentId],
       );
+
+      if (payUpdate.affectedRows === 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: {
+            code: "INVALID_STATE",
+            message: "Payment has already been verified by another request.",
+          },
+        });
+      }
 
       // Update booking: add amount_paid, reduce remaining_balance, update status
       const newAmountPaid =
@@ -433,15 +492,27 @@ export async function verifyReceipt(req, res) {
         newBookingStatus = "Confirmed";
       }
 
-      await connection.query(
+      const [bookingUpdate] = await connection.query(
         `UPDATE bookings 
          SET booking_status = ?,
              amount_paid = ?,
              remaining_balance = ?,
              updated_at = CURRENT_TIMESTAMP
-         WHERE booking_id = ?`,
+         WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
         [newBookingStatus, newAmountPaid, newRemaining, payment.booking_id],
       );
+
+      if (bookingUpdate.affectedRows === 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: {
+            code: "INVALID_STATE",
+            message: "Booking can no longer accept this payment.",
+          },
+        });
+      }
+
+      await connection.commit();
 
       const paidActionLabel =
         payment.payment_type === "Reservation"
@@ -513,14 +584,14 @@ export async function verifyReceipt(req, res) {
         remaining_balance: newRemaining,
       });
     } else {
-      // Reject
-      await connection.query(
+      // Reject (guarded so a payment can only be rejected once)
+      const [rejUpdate] = await connection.query(
         `UPDATE payments 
          SET payment_status = 'Rejected',
              verified_by = ?,
              verified_at = ?,
              admin_remarks = ?
-         WHERE payment_id = ?`,
+         WHERE payment_id = ? AND payment_status = 'For_Verification'`,
         [
           adminId,
           getPhilippineDateTimeString(),
@@ -528,6 +599,18 @@ export async function verifyReceipt(req, res) {
           paymentId,
         ],
       );
+
+      if (rejUpdate.affectedRows === 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: {
+            code: "INVALID_STATE",
+            message: "Payment has already been verified by another request.",
+          },
+        });
+      }
+
+      await connection.commit();
 
       logActivity({
         actorUserId: adminId,
@@ -560,6 +643,7 @@ export async function verifyReceipt(req, res) {
       });
     }
   } catch (error) {
+    await connection.rollback();
     console.error("Verify receipt failed:", error);
     res.status(500).json({
       error: {
@@ -613,9 +697,7 @@ export async function getPaymentStatus(req, res) {
       payment_reference: payment.payment_reference,
       receipt_url: payment.receipt_url,
       receipt_uploaded_at: payment.receipt_uploaded_at,
-      verified_by: payment.verified_by,
       verified_at: payment.verified_at,
-      admin_remarks: payment.admin_remarks,
     });
   } catch (error) {
     console.error("Get payment status failed:", error);
@@ -730,16 +812,22 @@ export async function cancelBookingForOverdue(req, res) {
   try {
     const { paymentId } = req.params;
 
+    // Lock the payment row so a repeated overdue sweep cannot overwrite a
+    // booking that was resolved in the meantime.
+    await connection.beginTransaction();
+
     // Get the payment and its booking
     const [payments] = await connection.query(
       `SELECT p.*, b.booking_status, b.booking_reference
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
-       WHERE p.payment_id = ?`,
+       WHERE p.payment_id = ?
+       FOR UPDATE`,
       [paymentId],
     );
 
     if (payments.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Payment not found." },
       });
@@ -747,16 +835,29 @@ export async function cancelBookingForOverdue(req, res) {
 
     const payment = payments[0];
 
-    if (payment.booking_status === "Cancelled") {
+    if (
+      payment.booking_status === "Cancelled" ||
+      payment.booking_status === "Completed"
+    ) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
-          message: "Booking is already cancelled.",
+          message: "Booking is already cancelled or completed.",
         },
       });
     }
 
-    await connection.beginTransaction();
+    // Only unsettled payments can trigger an overdue cancellation.
+    if (payment.payment_status === "Paid") {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "This payment has already been settled.",
+        },
+      });
+    }
 
     // Cancel all unpaid payments for this booking
     await connection.query(
@@ -766,13 +867,23 @@ export async function cancelBookingForOverdue(req, res) {
       [payment.booking_id],
     );
 
-    // Cancel the booking
-    await connection.query(
+    // Cancel the booking (guarded so it cannot be re-cancelled)
+    const [bookingUpdate] = await connection.query(
       `UPDATE bookings 
        SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ?`,
+       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
       [payment.booking_id],
     );
+
+    if (bookingUpdate.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
 
     await connection.commit();
 
@@ -819,7 +930,8 @@ export async function sendScheduledPaymentReminders() {
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)`,
+         AND p.due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
     );
 
     for (const payment of upcomingPayments) {
@@ -831,6 +943,10 @@ export async function sendScheduledPaymentReminders() {
           due_date: payment.due_date,
           booking_reference: payment.booking_reference,
         });
+        await pool.query(
+          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
+          [payment.payment_id],
+        );
       } catch (err) {
         console.error(
           "Failed to send upcoming reminder for payment:",
@@ -848,7 +964,8 @@ export async function sendScheduledPaymentReminders() {
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date = CURDATE()`,
+         AND p.due_date = CURDATE()
+         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
     );
 
     for (const payment of dueTodayPayments) {
@@ -860,6 +977,10 @@ export async function sendScheduledPaymentReminders() {
           due_date: payment.due_date,
           booking_reference: payment.booking_reference,
         });
+        await pool.query(
+          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
+          [payment.payment_id],
+        );
       } catch (err) {
         console.error(
           "Failed to send due today notice for payment:",
@@ -878,7 +999,8 @@ export async function sendScheduledPaymentReminders() {
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date < CURDATE()`,
+         AND p.due_date < CURDATE()
+         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
     );
 
     for (const payment of overduePayments) {
@@ -891,6 +1013,10 @@ export async function sendScheduledPaymentReminders() {
           booking_reference: payment.booking_reference,
           overdue_days: payment.overdue_days,
         });
+        await pool.query(
+          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
+          [payment.payment_id],
+        );
       } catch (err) {
         console.error(
           "Failed to send overdue notice for payment:",
@@ -944,8 +1070,14 @@ export async function getBookingPayments(req, res) {
       });
     }
 
+    // Explicit projection: never leak internal admin remarks or receipt
+    // storage metadata (e.g. Cloudinary public id / stored file names) to the
+    // frontend, including for admin viewers of this endpoint.
     const [payments] = await pool.query(
-      `SELECT * FROM payments WHERE booking_id = ? ORDER BY 
+      `SELECT payment_id, booking_id, payment_type, amount, due_date,
+              paid_at, payment_status, payment_reference, payment_method,
+              receipt_url, is_cancellation_charge, created_at, updated_at
+       FROM payments WHERE booking_id = ? ORDER BY 
        CASE payment_type 
          WHEN 'Reservation' THEN 1 
          WHEN 'DownPayment' THEN 2 

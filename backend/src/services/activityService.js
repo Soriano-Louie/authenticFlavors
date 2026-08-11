@@ -5,7 +5,9 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
  * Resolves the display name for a user. Caches lookups per request to avoid
  * repeated queries when multiple activities are logged in one flow.
  */
-const nameCache = new Map();
+const NAME_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const NAME_CACHE_MAX_SIZE = 1000;
+const nameCache = new Map(); // userId -> { name, expiresAt }
 
 export function clearNameCache() {
   nameCache.clear();
@@ -15,8 +17,13 @@ export async function getUserName(userId) {
   if (!userId) {
     return "Admin";
   }
-  if (nameCache.has(userId)) {
-    return nameCache.get(userId);
+  const cached = nameCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.name;
+  }
+  if (cached) {
+    // Expired entry — evict it so the next lookup re-queries the DB.
+    nameCache.delete(userId);
   }
   const [rows] = await pool.query(
     "SELECT first_name, last_name FROM users WHERE user_id = ?",
@@ -24,7 +31,16 @@ export async function getUserName(userId) {
   );
   const row = rows[0];
   const name = row ? `${row.first_name} ${row.last_name}`.trim() : "Unknown";
-  nameCache.set(userId, name);
+
+  // Bound memory: evict the oldest entry (Map preserves insertion order)
+  // before inserting when the cache has grown past its cap.
+  if (nameCache.size >= NAME_CACHE_MAX_SIZE) {
+    const oldestKey = nameCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      nameCache.delete(oldestKey);
+    }
+  }
+  nameCache.set(userId, { name, expiresAt: Date.now() + NAME_CACHE_TTL_MS });
   return name;
 }
 

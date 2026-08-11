@@ -264,10 +264,20 @@ export async function sendMessage(req, res) {
 
     // ── Resolve or create conversation ──────────────────────────────────
     if (conversationId) {
-      // Verify the conversation exists and belongs to this user (if authenticated)
+      // Continuing a conversation requires being signed in as its owner.
+      // Unauthenticated messages must never touch an existing conversation.
+      if (!userId) {
+        return res.status(401).json({
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Please sign in to continue a conversation.",
+          },
+        });
+      }
+
       const [existing] = await pool.query(
-        "SELECT conversation_id FROM ai_conversations WHERE conversation_id = ?",
-        [conversationId],
+        "SELECT conversation_id FROM ai_conversations WHERE conversation_id = ? AND user_id = ?",
+        [conversationId, userId],
       );
       if (existing.length === 0) {
         return res.status(404).json({
@@ -599,8 +609,20 @@ export async function updateBookingSession(req, res) {
       );
     }
 
-    // Optionally log a step-change message
+    // Optionally log a step-change message (only into an owned conversation)
     if (conversation_id && current_step) {
+      const [ownedConvs] = await pool.query(
+        "SELECT conversation_id FROM ai_conversations WHERE conversation_id = ? AND user_id = ?",
+        [conversation_id, userId],
+      );
+      if (ownedConvs.length === 0) {
+        return res.status(403).json({
+          error: {
+            code: "FORBIDDEN",
+            message: "You can only update your own conversations.",
+          },
+        });
+      }
       await pool.query(
         `INSERT INTO ai_messages (conversation_id, sender, message_text)
          VALUES (?, 'User', ?)`,
@@ -645,6 +667,20 @@ export async function completeBookingSession(req, res) {
     if (sessions.length === 0) {
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking session not found." },
+      });
+    }
+
+    // Verify the conversation also belongs to this user before writing to it
+    const [ownedConvs] = await connection.query(
+      "SELECT conversation_id FROM ai_conversations WHERE conversation_id = ? AND user_id = ?",
+      [conversation_id, userId],
+    );
+    if (ownedConvs.length === 0) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "You can only finalize your own conversations.",
+        },
       });
     }
 
@@ -741,18 +777,23 @@ export async function cancelBookingSession(req, res) {
         `UPDATE ai_conversations
          SET conversation_status = 'Cancelled', ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
          WHERE conversation_id = ?
+           AND user_id = ?
            AND conversation_status != 'Completed'`,
-        [conversation_id],
+        [conversation_id, userId],
       );
-    }
 
-    // Log cancellation message
-    if (conversation_id) {
-      await connection.query(
-        `INSERT INTO ai_messages (conversation_id, sender, message_text)
-         VALUES (?, 'AI', 'Your booking session has been cancelled. Feel free to start a new booking anytime!')`,
-        [conversation_id],
+      // Log cancellation message (only into an owned conversation)
+      const [ownedConvs] = await connection.query(
+        "SELECT conversation_id FROM ai_conversations WHERE conversation_id = ? AND user_id = ?",
+        [conversation_id, userId],
       );
+      if (ownedConvs.length > 0) {
+        await connection.query(
+          `INSERT INTO ai_messages (conversation_id, sender, message_text)
+           VALUES (?, 'AI', 'Your booking session has been cancelled. Feel free to start a new booking anytime!')`,
+          [conversation_id],
+        );
+      }
     }
 
     res.status(200).json({ success: true });

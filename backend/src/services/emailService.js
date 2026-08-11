@@ -9,9 +9,25 @@ function buildSender() {
   };
 }
 
+// Escape user-provided text before inserting into email HTML so a malicious
+// value (e.g. a rejection reason or profile name) cannot inject markup.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function sendBrevoEmail(to, subject, htmlContent) {
-  const response = await fetch(BREVO_API_URL, {
-    method: "POST",
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(BREVO_API_URL, {
+      method: "POST",
+      signal: controller.signal,
     headers: {
       "api-key": env.brevoApiKey,
       "Content-Type": "application/json",
@@ -34,6 +50,9 @@ async function sendBrevoEmail(to, subject, htmlContent) {
   }
 
   return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function sendVerificationCode(email, code) {
@@ -128,7 +147,7 @@ export async function sendPasswordResetEmail(email, firstName, resetToken) {
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Password Reset Request</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           We received a request to reset your password. Click the button below to set a new password.
@@ -196,7 +215,7 @@ export async function sendUpcomingPaymentReminder(
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Upcoming Payment Reminder</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           This is a friendly reminder that your <strong>${paymentTypeLabel}</strong> is due in <strong>3 days</strong>.
@@ -258,7 +277,7 @@ export async function sendPaymentDueToday(email, firstName, paymentDetails) {
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Payment Due Today</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your <strong>${paymentTypeLabel}</strong> of <strong>${formattedAmount}</strong> is due <strong>today</strong>.
@@ -324,7 +343,7 @@ export async function sendPaymentOverdueNotice(
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Action Required: Overdue Payment</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #C4541A; font-size: 14px; line-height: 1.6; margin: 0 0 16px; font-weight: bold;">
           Your <strong>${paymentTypeLabel}</strong> of <strong>${formattedAmount}</strong> is now <strong>${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue</strong>.
@@ -380,7 +399,7 @@ export async function sendBookingSubmittedEmail(email, firstName, bookingDetails
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Booking Request Received</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Thank you for choosing Authentic Flavors! Your booking request <strong>${booking_reference || ""}</strong> has been submitted successfully and is currently under review by our catering team.
@@ -431,7 +450,7 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Great news! Your booking is confirmed.</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           We are pleased to inform you that your booking <strong>${booking_reference || ""}</strong> has been officially confirmed by our admin team!
@@ -478,14 +497,14 @@ export async function sendBookingRejectedEmail(email, firstName, bookingDetails,
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #C4541A;">
         <h2 style="color: #C4541A; font-size: 18px; margin: 0 0 12px;">Booking Status Update</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           We regret to inform you that your booking request <strong>${booking_reference || ""}</strong> could not be accepted at this time.
         </p>
         ${reason ? `
         <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
-          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Reason:</strong> ${reason}</p>
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Reason:</strong> ${escapeHtml(reason)}</p>
         </div>` : ""}
         <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
           If you have questions or wish to pick an alternative date, please reach out to our team or submit a new request.
@@ -511,14 +530,14 @@ export async function sendBookingCancelledEmail(email, firstName, bookingDetails
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Booking Cancellation Notice</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your booking <strong>${booking_reference || ""}</strong> has been cancelled.
         </p>
         ${reason ? `
         <div style="background-color: #F5F0E8; padding: 12px 16px; margin: 16px 0; border-radius: 8px;">
-          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Cancellation Details:</strong> ${reason}</p>
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Cancellation Details:</strong> ${escapeHtml(reason)}</p>
         </div>` : ""}
         <div style="text-align: center; margin: 24px 0;">
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
@@ -557,7 +576,7 @@ export async function sendPaymentApprovedEmail(email, firstName, paymentDetails)
         </div>
         <h2 style="color: #C4541A; font-size: 18px; margin: 0 0 12px;">Payment Received & Verified</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your payment of <strong>${formattedAmount}</strong> for <strong>${paymentTypeLabel}</strong> has been successfully verified and approved.
@@ -606,14 +625,14 @@ export async function sendPaymentRejectedEmail(email, firstName, paymentDetails,
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Action Required: Payment Rejected</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your receipt for <strong>${paymentTypeLabel}</strong> (${formattedAmount}) could not be verified by our team.
         </p>
         ${reason ? `
         <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
-          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${reason}</p>
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${escapeHtml(reason)}</p>
         </div>` : ""}
         <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
           Please log into your dashboard and upload a valid payment proof.
@@ -650,7 +669,7 @@ export async function sendEventReminderEmail(email, firstName, bookingDetails, d
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Upcoming Event Reminder</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           This is an exciting reminder that your catering event with Authentic Flavors is coming up in <strong>${daysBefore} day${daysBefore > 1 ? "s" : ""}</strong>!
@@ -691,7 +710,7 @@ export async function sendFeedbackReminderEmail(email, firstName, bookingDetails
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">How Was Your Catering Experience?</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           We hope you and your guests loved the food and service from Authentic Flavors! Your feedback means the world to Chef Ramos and our team.
@@ -735,13 +754,13 @@ export async function sendMenuChangeRequestedAdminEmail(adminEmail, details) {
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">New Menu Change Request</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Customer <strong>${customer_name}</strong> submitted a menu change request for booking <strong>${booking_reference || ""}</strong>.
+          Customer <strong>${escapeHtml(customer_name)}</strong> submitted a menu change request for booking <strong>${booking_reference || ""}</strong>.
         </p>
         <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <table style="width: 100%; font-size: 14px; color: #2C1810;">
             <tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${booking_reference || ""}</td></tr>
             <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right;">${formattedDate}</td></tr>
-            <tr><td style="padding: 4px 0;">Requested Items:</td><td style="font-weight: bold; text-align: right;">${Array.isArray(requested_items) ? requested_items.join(", ") : requested_items}</td></tr>
+            <tr><td style="padding: 4px 0;">Requested Items:</td><td style="font-weight: bold; text-align: right;">${escapeHtml(Array.isArray(requested_items) ? requested_items.join(", ") : requested_items)}</td></tr>
           </table>
         </div>
         <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
@@ -782,14 +801,14 @@ export async function sendMenuChangeApprovedCustomerEmail(email, firstName, deta
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Your Menu Change Was Approved!</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your requested menu changes for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) have been approved and updated in our system.
         </p>
         <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <p style="font-size: 13px; color: #2C1810; margin: 0 0 8px;"><strong>Updated Menu Selections:</strong></p>
-          <p style="font-size: 13px; color: #C4541A; font-weight: bold; margin: 0;">${Array.isArray(updated_items) ? updated_items.join(", ") : updated_items}</p>
+          <p style="font-size: 13px; color: #C4541A; font-weight: bold; margin: 0;">${escapeHtml(Array.isArray(updated_items) ? updated_items.join(", ") : updated_items)}</p>
         </div>
         <div style="text-align: center; margin: 24px 0;">
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
@@ -826,14 +845,14 @@ export async function sendMenuChangeRejectedCustomerEmail(email, firstName, deta
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Menu Change Request Update</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your menu change request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) could not be approved.
         </p>
         ${reason ? `
         <div style="background-color: #FFF5F2; border-left: 4px solid #C4541A; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
-          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${reason}</p>
+          <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Rejection Reason:</strong> ${escapeHtml(reason)}</p>
         </div>` : ""}
         <div style="text-align: center; margin: 24px 0;">
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
@@ -874,7 +893,7 @@ export async function sendVenueSetupApprovedCustomerEmail(email, firstName, deta
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Your Venue Setup Request Was Approved!</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your venue setup request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) has been approved.
@@ -914,7 +933,7 @@ export async function sendVenueSetupChangesRequestedCustomerEmail(email, firstNa
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Venue Setup Request Update</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           We reviewed your venue setup request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) and would like to request some changes.
@@ -961,7 +980,7 @@ export async function sendVenueSetupDeclinedCustomerEmail(email, firstName, deta
         </div>
         <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Venue Setup Request Update</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Hello${firstName ? ` ${firstName}` : ""},
+          Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Your venue setup request for booking <strong>${booking_reference || ""}</strong> (Event Date: <strong>${formattedDate}</strong>) could not be accommodated.

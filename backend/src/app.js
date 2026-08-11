@@ -20,16 +20,21 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (env.corsOrigins.length === 0) {
+        // Non-browser clients / same-origin requests have no Origin header.
+        if (!origin) {
           callback(null, true);
           return;
         }
 
-        if (
-          !origin ||
-          env.nodeEnv === "development" ||
-          env.corsOrigins.includes(origin)
-        ) {
+        // Development convenience: allow any origin locally.
+        if (env.nodeEnv === "development") {
+          callback(null, true);
+          return;
+        }
+
+        // Production must match the configured allowlist. If the allowlist is
+        // empty we fail closed (no wildcard-with-credentials).
+        if (env.corsOrigins.includes(origin)) {
           callback(null, true);
           return;
         }
@@ -60,11 +65,14 @@ export function createApp() {
   app.use("/api", venueSetupRouter);
 
   app.use((err, _req, res, _next) => {
-    console.error(err);
-    res.status(500).json({
+    const status = err.status || err.statusCode || 500;
+    if (status >= 500) {
+      console.error(err);
+    }
+    res.status(status).json({
       error: {
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Something went wrong.",
+        code: err.code || (status >= 500 ? "INTERNAL_SERVER_ERROR" : "BAD_REQUEST"),
+        message: status >= 500 ? "Something went wrong." : err.message,
       },
     });
   });

@@ -428,9 +428,12 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+# Security audit notes (internal, not for version control)
+SECURITY_AUDIT.md
+
 # Uploaded receipt files (local disk storage, not for version control)
-# backend/uploads/
-# uploads/
+backend/uploads/
+uploads/
 
 # ─── Node / JavaScript ───
 node_modules/

@@ -1,6 +1,7 @@
 import express from "express";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { upload, validateImageSignature } from "../middleware/upload.js";
+import { uploadLimiter } from "../middleware/rateLimit.js";
 import {
   getPaymentInstructions,
   uploadReceipt,
@@ -21,13 +22,15 @@ const router = express.Router();
 router.get("/instructions/:bookingId", requireAuth, getPaymentInstructions);
 
 // Customer: Upload payment receipt (direct URL — for frontend Cloudinary upload)
-router.post("/upload-receipt", requireAuth, uploadReceipt);
+router.post("/upload-receipt", requireAuth, uploadLimiter, uploadReceipt);
 
 // Customer: Upload payment receipt file (multer + server-side Cloudinary upload)
 router.post(
   "/upload-receipt-file",
   requireAuth,
+  uploadLimiter,
   upload.single("receipt"),
+  validateImageSignature,
   uploadReceiptFile,
 );
 

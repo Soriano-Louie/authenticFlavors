@@ -159,17 +159,31 @@ export async function getVenueSetups(_req, res) {
   }
 }
 
-function cookieConfig(req) {
+function isSecureCookie(req) {
   const origin = req.headers.origin;
   const isCrossOrigin =
     Boolean(origin) && new URL(origin).host !== req.headers.host;
-  const secure = isProduction || isCrossOrigin;
+  return isProduction || isCrossOrigin;
+}
+
+// The `__Host-` prefix forces Secure + path=/ + no Domain attribute, which
+// protects the refresh token from cookie-confusion/subdomain-takeover attacks.
+// Only applicable when the cookie is Secure, so dev (http) keeps the base name.
+function getRefreshCookieName(req) {
+  const base = env.refreshCookieName;
+  if (!isSecureCookie(req)) return base;
+  return base.startsWith("__Host-") ? base : `__Host-${base}`;
+}
+
+function cookieConfig(req) {
+  const secure = isSecureCookie(req);
 
   return {
+    name: getRefreshCookieName(req),
     httpOnly: true,
     secure,
     sameSite: secure ? "none" : "lax",
-    path: "/api/auth",
+    path: secure ? "/" : "/api/auth",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 }
@@ -292,8 +306,9 @@ export async function register(req, res) {
     [first_name, middle_name, last_name, email, phone_number, password_hash],
   );
 
-  // Generate and store verification code
+  // Generate and store verification code (only its hash is persisted)
   const code = generateVerificationCode();
+  const codeHash = hashVerificationCode(code);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes
 
@@ -314,7 +329,7 @@ export async function register(req, res) {
 
   await pool.query(
     "INSERT INTO email_verifications (email, code, expires_at, resend_at) VALUES (?, ?, ?, ?)",
-    [email, code, expiresAt, now],
+    [email, codeHash, expiresAt, now],
   );
 
   // Send the code via email
@@ -389,8 +404,9 @@ export async function sendVerification(req, res) {
     }
   }
 
-  // Generate new code, invalidate old ones
+  // Generate new code (store only its hash), invalidate old ones
   const code = generateVerificationCode();
+  const codeHash = hashVerificationCode(code);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
 
@@ -401,7 +417,7 @@ export async function sendVerification(req, res) {
 
   await pool.query(
     "INSERT INTO email_verifications (email, code, expires_at, resend_at) VALUES (?, ?, ?, ?)",
-    [email, code, expiresAt, now],
+    [email, codeHash, expiresAt, now],
   );
 
   try {
@@ -486,8 +502,8 @@ export async function verifyEmail(req, res) {
     [verification.id],
   );
 
-  // Verify code
-  if (verification.code !== code) {
+  // Verify code (compare against the stored SHA-256 hash)
+  if (verification.code !== hashVerificationCode(code)) {
     return res.status(400).json({
       error: {
         code: "INVALID_CODE",
@@ -527,7 +543,7 @@ export async function verifyEmail(req, res) {
   const tokenVersion = await bumpTokenVersion(user.user_id);
   const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
 
-  res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+  res.cookie(getRefreshCookieName(req), refreshToken, cookieConfig(req));
 
   return res
     .status(200)
@@ -600,7 +616,7 @@ export async function login(req, res) {
   const tokenVersion = await bumpTokenVersion(user.user_id);
   const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
 
-  res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+  res.cookie(getRefreshCookieName(req), refreshToken, cookieConfig(req));
 
   return res.status(200).json({ user, accessToken });
 }
@@ -677,58 +693,111 @@ export async function resetPassword(req, res) {
     });
   }
 
+  if (Buffer.byteLength(password, "utf8") > 72) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Password must be at most 72 bytes.",
+      },
+    });
+  }
+
   const tokenHash = hashResetToken(token);
+  const connection = await pool.getConnection();
 
-  // Find the token
-  const [tokens] = await pool.query(
-    "SELECT * FROM password_reset_tokens WHERE token_hash = ? AND is_used = FALSE LIMIT 1",
-    [tokenHash],
-  );
+  try {
+    await connection.beginTransaction();
 
-  if (tokens.length === 0) {
-    return res.status(400).json({
+    // Lock the token row so concurrent requests using the same token
+    // serialize: the second one re-reads the row with is_used = TRUE and
+    // is rejected, making the link single-use.
+    const [tokens] = await connection.query(
+      "SELECT id, user_id, expires_at FROM password_reset_tokens WHERE token_hash = ? AND is_used = FALSE LIMIT 1 FOR UPDATE",
+      [tokenHash],
+    );
+
+    if (tokens.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_TOKEN",
+          message: "Invalid or already used reset link.",
+        },
+      });
+    }
+
+    const resetRecord = tokens[0];
+
+    // Check expiration
+    if (new Date(resetRecord.expires_at) < new Date()) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "TOKEN_EXPIRED",
+          message: "Reset link has expired. Please request a new one.",
+        },
+      });
+    }
+
+    // Only Active accounts may consume a reset link. forgotPassword only
+    // issues links to Active accounts, so this guards against a token that
+    // was issued while Active being used after the account was suspended.
+    const [users] = await connection.query(
+      "SELECT account_status FROM users WHERE user_id = ? LIMIT 1",
+      [resetRecord.user_id],
+    );
+
+    if (users.length === 0 || users[0].account_status !== "Active") {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "ACCOUNT_DISABLED",
+          message: "This account can no longer be recovered via a reset link.",
+        },
+      });
+    }
+
+    // Hash the new password and update
+    const password_hash = await bcrypt.hash(password, 12);
+
+    await connection.query("UPDATE users SET password_hash = ? WHERE user_id = ?", [
+      password_hash,
+      resetRecord.user_id,
+    ]);
+
+    // Invalidate all existing sessions (any device logged in before the reset)
+    await connection.query(
+      "UPDATE users SET token_version = token_version + 1 WHERE user_id = ?",
+      [resetRecord.user_id],
+    );
+
+    // Mark the token used before committing so it can never be replayed
+    await connection.query(
+      "UPDATE password_reset_tokens SET is_used = TRUE WHERE id = ?",
+      [resetRecord.id],
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      message: "Password has been reset successfully. You can now sign in.",
+    });
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch {
+      // ignore rollback errors
+    }
+    console.error("resetPassword failed:", error);
+    return res.status(500).json({
       error: {
-        code: "INVALID_TOKEN",
-        message: "Invalid or already used reset link.",
+        code: "SERVER_ERROR",
+        message: "Failed to reset password. Please try again.",
       },
     });
+  } finally {
+    connection.release();
   }
-
-  const resetRecord = tokens[0];
-
-  // Check expiration
-  if (new Date(resetRecord.expires_at) < new Date()) {
-    return res.status(400).json({
-      error: {
-        code: "TOKEN_EXPIRED",
-        message: "Reset link has expired. Please request a new one.",
-      },
-    });
-  }
-
-  // Hash the new password and update
-  const password_hash = await bcrypt.hash(password, 12);
-
-  await pool.query("UPDATE users SET password_hash = ? WHERE user_id = ?", [
-    password_hash,
-    resetRecord.user_id,
-  ]);
-
-  // Invalidate all existing sessions (any device logged in before the reset)
-  await pool.query(
-    "UPDATE users SET token_version = token_version + 1 WHERE user_id = ?",
-    [resetRecord.user_id],
-  );
-
-  // Mark the token as used
-  await pool.query(
-    "UPDATE password_reset_tokens SET is_used = TRUE WHERE id = ?",
-    [resetRecord.id],
-  );
-
-  return res.status(200).json({
-    message: "Password has been reset successfully. You can now sign in.",
-  });
 }
 
 export async function me(req, res) {
@@ -758,7 +827,7 @@ export async function me(req, res) {
 }
 
 export async function refresh(req, res) {
-  const refreshToken = req.cookies?.[env.refreshCookieName];
+  const refreshToken = req.cookies?.[getRefreshCookieName(req)];
 
   if (!refreshToken) {
     return res.status(401).json({
@@ -801,7 +870,7 @@ export async function refresh(req, res) {
       Number(rows[0].token_version),
     );
 
-    res.cookie(env.refreshCookieName, nextRefreshToken, cookieConfig(req));
+    res.cookie(getRefreshCookieName(req), nextRefreshToken, cookieConfig(req));
 
     return res.status(200).json({ user, accessToken });
   } catch {
@@ -812,7 +881,7 @@ export async function refresh(req, res) {
 }
 
 export function logout(req, res) {
-  res.clearCookie(env.refreshCookieName, cookieConfig(req));
+  res.clearCookie(getRefreshCookieName(req), cookieConfig(req));
   return res.status(200).json({ message: "Logged out successfully." });
 }
 
@@ -1156,7 +1225,7 @@ export async function verifyEmailChange(req, res) {
     // the current device so it stays signed in.
     const tokenVersion = await bumpTokenVersion(userId);
     const { accessToken, refreshToken } = issueTokens(user, tokenVersion);
-    res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+    res.cookie(getRefreshCookieName(req), refreshToken, cookieConfig(req));
 
     await logActivity({
       actorUserId: userId,
@@ -1197,11 +1266,15 @@ export async function changePassword(req, res) {
   const fieldErrors = {};
   if (!currentPassword) {
     fieldErrors.current_password = "Current password is required.";
+  } else if (Buffer.byteLength(currentPassword, "utf8") > 72) {
+    fieldErrors.current_password = "Current password is too long.";
   }
   if (!newPassword) {
     fieldErrors.new_password = "New password is required.";
   } else if (newPassword.length < 8) {
     fieldErrors.new_password = "Password must be at least 8 characters.";
+  } else if (Buffer.byteLength(newPassword, "utf8") > 72) {
+    fieldErrors.new_password = "Password must be at most 72 bytes.";
   }
   if (!confirmPassword) {
     fieldErrors.confirm_password = "Please confirm your new password.";
@@ -1264,7 +1337,7 @@ export async function changePassword(req, res) {
       },
       tokenVersion,
     );
-    res.cookie(env.refreshCookieName, refreshToken, cookieConfig(req));
+    res.cookie(getRefreshCookieName(req), refreshToken, cookieConfig(req));
 
     await logActivity({
       actorUserId: userId,
@@ -1317,16 +1390,22 @@ export async function uploadProfilePhoto(req, res) {
     // Upload new photo to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, "profile_photos");
 
-    // Delete old photo from Cloudinary if it exists
-    if (currentUser.profile_photo_public_id) {
-      await deleteFromCloudinary(currentUser.profile_photo_public_id);
-    }
-
-    // Update user record with new photo
+    // Update the user record FIRST; only delete the old photo after the new
+    // one is safely committed, so a DB failure can't leave a broken reference
+    // (orphaning the URL the user row still points to).
     await pool.query(
       "UPDATE users SET profile_photo_url = ?, profile_photo_public_id = ? WHERE user_id = ?",
       [result.secure_url, result.public_id, userId],
     );
+
+    // Delete old photo from Cloudinary if it exists (best-effort)
+    if (currentUser.profile_photo_public_id) {
+      try {
+        await deleteFromCloudinary(currentUser.profile_photo_public_id);
+      } catch (err) {
+        console.error("Failed to delete old profile photo:", err);
+      }
+    }
 
     // Fetch updated user data
     const [rows] = await pool.query(

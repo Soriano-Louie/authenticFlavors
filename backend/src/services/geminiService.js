@@ -1,5 +1,6 @@
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
+import { getPhilippineDateTimeString } from "../utils/timezone.js";
 import {
   getOperatingHoursDisplay,
   getOperatingHoursMessage,
@@ -515,14 +516,16 @@ async function buildRestaurantContext() {
     return text;
   };
   try {
+    const nowPH = getPhilippineDateTimeString();
     const [announcements] = await pool.query(
       `SELECT title, content, publish_date, expiration_date
        FROM announcements
        WHERE status = 'published'
-         AND publish_date <= NOW()
-         AND (expiration_date IS NULL OR expiration_date >= NOW())
+         AND publish_date <= ?
+         AND (expiration_date IS NULL OR expiration_date >= ?)
        ORDER BY publish_date DESC
        LIMIT 10`,
+      [nowPH, nowPH],
     );
     if (announcements.length > 0) {
       const lines = ["UPCOMING EVENTS & ANNOUNCEMENTS (from database):"];
