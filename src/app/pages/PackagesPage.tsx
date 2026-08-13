@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Star, Users, Search, Loader2, X } from "lucide-react";
+import { Star, Users, Search, Loader2, X, Trophy } from "lucide-react";
 import { getPackages } from "../api/packageApi";
 import type { Package } from "../api/packageApi";
 
@@ -64,6 +64,7 @@ function transformPackage(pkg: Package) {
     eventType,
     packageType,
     rating,
+    isMostPicked: Boolean(pkg.is_most_picked),
     menu: {
       appetizers: ["Selection available"],
       mains: ["Selection available"],
@@ -248,6 +249,11 @@ export function PackagesPage() {
                       <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/85 via-[#1A0E08]/20 to-transparent" />
 
                       <div className="absolute top-3 left-3 flex flex-wrap gap-2 max-w-[calc(100%-1.5rem)]">
+                        {pkg.isMostPicked && (
+                          <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-[11px] font-['Lato'] font-bold uppercase tracking-wide flex items-center gap-1 shadow-md">
+                            <Trophy size={12} /> Most Picked
+                          </span>
+                        )}
                         <span className="px-2.5 py-1 rounded-full bg-[#C8922A]/90 text-[#F5F0E8] text-[11px] font-['Lato']">
                           {pkg.eventType}
                         </span>

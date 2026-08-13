@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
-import { ArrowRight, Check, CheckCircle, Loader2, Search } from "lucide-react";
+import { ArrowRight, Check, CheckCircle, Loader2, Search, Trophy } from "lucide-react";
 import { BookingRules } from "../components/BookingRules";
 import {
   Dialog,
@@ -90,6 +90,7 @@ function transformPackage(
     image: getNormalizedImage(pkg.image),
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,
+    isMostPicked: Boolean(pkg.is_most_picked),
     menuSections,
     inclusions: [
       "Premium table setup",
@@ -405,6 +406,11 @@ export function PackageSelectionPage() {
                       className="w-full h-48 object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/85 via-[#1A0E08]/20 to-transparent" />
+                    {pkg.isMostPicked && (
+                      <span className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#C8922A] to-[#C4541A] px-2.5 py-1 text-[11px] font-['Lato'] font-bold uppercase tracking-wide text-[#F5F0E8] shadow-md">
+                        <Trophy size={12} /> Most Picked
+                      </span>
+                    )}
                     {selectedPackageId === pkg.id ? (
                       <span className="absolute top-3 right-3 inline-flex items-center justify-center rounded-full bg-[#C8922A] p-2 text-white shadow-md">
                         <Check size={16} />

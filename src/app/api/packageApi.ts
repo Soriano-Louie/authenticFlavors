@@ -24,6 +24,8 @@ export interface Package {
   updated_at: string;
   pricing?: PackagePricing[];
   menu_inclusions?: PackageMenuInclusion[];
+  selection_count?: number;
+  is_most_picked?: boolean;
 }
 
 export interface MenuCategory {

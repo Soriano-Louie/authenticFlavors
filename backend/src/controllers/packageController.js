@@ -61,11 +61,39 @@ export async function getPackages(_req, res) {
         else inclusionsByPackage.set(row.package_id, [entry]);
       }
 
-      packagesWithPricing = rows.map((pkg) => ({
-        ...pkg,
-        pricing: pricingByPackage.get(pkg.package_id) ?? [],
-        menu_inclusions: inclusionsByPackage.get(pkg.package_id) ?? [],
-      }));
+      // Count valid bookings per package to identify "Most Picked" packages.
+      // Only accepted/completed bookings count as real selections; pending,
+      // cancelled, and rejected bookings are excluded.
+      const [bookingCountRows] = await pool.query(
+        `SELECT package_id, COUNT(*) AS selection_count
+         FROM bookings
+         WHERE booking_status IN ('Confirmed', 'Reserved', 'Completed')
+           AND package_id IN (${placeholders})
+         GROUP BY package_id`,
+        ids,
+      );
+
+      const selectionCountByPackage = new Map();
+      let maxSelections = 0;
+      for (const row of bookingCountRows) {
+        selectionCountByPackage.set(row.package_id, row.selection_count);
+        if (row.selection_count > maxSelections) {
+          maxSelections = row.selection_count;
+        }
+      }
+
+      packagesWithPricing = rows.map((pkg) => {
+        const selectionCount =
+          selectionCountByPackage.get(pkg.package_id) ?? 0;
+        return {
+          ...pkg,
+          pricing: pricingByPackage.get(pkg.package_id) ?? [],
+          menu_inclusions: inclusionsByPackage.get(pkg.package_id) ?? [],
+          selection_count: selectionCount,
+          is_most_picked:
+            maxSelections > 0 && selectionCount === maxSelections,
+        };
+      });
     }
 
     res.status(200).json({ packages: packagesWithPricing });
