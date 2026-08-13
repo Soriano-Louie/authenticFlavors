@@ -23,6 +23,18 @@ export async function createBooking(req, res) {
   const connection = await pool.getConnection();
   try {
     const userId = Number(req.auth.sub);
+
+    // Admin accounts manage bookings; they cannot create bookings (manual or
+    // via the chatbot wizard, which both submit through this endpoint).
+    if (req.auth.role !== "Customer") {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "Admin accounts cannot create bookings.",
+        },
+      });
+    }
+
     const {
       package_id,
       event_type_name,

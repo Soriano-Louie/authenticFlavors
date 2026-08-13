@@ -497,6 +497,16 @@ export async function startBookingSession(req, res) {
   try {
     const userId = Number(req.auth.sub);
 
+    // Admin accounts manage bookings; they cannot start a booking session.
+    if (req.auth.role !== "Customer") {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "Admin accounts cannot create bookings.",
+        },
+      });
+    }
+
     // Create conversation with Booking purpose
     const [convResult] = await connection.query(
       `INSERT INTO ai_conversations (user_id, conversation_title, conversation_purpose, conversation_status)

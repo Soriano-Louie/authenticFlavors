@@ -454,6 +454,28 @@ export function BookingPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  if (user?.role === "Admin") {
+    return (
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <p className="text-[#C8922A] font-['Playfair_Display'] text-3xl mb-3">
+            Bookings are for customers
+          </p>
+          <p className="text-[#2C1810]/60 font-['Lato'] mb-6">
+            Admin accounts manage customer bookings and cannot create bookings.
+            Use the Admin Dashboard to review, verify, and manage bookings.
+          </p>
+          <Link
+            to="/admin"
+            className="inline-block px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full font-['Lato'] text-sm hover:opacity-90"
+          >
+            Go to Admin Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center">
@@ -491,6 +513,24 @@ export function BookingPage() {
 
       {/* Stepper */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {!user && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl px-4 sm:px-6 py-4 mb-8">
+            <p className="text-sm font-['Lato'] text-[#2C1810]/80">
+              <strong className="text-[#2C1810]">
+                Sign in required to book.
+              </strong>{" "}
+              You can plan your event below, but you'll need an account to
+              submit your booking.
+            </p>
+            <Link
+              to="/auth"
+              className="shrink-0 px-5 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity text-center"
+            >
+              Sign in / Create account
+            </Link>
+          </div>
+        )}
+
         <div className="flex items-center justify-between overflow-x-auto pb-2 mb-8">
           {STEPS.map((s, i) => (
             <div key={s.num} className="flex items-center gap-0">

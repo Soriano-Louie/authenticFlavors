@@ -162,6 +162,18 @@ interface Message {
   action?: any;
 }
 
+const initialMessages: Message[] = [
+  {
+    id: 0,
+    sender: "bot",
+    text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm your AI event planning assistant. Would you like to **Book an Event** or ask a question?",
+    time: new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+  },
+];
+
 export function ChatBot() {
   const { accessToken, user } = useAuth();
   const navigate = useNavigate();
@@ -178,17 +190,7 @@ export function ChatBot() {
   // Wizard state machine
   const [wizard, setWizard] = useState<WizardState>(initialWizardState);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 0,
-      sender: "bot",
-      text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm your AI event planning assistant. Would you like to **Book an Event** or ask a question?",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -238,6 +240,18 @@ export function ChatBot() {
     loadDbOptions();
   }, []);
 
+  // Reset per-user chat state when the signed-in user changes so
+  // conversations never leak across accounts sharing the same browser.
+  const activeUserId = user?.user_id ?? null;
+  useEffect(() => {
+    setMessages(initialMessages);
+    setInput("");
+    setConversationId(null);
+    setBookingSessionId(null);
+    setCreatedBookingInfo(null);
+    setWizard(initialWizardState);
+  }, [activeUserId]);
+
   // Pre-fill user profile info when available
   useEffect(() => {
     if (user) {
@@ -260,6 +274,13 @@ export function ChatBot() {
 
   // Handle Starting the Interactive Booking Wizard
   const startWizard = async () => {
+    if (user?.role === "Admin") {
+      addBotMessage(
+        "⚠️ **Admin accounts cannot create bookings.** Please use the Admin Dashboard to manage customer bookings. I can still answer questions about packages, pricing, and more!",
+      );
+      return;
+    }
+
     if (!user || !accessToken) {
       addBotMessage(
         "🔒 **Authentication Required**: Please [log in or create an account](/auth) before booking an event with Chef Ramos. You will be able to complete your booking in seconds!",
