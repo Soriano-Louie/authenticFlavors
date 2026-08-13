@@ -12,8 +12,10 @@ const LEVEL_LABELS: Record<TextSizeLevel, string> = {
 };
 
 const STORAGE_KEY = "af-text-size-control-pos";
+const EXPANDED_STORAGE_KEY = "af-text-size-control-expanded";
 const DEFAULT_RIGHT = 16;
 const MOBILE_BOTTOM = 96;
+const DRAG_THRESHOLD = 6;
 
 interface DragState {
   startX: number;
@@ -39,6 +41,14 @@ function loadSavedPosition(): { x: number; y: number } | null {
   return null;
 }
 
+function loadExpandedState(): boolean {
+  try {
+    return localStorage.getItem(EXPANDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function clampToViewport(x: number, y: number, width: number, height: number) {
   const maxX = Math.max(0, window.innerWidth - width);
   const maxY = Math.max(0, window.innerHeight - height);
@@ -52,11 +62,13 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
   const { level, currentSize, increase, decrease, reset } = useTextSize();
   const controlRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<DragState | null>(null);
+  const didDragRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(
     loadSavedPosition,
   );
   const [dragging, setDragging] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(loadExpandedState);
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== "undefined" && window.innerWidth < 768,
   );
@@ -67,10 +79,18 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Persist whether the control is expanded or collapsed.
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPANDED_STORAGE_KEY, String(expanded));
+    } catch {
+      // ignore storage errors
+    }
+  }, [expanded]);
+
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     const el = controlRef.current;
     if (!el) return;
-    e.preventDefault();
     const rect = el.getBoundingClientRect();
     dragState.current = {
       startX: e.clientX,
@@ -80,34 +100,59 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
       width: rect.width,
       height: rect.height,
     };
-    setDragging(true);
+    didDragRef.current = false;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const state = dragState.current;
     if (!state) return;
-    const nx = state.originX + (e.clientX - state.startX);
-    const ny = state.originY + (e.clientY - state.startY);
-    setPos(clampToViewport(nx, ny, state.width, state.height));
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+    if (!didDragRef.current && Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+      didDragRef.current = true;
+      setDragging(true);
+    }
+    if (!didDragRef.current) return;
+    setPos(
+      clampToViewport(
+        state.originX + dx,
+        state.originY + dy,
+        state.width,
+        state.height,
+      ),
+    );
   };
 
   const handlePointerEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragState.current) return;
+    const dragged = didDragRef.current;
     dragState.current = null;
+    didDragRef.current = false;
     setDragging(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    setPos((prev) => {
-      if (!prev) return prev;
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(prev));
-      } catch {
-        // ignore storage errors
-      }
-      return prev;
-    });
+    if (dragged) {
+      suppressClickRef.current = true;
+      setPos((prev) => {
+        if (!prev) return prev;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(prev));
+        } catch {
+          // ignore storage errors
+        }
+        return prev;
+      });
+    }
+  };
+
+  const handleHandleClick = () => {
+    // Ignore the click that follows a drag gesture.
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setExpanded((v) => !v);
   };
 
   const handleResize = () => {
@@ -126,13 +171,16 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
 
   // Re-clamp after expanding/collapsing (width changes) once layout settles.
   useEffect(() => {
-    if (!isMobile) return;
     const raf = requestAnimationFrame(handleResize);
     return () => cancelAnimationFrame(raf);
-  }, [expanded, isMobile]);
+  }, [expanded]);
 
   const buttonBase =
     "flex items-center justify-center rounded-full border transition-all outline-none";
+
+  const handleButtonClass = `${buttonBase} bg-[#1A0E08]/80 text-[#F5F0E8]/70 hover:text-[#F5F0E8] hover:border-[#C8922A] border border-[#C8922A]/30 touch-none ${
+    dragging ? "cursor-grabbing" : "cursor-grab"
+  }`;
 
   const defaultStyle = pos
     ? { left: pos.x, top: pos.y }
@@ -140,8 +188,15 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
       ? { right: DEFAULT_RIGHT, bottom: MOBILE_BOTTOM }
       : { right: DEFAULT_RIGHT, top: offsetTop };
 
-  // Compact pill for small screens — tap to expand the full control group.
-  if (isMobile && !expanded) {
+  const handleAriaLabel = expanded
+    ? "Collapse text size controls"
+    : "Expand text size controls";
+  const handleTitle = expanded
+    ? "Drag to move, click to collapse"
+    : "Drag to move, click to expand";
+
+  // Collapsed state: show ONLY the six-dot grip handle on both desktop and mobile.
+  if (!expanded) {
     return (
       <div
         ref={controlRef}
@@ -152,23 +207,23 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
       >
         <button
           type="button"
-          onClick={() => setExpanded(true)}
-          aria-label="Open text size controls"
-          title="Adjust text size"
-          className="h-11 px-3.5 rounded-full bg-[#1A0E08]/90 text-[#F5F0E8] border border-[#C8922A]/50 shadow-lg flex items-center gap-1.5 hover:border-[#C8922A] transition-all cursor-pointer"
+          aria-label={handleAriaLabel}
+          aria-expanded={false}
+          title={handleTitle}
+          onClick={handleHandleClick}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          className={`${handleButtonClass} w-11 h-11 bg-[#1A0E08]/90 border-[#C8922A]/50 shadow-lg`}
         >
-          <span className="text-base font-bold leading-none" aria-hidden="true">
-            A
-          </span>
-          <span className="uppercase text-[10px] font-semibold tracking-wide">
-            {level === "default" ? "DEF" : LEVEL_LABELS[level]}
-          </span>
-          <Plus size={14} className="text-[#C8922A]" />
+          <GripVertical size={20} />
         </button>
       </div>
     );
   }
 
+  // Expanded state: drag handle + text size buttons.
   return (
     <div
       ref={controlRef}
@@ -178,18 +233,18 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
       style={defaultStyle}
     >
       <div className="flex items-center gap-1">
-        {/* Drag handle — move the whole control group */}
+        {/* Six-dot drag handle — move the whole control group or tap to collapse */}
         <button
           type="button"
-          aria-label="Drag to move the text size controls"
-          title="Drag to move"
+          aria-label={handleAriaLabel}
+          aria-expanded={true}
+          title={handleTitle}
+          onClick={handleHandleClick}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}
           onPointerCancel={handlePointerEnd}
-          className={`${buttonBase} w-7 h-8 bg-[#1A0E08]/80 text-[#F5F0E8]/60 hover:text-[#F5F0E8] hover:border-[#C8922A] border border-[#C8922A]/30 touch-none ${
-            dragging ? "cursor-grabbing" : "cursor-grab"
-          }`}
+          className={`${handleButtonClass} w-8 h-8`}
         >
           <GripVertical size={14} />
         </button>
@@ -215,7 +270,7 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
           <Minus size={14} />
         </button>
 
-        {/* Current level indicator */}
+        {/* Current level indicator / Reset */}
         <button
           type="button"
           onClick={reset}
@@ -244,31 +299,6 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
         >
           <Plus size={14} />
         </button>
-
-        {/* Collapse on small screens */}
-        {isMobile && (
-          <button
-            type="button"
-            onClick={() => setExpanded(false)}
-            aria-label="Collapse text size controls"
-            title="Collapse"
-            className={`${buttonBase} w-8 h-8 bg-[#1A0E08]/80 text-[#F5F0E8]/60 hover:text-[#F5F0E8] border border-[#C8922A]/30`}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m18 15-6-6-6 6" />
-            </svg>
-          </button>
-        )}
       </div>
     </div>
   );
