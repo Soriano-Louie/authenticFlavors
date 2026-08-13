@@ -494,7 +494,7 @@ export function BookingPage() {
         <div className="flex items-center justify-between overflow-x-auto pb-2 mb-8">
           {STEPS.map((s, i) => (
             <div key={s.num} className="flex items-center gap-0">
-              <div className="flex flex-col items-center gap-1.5 min-w-[60px]">
+              <div className="flex flex-col items-center gap-1.5 min-w-[44px] sm:min-w-[60px]">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center text-sm transition-all ${
                     step > s.num
@@ -515,7 +515,7 @@ export function BookingPage() {
               {i < STEPS.length - 1 && (
                 <div
                   className={`h-px flex-1 mx-1 ${step > s.num ? "bg-[#7A8C5C]" : "bg-[#C8922A]/20"}`}
-                  style={{ minWidth: "20px" }}
+                  style={{ minWidth: "clamp(10px, 4vw, 20px)" }}
                 />
               )}
             </div>
@@ -821,10 +821,10 @@ export function BookingPage() {
                                 >
                                   {isSelected ? <Check size={12} /> : null}
                                 </span>
-                                <span className="flex-1 flex items-center justify-between gap-2">
-                                  <span>{item}</span>
+                                <span className="flex-1 flex items-center justify-between gap-2 min-w-0">
+                                  <span className="min-w-0">{item}</span>
                                   {itemPrice > 0 && (
-                                    <span className="whitespace-nowrap font-['Lato'] font-semibold text-[#C4541A]">
+                                    <span className="shrink-0 whitespace-nowrap font-['Lato'] font-semibold text-[#C4541A]">
                                       +₱{itemPrice.toLocaleString()}
                                     </span>
                                   )}
@@ -1169,11 +1169,11 @@ export function BookingPage() {
                 {submitError}
               </p>
             )}
-            <div className="flex justify-between">
+            <div className="flex flex-col sm:flex-row sm:justify-between gap-3">
               <button
                 onClick={() => goToStep(Math.max(1, step - 1))}
                 disabled={step === 1 || submitting}
-                className="px-6 py-2.5 border border-[#C8922A]/30 text-[#2C1810]/60 rounded-full text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-6 py-2.5 border border-[#C8922A]/30 text-[#2C1810]/60 rounded-full text-sm font-['Lato'] hover:border-[#C8922A] hover:text-[#C8922A] transition-colors disabled:opacity-30 disabled:cursor-not-allowed w-full sm:w-auto"
               >
                 Back
               </button>
@@ -1181,7 +1181,7 @@ export function BookingPage() {
                 <button
                   onClick={() => goToStep(step + 1)}
                   disabled={!canProceed()}
-                  className="px-7 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
+                  className="px-7 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md w-full sm:w-auto"
                 >
                   Continue <ChevronRight size={16} />
                 </button>
@@ -1189,7 +1189,7 @@ export function BookingPage() {
                 <button
                   onClick={handleConfirmBooking}
                   disabled={submitting}
-                  className="px-7 py-2.5 bg-gradient-to-r from-[#7A8C5C] to-[#5A6C3C] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-7 py-2.5 bg-gradient-to-r from-[#7A8C5C] to-[#5A6C3C] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
                 >
                   {submitting ? (
                     <>

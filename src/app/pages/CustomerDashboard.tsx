@@ -1130,7 +1130,7 @@ export function CustomerDashboard() {
         </h4>
 
         {/* Financial Info */}
-        <div className="grid grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 mb-4 text-xs font-['Lato']">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 mb-4 text-xs font-['Lato']">
           <div>
             <span className="text-[#2C1810]/50 block">Total Price</span>
             <span className="text-[#2C1810] font-semibold">
@@ -1513,10 +1513,10 @@ export function CustomerDashboard() {
   return (
     <div className="min-h-screen bg-[#F5F0E8]" data-text-scale="large">
       {/* Top Bar */}
-      <div className="bg-[#2C1810] px-6 py-5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center overflow-hidden">
+      <div className="bg-[#2C1810] px-4 sm:px-6 py-5">
+        <div className="max-w-7xl mx-auto flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center overflow-hidden shrink-0">
               {user?.profile_photo_url ? (
                 <img
                   src={user.profile_photo_url}
@@ -1529,8 +1529,8 @@ export function CustomerDashboard() {
                 </span>
               )}
             </div>
-            <div>
-              <p className="text-[#F5F0E8] font-['Playfair_Display']">
+            <div className="min-w-0">
+              <p className="text-[#F5F0E8] font-['Playfair_Display'] truncate">
                 {getFullName()}
               </p>
               <p className="text-[#C8922A] text-xs font-['Lato']">
@@ -1538,17 +1538,17 @@ export function CustomerDashboard() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <NotificationCenter onSelectTab={(tab) => setActiveTab(tab)} />
             <Link
               to="/package-selection"
-              className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"
+              className="flex-1 sm:flex-none justify-center px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"
             >
               <Plus size={16} /> New Booking
             </Link>
             <Link
               to="/"
-              className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] text-sm font-['Lato']"
+              className="hidden sm:inline text-[#F5F0E8]/50 hover:text-[#F5F0E8] text-sm font-['Lato']"
             >
               Home
             </Link>
@@ -1557,13 +1557,13 @@ export function CustomerDashboard() {
       </div>
 
       {/* Tab Nav */}
-      <div className="bg-[#EDE8DF] border-b border-[#C8922A]/15">
-        <div className="max-w-7xl mx-auto px-6 flex gap-1 overflow-x-auto">
+      <div className="bg-[#EDE8DF] border-b border-[#C8922A]/15 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto af-scrollbar-hide">
           {TABS.map((t) => (
             <button
               key={t}
               onClick={() => setActiveTab(t)}
-              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors ${
+              className={`px-5 py-3.5 text-sm font-['Lato'] whitespace-nowrap border-b-2 transition-colors shrink-0 ${
                 activeTab === t
                   ? "border-[#C8922A] text-[#C8922A]"
                   : "border-transparent text-[#2C1810]/55 hover:text-[#2C1810]"
@@ -3358,7 +3358,7 @@ export function CustomerDashboard() {
                 return (
                   <div className="space-y-3">
                     {/* Financial Info */}
-                    <div className="grid grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 text-xs font-['Lato']">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#F5F0E8] p-3 rounded-xl border border-[#C8922A]/15 text-xs font-['Lato']">
                       <div>
                         <span className="text-[#2C1810]/50 block">
                           Total Price

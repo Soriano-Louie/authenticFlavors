@@ -152,7 +152,7 @@ export function VerifyEmailPage() {
 
         {/* Code Input */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#C8922A]/10">
-          <div className="flex justify-center gap-2 mb-6">
+          <div className="grid grid-cols-6 gap-2 mb-6">
             {code.map((digit, index) => (
               <input
                 key={index}
@@ -165,7 +165,7 @@ export function VerifyEmailPage() {
                 value={digit}
                 onChange={(e) => handleCodeChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
-                className={`w-11 h-12 text-center text-lg font-bold border rounded-xl outline-none transition-colors font-['Lato'] ${
+                className={`w-full min-w-0 h-12 text-center text-lg font-bold border rounded-xl outline-none transition-colors font-['Lato'] ${
                   digit
                     ? "border-[#C8922A] bg-[#C8922A]/5 text-[#2C1810]"
                     : "border-[#C8922A]/20 text-[#2C1810]"

@@ -250,7 +250,7 @@ export function AuthPage() {
   };
 
   return (
-    <div className="h-screen flex overflow-hidden">
+    <div className="h-dvh flex overflow-hidden">
       {/* Left — Image Panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <img

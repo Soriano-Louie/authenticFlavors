@@ -235,7 +235,7 @@ export function AdminDashboard() {
 
   return (
     <div
-      className="h-screen bg-[#F5F0E8] flex overflow-hidden"
+      className="h-dvh bg-[#F5F0E8] flex overflow-hidden"
       data-text-scale="large"
     >
       {/* Sidebar */}
@@ -353,7 +353,7 @@ export function AdminDashboard() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <header className="bg-white border-b border-[#C8922A]/10 px-6 py-4 sticky top-0 z-30">
+        <header className="bg-white border-b border-[#C8922A]/10 px-4 sm:px-6 py-4 sticky top-0 z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -400,7 +400,7 @@ export function AdminDashboard() {
         </header>
 
         {/* Content Sections */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {activeSection === "overview" && <OverviewSection />}
           {activeSection === "feedback" && (
             <FeedbackSection
@@ -1140,7 +1140,7 @@ function AdminSettingsSection() {
       {/* Verified Email Change Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-xl">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-xl">
             <div className="flex justify-between items-center p-5 border-b border-[#C8922A]/10">
               <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
                 Change Email
@@ -1259,7 +1259,7 @@ function AdminSettingsSection() {
                       "Verify & Change Email"
                     )}
                   </button>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <button
                       onClick={() => {
                         setEmailStep("email");
@@ -1614,7 +1614,7 @@ function MenuManagementSection() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto af-table-responsive">
                 <table className="w-full text-sm font-['Lato']">
                   <thead>
                     <tr className="border-b border-[#C8922A]/10">
@@ -1641,16 +1641,16 @@ function MenuManagementSection() {
                         key={cat.category_id}
                         className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
                       >
-                        <td className="py-3 px-2 text-[#2C1810] font-medium">
+                        <td data-label="Name" className="py-3 px-2 text-[#2C1810] font-medium">
                           {cat.category_name}
                         </td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">
+                        <td data-label="Description" className="py-3 px-2 text-[#2C1810]/70">
                           {cat.description || "—"}
                         </td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">
+                        <td data-label="Order" className="py-3 px-2 text-[#2C1810]/70">
                           {cat.display_order ?? 0}
                         </td>
-                        <td className="py-3 px-2">
+                        <td data-label="Status" className="py-3 px-2">
                           <span
                             className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
                               cat.status === "Active"
@@ -1661,7 +1661,7 @@ function MenuManagementSection() {
                             {cat.status}
                           </span>
                         </td>
-                        <td className="py-3 px-2 text-right">
+                        <td data-label="Actions" className="py-3 px-2 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleEditCategory(cat)}
@@ -1711,7 +1711,7 @@ function MenuManagementSection() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto af-table-responsive">
                 <table className="w-full text-sm font-['Lato']">
                   <thead>
                     <tr className="border-b border-[#C8922A]/10">
@@ -1738,7 +1738,7 @@ function MenuManagementSection() {
                         key={item.menu_item_id}
                         className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
                       >
-                        <td className="py-3 px-2">
+                        <td data-label="Item" className="py-3 px-2">
                           <div className="flex items-center gap-3">
                             {item.image && (
                               <img
@@ -1752,15 +1752,15 @@ function MenuManagementSection() {
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">
+                        <td data-label="Category" className="py-3 px-2 text-[#2C1810]/70">
                           {item.category_name || "—"}
                         </td>
-                        <td className="py-3 px-2 text-[#2C1810]/70">
+                        <td data-label="Additional Price" className="py-3 px-2 text-[#2C1810]/70">
                           {item.additional_price > 0
                             ? `+₱${Number(item.additional_price).toLocaleString()}`
                             : "Included"}
                         </td>
-                        <td className="py-3 px-2">
+                        <td data-label="Status" className="py-3 px-2">
                           <span
                             className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
                               item.availability_status === "Active"
@@ -1771,7 +1771,7 @@ function MenuManagementSection() {
                             {item.availability_status}
                           </span>
                         </td>
-                        <td className="py-3 px-2 text-right">
+                        <td data-label="Actions" className="py-3 px-2 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleEditItem(item)}
@@ -1845,7 +1845,7 @@ function MenuManagementSection() {
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
                     Display Order
@@ -2020,7 +2020,7 @@ function MenuManagementSection() {
                   className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/40 resize-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-['Lato'] font-semibold text-[#2C1810] mb-1.5">
                     Additional Price (₱)
@@ -2512,7 +2512,7 @@ function FeedbackSection({
             Real-time customer feedback insights powered by Gemini AI
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={handleReanalyzeAll}
             disabled={
@@ -2719,12 +2719,12 @@ function FeedbackSection({
               </h3>
 
               {/* Sentiment Filter */}
-              <div className="flex items-center gap-1.5 bg-[#EDE8DF]/60 p-1 rounded-xl text-xs font-['Lato']">
+              <div className="flex flex-wrap items-center gap-1.5 bg-[#EDE8DF]/60 p-1 rounded-xl text-xs font-['Lato']">
                 {["All", "Positive", "Neutral", "Negative"].map((s) => (
                   <button
                     key={s}
                     onClick={() => setFilterSentiment(s)}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap ${
                       filterSentiment === s
                         ? "bg-white text-[#2C1810] shadow-sm"
                         : "text-[#2C1810]/60 hover:text-[#2C1810]"
@@ -3307,9 +3307,9 @@ function BookingsSection() {
               {overduePayments.slice(0, 10).map((payment) => (
                 <div
                   key={payment.payment_id}
-                  className="flex items-center justify-between bg-white/50 rounded-lg p-2.5 border border-[#C4541A]/10"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/50 rounded-lg p-2.5 border border-[#C4541A]/10"
                 >
-                  <div className="text-xs font-['Lato']">
+                  <div className="text-xs font-['Lato'] min-w-0">
                     <span className="font-semibold text-[#2C1810]">
                       {(payment as any).first_name} {(payment as any).last_name}
                     </span>
@@ -3327,7 +3327,7 @@ function BookingsSection() {
                       · Due: {formatDate(payment.due_date)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => handleSendReminder(payment.payment_id)}
                       disabled={remindingId === payment.payment_id}
@@ -3445,7 +3445,7 @@ function BookingsSection() {
                   {isExpanded && (
                     <div className="p-5 bg-white">
                       {/* Financial Summary */}
-                      <div className="grid grid-cols-3 gap-3 bg-[#F5F0E8] rounded-xl p-4 mb-5 border border-[#C8922A]/10">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#F5F0E8] rounded-xl p-4 mb-5 border border-[#C8922A]/10">
                         <div>
                           <p className="text-xs text-[#2C1810]/50 font-['Lato']">
                             Total Price
@@ -3526,7 +3526,7 @@ function BookingsSection() {
                                           {payment.payment_status}
                                         </span>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-['Lato'] text-[#2C1810]/60">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs font-['Lato'] text-[#2C1810]/60">
                                         <span>
                                           Amount:{" "}
                                           <span className="text-[#C8922A] font-semibold">
@@ -3631,7 +3631,7 @@ function BookingsSection() {
                       )}
 
                       {/* Customer & Event Info */}
-                      <div className="mt-5 pt-4 border-t border-[#C8922A]/10 grid grid-cols-2 gap-3 text-xs font-['Lato'] text-[#2C1810]/60">
+                      <div className="mt-5 pt-4 border-t border-[#C8922A]/10 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-['Lato'] text-[#2C1810]/60">
                         <div>
                           <span className="font-semibold text-[#2C1810]">
                             Event Type:{" "}
@@ -3739,7 +3739,7 @@ function BookingsSection() {
       {/* Venue Setup Review Modal */}
       {reviewingVenueSetup && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full shadow-2xl border border-[#C8922A]/20">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
               <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
                 <FileText className="text-[#C8922A]" size={20} />
@@ -3839,7 +3839,7 @@ function BookingsSection() {
       {/* Receipt Verification Confirmation Modal */}
       {verifyingPayment && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl border border-[#C8922A]/20">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
               <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
                 {verifyingPayment.action === "approve" ? (
@@ -4266,7 +4266,7 @@ function PackagesSection() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto af-table-responsive">
             <table className="w-full text-sm font-['Lato']">
               <thead>
                 <tr className="border-b border-[#C8922A]/10">
@@ -4298,7 +4298,7 @@ function PackagesSection() {
                       key={pkg.package_id}
                       className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
                     >
-                      <td className="py-3 px-2">
+                      <td data-label="Name" className="py-3 px-2">
                         <div className="flex items-center gap-3">
                           {pkg.image && (
                             <img
@@ -4312,13 +4312,13 @@ function PackagesSection() {
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-[#2C1810]/70">
+                      <td data-label="Max Pax" className="py-3 px-2 text-[#2C1810]/70">
                         {pkg.max_pax} guests
                       </td>
-                      <td className="py-3 px-2 text-[#2C1810]/70">
+                      <td data-label="Starting Price" className="py-3 px-2 text-[#2C1810]/70">
                         {formatPrice(startingPrice)}
                       </td>
-                      <td className="py-3 px-2">
+                      <td data-label="Status" className="py-3 px-2">
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs font-['Lato'] ${
                             pkg.status === "Active"
@@ -4329,7 +4329,7 @@ function PackagesSection() {
                           {pkg.status}
                         </span>
                       </td>
-                      <td className="py-3 px-2 text-right">
+                      <td data-label="Actions" className="py-3 px-2 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleEdit(pkg)}
@@ -4969,7 +4969,7 @@ function AnnouncementsSection() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(["all", "published", "draft"] as const).map((f) => (
           <button
             key={f}
@@ -5568,12 +5568,12 @@ function MenuChangeRequestsSection() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-1 bg-white rounded-2xl p-1.5 border border-[#C8922A]/10 w-fit">
+      <div className="flex flex-wrap gap-1 bg-white rounded-2xl p-1.5 border border-[#C8922A]/10 w-fit max-w-full">
         {(["All", "Pending", "Approved", "Rejected"] as const).map((status) => (
           <button
             key={status}
             onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-xl text-xs font-['Lato'] font-semibold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-['Lato'] font-semibold transition-all cursor-pointer whitespace-nowrap ${
               filterStatus === status
                 ? "bg-[#2C1810] text-[#F5F0E8] shadow-sm"
                 : "text-[#2C1810]/50 hover:text-[#2C1810]"
@@ -5715,7 +5715,7 @@ function MenuChangeRequestsSection() {
 
                 {/* Card Actions — only for pending requests */}
                 {req.status === "Pending" && (
-                  <div className="px-6 py-4 border-t border-[#C8922A]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5">
+                  <div className="px-4 sm:px-6 py-4 border-t border-[#C8922A]/10 flex flex-wrap items-center justify-end gap-3 bg-[#2C1810]/5">
                     <button
                       onClick={() => handleOpenRejectModal(req)}
                       disabled={approvingId === req.request_id}
@@ -5749,7 +5749,7 @@ function MenuChangeRequestsSection() {
       {/* Reject Modal */}
       {rejectingRequest && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl border border-[#C8922A]/20">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
               <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
                 <XCircle className="text-[#C4541A]" size={20} />

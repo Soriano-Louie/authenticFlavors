@@ -143,7 +143,7 @@ export function AboutPage() {
                 dining experiences built on passion, hard work, and the support
                 of its loyal customers.
               </p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   {
                     icon: Award,

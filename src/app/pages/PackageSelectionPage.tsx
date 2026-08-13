@@ -432,7 +432,7 @@ export function PackageSelectionPage() {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="mt-10 flex items-center justify-center gap-2">
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
                 <button
                   onClick={() => goToPage(1)}
                   disabled={currentPage === 1}

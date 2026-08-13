@@ -754,7 +754,7 @@ export function ChatBot() {
             setOpen(true);
           }
         }}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-[#F5F0E8] flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200"
+        className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-4 sm:right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-[#F5F0E8] flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200"
         aria-label="Open chat"
       >
         {open ? <X size={22} /> : <MessageCircle size={22} />}
@@ -774,7 +774,7 @@ export function ChatBot() {
           className={
             isFloating
               ? "fixed z-50 transition-all duration-300 ease-in-out rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col bg-[#F5F0E8] animate-in fade-in zoom-in-95"
-              : "fixed bottom-24 right-6 z-50 w-80 sm:w-[420px] bg-[#F5F0E8] rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col transition-all duration-300"
+              : "fixed z-50 w-[min(420px,calc(100vw-2rem))] bg-[#F5F0E8] rounded-3xl shadow-2xl overflow-hidden border border-[#C8922A]/30 flex flex-col transition-all duration-300 bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 sm:right-6"
           }
           style={
             isFloating

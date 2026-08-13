@@ -182,7 +182,7 @@ export function PackageDetailPage() {
       {/* Hero Image */}
       <div
         className="relative mt-4 overflow-hidden"
-        style={{ height: "400px" }}
+        style={{ height: "clamp(260px, 45vw, 400px)" }}
       >
         <img
           src={transformedPkg.image}

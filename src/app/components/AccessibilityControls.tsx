@@ -13,6 +13,7 @@ const LEVEL_LABELS: Record<TextSizeLevel, string> = {
 
 const STORAGE_KEY = "af-text-size-control-pos";
 const DEFAULT_RIGHT = 16;
+const MOBILE_BOTTOM = 96;
 
 interface DragState {
   startX: number;
@@ -55,6 +56,16 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
     loadSavedPosition,
   );
   const [dragging, setDragging] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     const el = controlRef.current;
@@ -113,8 +124,50 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Re-clamp after expanding/collapsing (width changes) once layout settles.
+  useEffect(() => {
+    if (!isMobile) return;
+    const raf = requestAnimationFrame(handleResize);
+    return () => cancelAnimationFrame(raf);
+  }, [expanded, isMobile]);
+
   const buttonBase =
     "flex items-center justify-center rounded-full border transition-all outline-none";
+
+  const defaultStyle = pos
+    ? { left: pos.x, top: pos.y }
+    : isMobile
+      ? { right: DEFAULT_RIGHT, bottom: MOBILE_BOTTOM }
+      : { right: DEFAULT_RIGHT, top: offsetTop };
+
+  // Compact pill for small screens — tap to expand the full control group.
+  if (isMobile && !expanded) {
+    return (
+      <div
+        ref={controlRef}
+        className={`fixed z-[60] pointer-events-auto select-none ${
+          dragging ? "cursor-grabbing" : ""
+        }`}
+        style={defaultStyle}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          aria-label="Open text size controls"
+          title="Adjust text size"
+          className="h-11 px-3.5 rounded-full bg-[#1A0E08]/90 text-[#F5F0E8] border border-[#C8922A]/50 shadow-lg flex items-center gap-1.5 hover:border-[#C8922A] transition-all cursor-pointer"
+        >
+          <span className="text-base font-bold leading-none" aria-hidden="true">
+            A
+          </span>
+          <span className="uppercase text-[10px] font-semibold tracking-wide">
+            {level === "default" ? "DEF" : LEVEL_LABELS[level]}
+          </span>
+          <Plus size={14} className="text-[#C8922A]" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -122,11 +175,7 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
       className={`fixed z-[60] pointer-events-auto select-none ${
         dragging ? "cursor-grabbing" : ""
       }`}
-      style={
-        pos
-          ? { left: pos.x, top: pos.y }
-          : { right: DEFAULT_RIGHT, top: offsetTop }
-      }
+      style={defaultStyle}
     >
       <div className="flex items-center gap-1">
         {/* Drag handle — move the whole control group */}
@@ -195,6 +244,31 @@ export function AccessibilityControls({ offsetTop = 80 }: { offsetTop?: number }
         >
           <Plus size={14} />
         </button>
+
+        {/* Collapse on small screens */}
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            aria-label="Collapse text size controls"
+            title="Collapse"
+            className={`${buttonBase} w-8 h-8 bg-[#1A0E08]/80 text-[#F5F0E8]/60 hover:text-[#F5F0E8] border border-[#C8922A]/30`}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m18 15-6-6-6 6" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

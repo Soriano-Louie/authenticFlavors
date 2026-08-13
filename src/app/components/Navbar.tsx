@@ -121,7 +121,7 @@ export function Navbar() {
 
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className="md:hidden bg-[#2C1810] border-t border-[#C8922A]/20 px-4 py-4 space-y-3">
+        <div className="md:hidden bg-[#2C1810] border-t border-[#C8922A]/20 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 overflow-y-auto max-h-[calc(100dvh-4rem)]">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.path}
