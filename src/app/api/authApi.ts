@@ -30,6 +30,8 @@ export interface RegisterPayload {
   email: string;
   phone_number: string;
   password: string;
+  confirm_password: string;
+  email_typo_confirmed?: boolean;
 }
 
 export interface LoginPayload {
@@ -52,6 +54,7 @@ export interface ApiErrorShape {
     message?: string;
     fieldErrors?: Record<string, string>;
     email?: string;
+    suggestion?: string;
   };
 }
 
@@ -64,6 +67,7 @@ export class ApiError extends Error {
   code?: string;
   fieldErrors?: Record<string, string>;
   email?: string;
+  suggestion?: string;
 
   constructor(
     status: number,
@@ -71,6 +75,7 @@ export class ApiError extends Error {
     code?: string,
     fieldErrors?: Record<string, string>,
     email?: string,
+    suggestion?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -78,6 +83,7 @@ export class ApiError extends Error {
     this.code = code;
     this.fieldErrors = fieldErrors;
     this.email = email;
+    this.suggestion = suggestion;
   }
 }
 
@@ -107,6 +113,7 @@ async function parseResponse<T>(
       payload.error?.code,
       payload.error?.fieldErrors,
       payload.error?.email,
+      payload.error?.suggestion,
     );
   }
 

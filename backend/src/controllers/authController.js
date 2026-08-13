@@ -12,6 +12,7 @@ import {
   validateRegisterInput,
   validateProfileUpdateInput,
 } from "../utils/validators.js";
+import { isEmailFormatValid } from "../utils/registrationValidation.js";
 import {
   sendVerificationCode,
   sendPasswordResetEmail,
@@ -245,6 +246,23 @@ export async function register(req, res) {
         code: "VALIDATION_ERROR",
         message: "Please fix the highlighted fields.",
         fieldErrors: parsed.fieldErrors,
+      },
+    });
+  }
+
+  // A valid-looking email that is a likely typo of a well-known provider is
+  // rejected unless the caller explicitly confirms it (the frontend shows a
+  // "Did you mean ...?" prompt before sending the confirmation flag). Direct
+  // API callers must pass the same confirmation, otherwise they are rejected.
+  if (parsed.emailSuggestion && req.body.email_typo_confirmed !== true) {
+    return res.status(400).json({
+      error: {
+        code: "EMAIL_SUSPICIOUS",
+        message: `Did you mean ${parsed.emailSuggestion}?`,
+        suggestion: parsed.emailSuggestion,
+        fieldErrors: {
+          email: `Did you mean ${parsed.emailSuggestion}?`,
+        },
       },
     });
   }
@@ -970,7 +988,7 @@ export async function requestEmailChange(req, res) {
     });
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+  if (!isEmailFormatValid(newEmail)) {
     return res.status(400).json({
       error: {
         code: "VALIDATION_ERROR",

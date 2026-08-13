@@ -3,6 +3,15 @@ import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { ChefHat, Eye, EyeOff } from "lucide-react";
 import { IMAGES } from "../data/mockData";
 import { isApiError, useAuth } from "../auth/AuthContext";
+import {
+  getInvalidNameReason,
+  getPasswordError,
+  getPasswordStrength,
+  isEmailFormatValid,
+  isPasswordStrongEnough,
+  suggestEmailCorrection,
+  validatePhone,
+} from "../../../backend/src/utils/registrationValidation.js";
 
 export function AuthPage() {
   const { login, register } = useAuth();
@@ -16,6 +25,8 @@ export function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const [showTypoConfirm, setShowTypoConfirm] = useState(false);
 
   const [loginForm, setLoginForm] = useState({
     email: "",
@@ -29,61 +40,23 @@ export function AuthPage() {
     email: "",
     phone_number: "",
     password: "",
+    confirm_password: "",
   });
-
-  // Password strength validation
-  const getPasswordStrength = (password: string) => {
-    let strength = 0;
-    const checks = {
-      length: password.length >= 8,
-      uppercase: /[A-Z]/.test(password),
-      lowercase: /[a-z]/.test(password),
-      number: /[0-9]/.test(password),
-      special: /[@$!%*?&]/.test(password),
-    };
-
-    strength = Object.values(checks).filter(Boolean).length;
-    return { strength, checks };
-  };
 
   const passwordStrength = registerForm.password
     ? getPasswordStrength(registerForm.password)
     : null;
 
-  // Philippine phone number validation
-  const validatePhilippinePhone = (phone: string) => {
-    // Remove all non-numeric characters
-    const cleaned = phone.replace(/\D/g, "");
-
-    // Check if it matches Philippine mobile number format
-    // Valid formats: 09171234567, 639171234567, +639171234567
-    if (cleaned.length === 0)
-      return { valid: false, error: "Phone number is required" };
-
-    // Check if starts with 09 and has 11 digits
-    if (cleaned.startsWith("09") && cleaned.length === 11) {
-      return { valid: true, formatted: cleaned, error: null };
-    }
-
-    // Check if starts with 639 and has 12 digits
-    if (cleaned.startsWith("639") && cleaned.length === 12) {
-      return { valid: true, formatted: "0" + cleaned.slice(2), error: null };
-    }
-
-    // Check if starts with +639 and has 13 digits (with +)
-    if (phone.startsWith("+639") && cleaned.length === 12) {
-      return { valid: true, formatted: "0" + cleaned.slice(2), error: null };
-    }
-
-    return {
-      valid: false,
-      error: "Invalid format. Use: 09171234567 (11 digits starting with 09)",
-    };
-  };
-
   const phoneValidation = registerForm.phone_number
-    ? validatePhilippinePhone(registerForm.phone_number)
+    ? validatePhone(registerForm.phone_number)
     : null;
+
+  // Live "Did you mean ...?" hint while the user is still typing.
+  const liveEmailSuggestion = useMemo(() => {
+    const email = registerForm.email.trim().toLowerCase();
+    if (!email || !isEmailFormatValid(email)) return null;
+    return suggestEmailCorrection(email);
+  }, [registerForm.email]);
 
   const redirectPath = useMemo(() => {
     const state = location.state as { from?: string } | null;
@@ -145,37 +118,74 @@ export function AuthPage() {
     }
   };
 
-  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitRegistration = async (options?: {
+    email?: string;
+    typoConfirmed?: boolean;
+  }) => {
     clearErrors();
 
+    const email = (options?.email ?? registerForm.email).trim().toLowerCase();
     const nextErrors: Record<string, string> = {};
 
-    if (!registerForm.first_name.trim())
-      nextErrors.first_name = "First name is required.";
-    if (!registerForm.last_name.trim())
-      nextErrors.last_name = "Last name is required.";
-    if (!registerForm.email.trim()) nextErrors.email = "Email is required.";
+    const firstNameError = getInvalidNameReason(
+      registerForm.first_name,
+      "First name",
+    );
+    if (firstNameError) nextErrors.first_name = firstNameError;
 
-    // Validate Philippine phone number
-    const phoneValid = validatePhilippinePhone(registerForm.phone_number);
-    if (!phoneValid.valid) {
-      nextErrors.phone_number = phoneValid.error || "Invalid phone number";
+    if (registerForm.middle_name.trim()) {
+      const middleNameError = getInvalidNameReason(
+        registerForm.middle_name,
+        "Middle name",
+      );
+      if (middleNameError) nextErrors.middle_name = middleNameError;
     }
 
-    // Validate password strength
-    if (!registerForm.password) {
-      nextErrors.password = "Password is required.";
-    } else {
-      const strength = getPasswordStrength(registerForm.password);
-      if (strength.strength < 3) {
-        nextErrors.password =
-          "Password is too weak. Please meet at least 3 requirements.";
-      }
+    const lastNameError = getInvalidNameReason(
+      registerForm.last_name,
+      "Last name",
+    );
+    if (lastNameError) nextErrors.last_name = lastNameError;
+
+    if (!email) {
+      nextErrors.email = "Email is required.";
+    } else if (!isEmailFormatValid(email)) {
+      nextErrors.email =
+        "Enter a valid email address (e.g. name@example.com).";
+    }
+
+    const phoneResult = validatePhone(registerForm.phone_number);
+    if (!phoneResult.valid) {
+      nextErrors.phone_number =
+        phoneResult.error || "Invalid phone number";
+    }
+
+    const passwordError = getPasswordError(registerForm.password);
+    if (passwordError) {
+      nextErrors.password = passwordError;
+    } else if (!isPasswordStrongEnough(registerForm.password)) {
+      nextErrors.password =
+        "Password is too weak. Please meet at least 3 of: 8+ characters, uppercase, lowercase, number, special character.";
+    }
+    if (!registerForm.confirm_password) {
+      nextErrors.confirm_password = "Please confirm your password.";
+    } else if (registerForm.password !== registerForm.confirm_password) {
+      nextErrors.confirm_password = "Passwords do not match.";
     }
 
     if (Object.keys(nextErrors).length > 0) {
       setFieldErrors(nextErrors);
+      return;
+    }
+
+    // Suspicious (likely typo) emails are never auto-corrected — the user
+    // must choose between the suggested address and keeping their own.
+    const suggestion = isEmailFormatValid(email)
+      ? suggestEmailCorrection(email)
+      : null;
+    if (suggestion && !options?.typoConfirmed) {
+      setEmailSuggestion(suggestion);
+      setShowTypoConfirm(true);
       return;
     }
 
@@ -185,18 +195,27 @@ export function AuthPage() {
         first_name: registerForm.first_name,
         middle_name: registerForm.middle_name,
         last_name: registerForm.last_name,
-        email: registerForm.email,
+        email,
         phone_number: registerForm.phone_number,
         password: registerForm.password,
+        confirm_password: registerForm.confirm_password,
+        email_typo_confirmed:
+          suggestion && options?.typoConfirmed ? true : undefined,
       });
 
       // Redirect to email verification page
       navigate(
-        `/verify-email?email=${encodeURIComponent(registerForm.email)}`,
+        `/verify-email?email=${encodeURIComponent(email)}`,
         { replace: true },
       );
     } catch (error) {
       if (isApiError(error)) {
+        if (error.code === "EMAIL_SUSPICIOUS") {
+          // Defensive: the backend flagged a typo we missed — surface it.
+          setEmailSuggestion(error.suggestion ?? suggestEmailCorrection(email));
+          setShowTypoConfirm(true);
+          return;
+        }
         setErrorMessage(error.message);
         setFieldErrors(error.fieldErrors ?? {});
       } else {
@@ -207,6 +226,27 @@ export function AuthPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleRegister = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitRegistration();
+  };
+
+  const handleUseSuggestion = () => {
+    const suggestion = emailSuggestion;
+    setShowTypoConfirm(false);
+    setEmailSuggestion(null);
+    if (suggestion) {
+      setRegisterForm((prev) => ({ ...prev, email: suggestion }));
+      submitRegistration({ email: suggestion });
+    }
+  };
+
+  const handleKeepEmail = () => {
+    setShowTypoConfirm(false);
+    setEmailSuggestion(null);
+    submitRegistration({ typoConfirmed: true });
   };
 
   return (
@@ -437,6 +477,25 @@ export function AuthPage() {
                     {fieldErrors.email}
                   </p>
                 )}
+                {tab === "register" && liveEmailSuggestion && (
+                  <p className="text-xs text-[#C4541A] mt-1 font-['Lato']">
+                    Did you mean{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailSuggestion(null);
+                        setRegisterForm((prev) => ({
+                          ...prev,
+                          email: liveEmailSuggestion,
+                        }));
+                      }}
+                      className="underline font-semibold hover:text-[#8B3A1A]"
+                    >
+                      {liveEmailSuggestion}
+                    </button>
+                    ?
+                  </p>
+                )}
               </div>
 
               <div>
@@ -574,6 +633,35 @@ export function AuthPage() {
                 )}
               </div>
 
+              {tab === "register" && (
+                <div>
+                  <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1">
+                    Confirm Password
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={registerForm.confirm_password}
+                    onChange={(e) =>
+                      setRegisterForm((prev) => ({
+                        ...prev,
+                        confirm_password: e.target.value,
+                      }))
+                    }
+                    placeholder="Re-enter your password"
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 ${
+                      fieldErrors.confirm_password
+                        ? "border-[#C4541A]"
+                        : "border-[#C8922A]/20"
+                    }`}
+                  />
+                  {fieldErrors.confirm_password && (
+                    <p className="text-xs text-[#C4541A] mt-1">
+                      {fieldErrors.confirm_password}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {tab === "login" && (
                 <div className="text-right">
                   <button
@@ -608,6 +696,44 @@ export function AuthPage() {
                     : "Create Account"}
               </button>
             </form>
+
+            {showTypoConfirm && emailSuggestion && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+                <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+                  <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg mb-2">
+                    Check your email address
+                  </h3>
+                  <p className="text-sm text-[#2C1810]/70 font-['Lato']">
+                    Did you mean{" "}
+                    <span className="font-semibold text-[#C4541A]">
+                      {emailSuggestion}
+                    </span>
+                    ?
+                  </p>
+                  <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1 mb-4">
+                    We can create your account with the corrected address, or
+                    keep the one you entered. You must be able to receive the
+                    verification code to activate your account.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={handleUseSuggestion}
+                      className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shadow-md"
+                    >
+                      Yes, use {emailSuggestion}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleKeepEmail}
+                      className="w-full py-2.5 bg-[#EDE8DF] text-[#2C1810] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+                    >
+                      No, keep my email
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <p className="text-center text-[#2C1810]/50 text-sm font-['Lato'] mt-4">
               {tab === "login"
