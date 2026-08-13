@@ -7,6 +7,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
+import { toast } from "sonner";
 import {
   ApiError,
   getCurrentUser,
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const logout = useCallback(async () => {
     try {
       await apiLogout();
+      toast.success("Logged out successfully");
     } finally {
       setAccessToken(null);
       setUser(null);

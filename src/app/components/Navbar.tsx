@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { Menu, X, User, LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationCenter } from "./NotificationCenter";
+import { LogoutConfirmationDialog } from "./LogoutConfirmationDialog";
 
 const NAV_LINKS = [
   { label: "Home", path: "/" },
@@ -17,9 +19,27 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
   const loggedIn = Boolean(user);
+
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to logout. Please try again.",
+      );
+    } finally {
+      setLoggingOut(false);
+      setShowLogoutConfirm(false);
+    }
+  };
 
   const isActive = (path: string, activePaths?: string[]) => {
     const paths = activePaths ?? [path];
@@ -91,7 +111,7 @@ export function Navbar() {
                 </Link>
                 <button
                   className="flex items-center gap-1.5 text-[#F5F0E8]/60 hover:text-red-400 transition-colors text-base cursor-pointer"
-                  onClick={logout}
+                  onClick={() => setShowLogoutConfirm(true)}
                 >
                   <LogOut size={18} />
                   Logout
@@ -149,7 +169,7 @@ export function Navbar() {
                 <button
                   onClick={() => {
                     setMobileOpen(false);
-                    logout();
+                    setShowLogoutConfirm(true);
                   }}
                   className="flex-1 text-center py-2 bg-red-950/20 border border-red-500/30 text-red-400 rounded-full text-sm font-['Lato'] cursor-pointer"
                 >
@@ -177,6 +197,12 @@ export function Navbar() {
           </div>
         </div>
       )}
+      <LogoutConfirmationDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={handleConfirmLogout}
+        loading={loggingOut}
+      />
     </nav>
   );
 }

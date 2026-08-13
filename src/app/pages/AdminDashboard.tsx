@@ -61,6 +61,7 @@ import type {
   MenuItem,
 } from "../api/packageApi";
 import { getMenuCategories, getMenuItems } from "../api/packageApi";
+import { LogoutConfirmationDialog } from "../components/LogoutConfirmationDialog";
 import type { AdminMenuCategory, AdminMenuItem } from "../api/adminApi";
 import {
   getAdminMenuCategories,
@@ -174,7 +175,6 @@ export function AdminDashboard() {
     setLoggingOut(true);
     try {
       await logout();
-      toast.success("Logged out successfully");
       navigateTo("/");
     } catch (err) {
       toast.error(
@@ -310,45 +310,14 @@ export function AdminDashboard() {
         />
       )}
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => !loggingOut && setShowLogoutConfirm(false)}
-          />
-          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-[#C8922A]/20">
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-[#C4541A]/15 flex items-center justify-center mx-auto mb-4">
-                <LogOut size={26} className="text-[#C4541A]" />
-              </div>
-              <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
-                Confirm Logout
-              </h3>
-              <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
-                Are you sure you want to log out of the admin panel?
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  disabled={loggingOut}
-                  className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-sm font-['Lato'] text-[#2C1810]/70 hover:bg-[#F5F0E8] transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmLogout}
-                  disabled={loggingOut}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {loggingOut && <Loader2 size={16} className="animate-spin" />}
-                  {loggingOut ? "Logging out..." : "Logout"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Logout Confirmation Dialog */}
+      <LogoutConfirmationDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={handleConfirmLogout}
+        loading={loggingOut}
+        description="Are you sure you want to log out of the admin panel?"
+      />
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">

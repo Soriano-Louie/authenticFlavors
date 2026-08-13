@@ -32,6 +32,7 @@ import {
   type MenuItem,
 } from "../api/packageApi";
 import { NotificationCenter } from "../components/NotificationCenter";
+import { LogoutConfirmationDialog } from "../components/LogoutConfirmationDialog";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -55,6 +56,7 @@ import {
   ExternalLink,
   Camera,
   FileText,
+  Home,
 } from "lucide-react";
 
 const TABS = [
@@ -743,11 +745,7 @@ export function CustomerDashboard() {
     useState(false);
   const [processingCancellation, setProcessingCancellation] = useState(false);
 
-  // Receipt viewing state
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(
-    null,
-  );
+  // Receipts are opened in a new tab via handleViewReceipt
 
   // Logout state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -759,7 +757,6 @@ export function CustomerDashboard() {
       showBookingDetailsModal ||
       showMenuChangeModal ||
       showCancellationModal ||
-      showReceiptModal ||
       showLogoutConfirm;
 
     if (isModalOpen) {
@@ -775,7 +772,6 @@ export function CustomerDashboard() {
     showBookingDetailsModal,
     showMenuChangeModal,
     showCancellationModal,
-    showReceiptModal,
     showLogoutConfirm,
   ]);
 
@@ -1075,8 +1071,8 @@ export function CustomerDashboard() {
   };
 
   const handleViewReceipt = (receiptUrl: string) => {
-    setSelectedReceiptUrl(receiptUrl);
-    setShowReceiptModal(true);
+    if (!receiptUrl) return;
+    window.open(receiptUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleLogoutClick = () => {
@@ -1087,7 +1083,6 @@ export function CustomerDashboard() {
     setLoggingOut(true);
     try {
       await logout();
-      toast.success("Logged out successfully");
       navigate("/");
     } catch (err) {
       toast.error(
@@ -1551,6 +1546,14 @@ export function CustomerDashboard() {
               className="hidden sm:inline text-[#F5F0E8]/50 hover:text-[#F5F0E8] text-sm font-['Lato']"
             >
               Home
+            </Link>
+            <Link
+              to="/"
+              aria-label="Back to Home"
+              title="Back to Home"
+              className="sm:hidden flex items-center justify-center w-10 h-10 rounded-full border border-[#C8922A]/30 text-[#F5F0E8]/70 hover:text-[#F5F0E8] hover:bg-[#C8922A]/10 transition-colors shrink-0"
+            >
+              <Home size={18} />
             </Link>
           </div>
         </div>
@@ -3012,76 +3015,13 @@ export function CustomerDashboard() {
         </div>
       )}
 
-      {/* Receipt View Modal */}
-      {showReceiptModal && selectedReceiptUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setShowReceiptModal(false)}
-        >
-          <div
-            className="relative max-w-4xl max-h-[90vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowReceiptModal(false)}
-              className="absolute top-4 right-4 bg-white/90 hover:bg-white text-[#2C1810] rounded-full p-2 z-10 transition-colors cursor-pointer"
-            >
-              <X size={26} />
-            </button>
-            <img
-              src={selectedReceiptUrl}
-              alt="Payment Receipt"
-              className="w-full h-full object-contain rounded-lg"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full shadow-xl">
-            <div className="p-6">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#C4541A]/10 mx-auto mb-4">
-                <LogOut className="text-[#C4541A]" size={26} />
-              </div>
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold text-center mb-2">
-                Confirm Logout
-              </h3>
-              <p className="text-sm text-[#2C1810]/60 font-['Lato'] text-center mb-6">
-                Are you sure you want to logout? You'll need to sign in again to
-                access your account.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  disabled={loggingOut}
-                  className="flex-1 px-4 py-2.5 border border-[#2C1810]/20 text-[#2C1810] rounded-full text-sm font-['Lato'] hover:bg-[#F5F0E8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmLogout}
-                  disabled={loggingOut}
-                  className="flex-1 px-4 py-2.5 bg-[#C4541A] hover:bg-[#C4541A]/90 text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {loggingOut ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Logging out...
-                    </>
-                  ) : (
-                    <>
-                      <LogOut size={18} />
-                      Logout
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Logout Confirmation Dialog */}
+      <LogoutConfirmationDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={handleConfirmLogout}
+        loading={loggingOut}
+      />
 
       {/* Booking Details Modal */}
       {showBookingDetailsModal && selectedBooking && (
