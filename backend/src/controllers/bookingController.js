@@ -493,11 +493,77 @@ export async function getBookings(req, res) {
   }
 }
 
-// Fetch all bookings for admin
+// Booking statuses actually produced by the system (createBooking, verifyBooking,
+// completeBooking, rejectBooking, requestCancellation). "Overdue" is handled as a
+// derived filter because it is a payment-level state, not a stored booking status.
+const ADMIN_BOOKING_STATUSES = [
+  "Pending",
+  "Reserved",
+  "Confirmed",
+  "Completed",
+  "Cancelled",
+  "Rejected",
+];
+
+// Fetch all bookings for admin, optionally filtered by status and search query.
+// Supports GET /api/admin/bookings?status=Completed&search=Juan
 export async function getAdminBookings(req, res) {
   try {
     // Auto-complete past confirmed bookings before fetching
     await autoCompletePastBookings();
+
+    const { status, search } = req.query;
+    const whereClauses = [];
+    const params = [];
+
+    if (status && status !== "All") {
+      if (status === "Overdue") {
+        // Derived from unsettled payments whose due date has passed.
+        // Completed and cancelled bookings are never considered overdue.
+        whereClauses.push(`
+          b.booking_status NOT IN ('Cancelled', 'Completed')
+          AND EXISTS (
+            SELECT 1 FROM payments p
+            WHERE p.booking_id = b.booking_id
+              AND p.payment_status IN ('Pending', 'Overdue')
+              AND p.payment_type != 'CancellationCharge'
+              AND p.due_date < CURDATE()
+          )
+        `);
+      } else if (ADMIN_BOOKING_STATUSES.includes(status)) {
+        whereClauses.push("b.booking_status = ?");
+        params.push(status);
+      } else {
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: `Invalid booking status filter: ${status}`,
+          },
+        });
+      }
+    }
+
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      const like = `%${q}%`;
+      const searchFields = [
+        "b.booking_reference LIKE ?",
+        "CAST(b.ai_booking_reference AS CHAR) LIKE ?",
+        "b.first_name LIKE ?",
+        "b.last_name LIKE ?",
+        "b.contact_name LIKE ?",
+        "b.contact_email LIKE ?",
+        "p.package_name LIKE ?",
+        "et.type_name LIKE ?",
+        "b.booking_status LIKE ?",
+        "CAST(b.booking_id AS CHAR) LIKE ?",
+      ];
+      whereClauses.push(`(${searchFields.join(" OR ")})`);
+      searchFields.forEach(() => params.push(like));
+    }
+
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
     const [bookings] = await pool.query(
       `SELECT b.*, p.package_name, et.type_name, vs.setup_name,
@@ -507,7 +573,9 @@ export async function getAdminBookings(req, res) {
        JOIN event_types et ON b.event_type_id = et.event_type_id
        JOIN venue_setups vs ON b.venue_setup_id = vs.venue_setup_id
        JOIN users u ON b.user_id = u.user_id
+       ${whereSql}
        ORDER BY b.created_at DESC`,
+      params,
     );
 
     // Fetch menu selections for all bookings in one query (avoids N+1)

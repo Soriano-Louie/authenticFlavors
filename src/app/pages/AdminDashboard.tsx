@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -114,6 +114,8 @@ import {
   Camera,
   Shield,
   Save,
+  ChevronDown,
+  RotateCcw,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -2901,6 +2903,14 @@ function BookingsSection() {
   const [remindingId, setRemindingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [bookingSearch, setBookingSearch] = useState("");
+  const [bookingStatus, setBookingStatus] = useState<string>("All");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounce search input to avoid firing a request on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(bookingSearch), 400);
+    return () => clearTimeout(t);
+  }, [bookingSearch]);
 
   const [venueSetupRequests, setVenueSetupRequests] = useState<
     Record<number, VenueSetupRequest>
@@ -2913,7 +2923,7 @@ function BookingsSection() {
     "approve" | "changes" | "decline" | null
   >(null);
 
-  const fetchVenueSetupRequests = async (bookingIds: number[]) => {
+  const fetchVenueSetupRequests = useCallback(async (bookingIds: number[]) => {
     if (!accessToken) return;
     const map: Record<number, VenueSetupRequest> = {};
     await Promise.all(
@@ -2929,13 +2939,16 @@ function BookingsSection() {
       }),
     );
     setVenueSetupRequests(map);
-  };
+  }, [accessToken]);
 
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     if (!accessToken) return;
     try {
       setLoading(true);
-      const res = await getAdminBookings(accessToken);
+      const res = await getAdminBookings(accessToken, {
+        status: bookingStatus === "All" ? undefined : bookingStatus,
+        search: debouncedSearch.trim() || undefined,
+      });
       setBookings(res.bookings);
       // Pre-fetch payments for all bookings
       const paymentMap: Record<number, Payment[]> = {};
@@ -2958,9 +2971,9 @@ function BookingsSection() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accessToken, bookingStatus, debouncedSearch, fetchVenueSetupRequests]);
 
-  const fetchOverduePayments = async () => {
+  const fetchOverduePayments = useCallback(async () => {
     if (!accessToken) return;
     try {
       setOverdueLoading(true);
@@ -2971,12 +2984,12 @@ function BookingsSection() {
     } finally {
       setOverdueLoading(false);
     }
-  };
+  }, [accessToken]);
 
   useEffect(() => {
     fetchBookings();
     fetchOverduePayments();
-  }, [accessToken]);
+  }, [fetchBookings, fetchOverduePayments]);
 
   const handleComplete = async (bookingId: number) => {
     if (!accessToken) return;
@@ -3209,24 +3222,6 @@ function BookingsSection() {
     return `#${String(booking.booking_id).padStart(4, "0")}`;
   };
 
-  const filteredBookings = bookings.filter((b) => {
-    const q = bookingSearch.trim().toLowerCase();
-    if (!q) return true;
-    const haystack = [
-      getBookingReference(b),
-      b.first_name,
-      b.last_name,
-      b.contact_email,
-      b.package_name,
-      b.booking_status,
-      String(b.booking_id),
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(q);
-  });
-
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -3246,18 +3241,61 @@ function BookingsSection() {
           </button>
         </div>
 
-        {/* Search bookings */}
-        <div className="relative mb-4">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
-          />
-          <input
-            value={bookingSearch}
-            onChange={(e) => setBookingSearch(e.target.value)}
-            placeholder="Search by reference, customer, package, or status..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
-          />
+        {/* Search + Status Filter toolbar */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+          <div className="relative flex-1 min-w-0">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
+            />
+            <input
+              value={bookingSearch}
+              onChange={(e) => setBookingSearch(e.target.value)}
+              placeholder="Search by reference, customer, package, or status..."
+              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+            />
+            {bookingSearch && (
+              <button
+                onClick={() => setBookingSearch("")}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] p-0.5"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+          <div className="relative sm:w-56 shrink-0">
+            <select
+              value={bookingStatus}
+              onChange={(e) => setBookingStatus(e.target.value)}
+              aria-label="Filter bookings by status"
+              className="w-full appearance-none pl-3 pr-9 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] cursor-pointer"
+            >
+              <option value="All">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Reserved">Reserved</option>
+              <option value="Confirmed">Confirmed</option>
+              <option value="Completed">Completed</option>
+              <option value="Cancelled">Cancelled</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Overdue">Overdue</option>
+            </select>
+            <ChevronDown
+              size={16}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 pointer-events-none"
+            />
+          </div>
+          {(bookingStatus !== "All" || bookingSearch.trim()) && (
+            <button
+              onClick={() => {
+                setBookingStatus("All");
+                setBookingSearch("");
+              }}
+              className="shrink-0 self-start sm:self-center text-xs font-['Lato'] text-[#C8922A] hover:underline inline-flex items-center gap-1 py-2.5"
+            >
+              <RotateCcw size={14} /> Reset filters
+            </button>
+          )}
         </div>
 
         {/* Overdue Payments Alert */}
@@ -3326,15 +3364,28 @@ function BookingsSection() {
           <div className="flex justify-center py-10">
             <Loader2 className="animate-spin text-[#C8922A]" size={32} />
           </div>
-        ) : filteredBookings.length === 0 ? (
-          <p className="text-sm font-['Lato'] text-[#2C1810]/50 py-10 text-center">
-            {bookingSearch.trim()
-              ? "No bookings match your search."
-              : "No bookings found."}
-          </p>
+        ) : bookings.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-sm font-['Lato'] text-[#2C1810]/50">
+              {bookingSearch.trim() || bookingStatus !== "All"
+                ? "No bookings match your search and filters."
+                : "No bookings found."}
+            </p>
+            {(bookingSearch.trim() || bookingStatus !== "All") && (
+              <button
+                onClick={() => {
+                  setBookingStatus("All");
+                  setBookingSearch("");
+                }}
+                className="mt-3 inline-flex items-center gap-1 text-xs font-['Lato'] text-[#C8922A] hover:underline"
+              >
+                <RotateCcw size={14} /> Clear search and filter
+              </button>
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
-            {filteredBookings.map((booking) => {
+            {bookings.map((booking) => {
               const payments = paymentsByBooking[booking.booking_id] || [];
               const isExpanded = expandedBookingId === booking.booking_id;
               const isPendingAction = actioningId === booking.booking_id;
@@ -5392,6 +5443,7 @@ function getStatusStyle(status: string): string {
     Pending: "bg-[#C8922A]/15 text-[#C8922A]",
     Completed: "bg-[#EDE8DF] text-[#2C1810]/60",
     Cancelled: "bg-[#C4541A]/15 text-[#C4541A]",
+    Rejected: "bg-[#C4541A]/15 text-[#C4541A]",
   };
   return styles[status] || "bg-gray-100 text-gray-600";
 }

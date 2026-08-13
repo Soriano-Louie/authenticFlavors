@@ -127,13 +127,25 @@ export function getCustomerBookings(
 
 export function getAdminBookings(
   accessToken: string,
+  params?: { status?: string; search?: string },
 ): Promise<{ bookings: Booking[] }> {
-  return request<{ bookings: Booking[] }>("/api/admin/bookings", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const query = new URLSearchParams();
+  if (params?.status && params.status !== "All") {
+    query.set("status", params.status);
+  }
+  if (params?.search && params.search.trim()) {
+    query.set("search", params.search.trim());
+  }
+  const qs = query.toString();
+  return request<{ bookings: Booking[] }>(
+    `/api/admin/bookings${qs ? `?${qs}` : ""}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
 }
 
 export function completeBooking(
