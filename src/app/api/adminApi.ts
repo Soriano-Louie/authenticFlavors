@@ -135,7 +135,7 @@ export async function updateAdminPackage(
   return parseResponse<AdminSinglePackageResponse>(response);
 }
 
-/** Delete (soft-delete) a package */
+/** Deactivate (soft-delete) a package */
 export function deleteAdminPackage(
   accessToken: string,
   id: number,

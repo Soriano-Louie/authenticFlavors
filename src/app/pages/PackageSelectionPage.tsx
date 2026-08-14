@@ -1,6 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
-import { ArrowRight, Check, CheckCircle, Loader2, Search, Trophy } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  CheckCircle,
+  Loader2,
+  Search,
+  Trophy,
+} from "lucide-react";
 import { BookingRules } from "../components/BookingRules";
 import {
   Dialog,
@@ -110,7 +118,7 @@ function getPackagePriceForPax(pricing: PackagePricing[], pax: number) {
 
 export function PackageSelectionPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isBootstrapping } = useAuth();
   const [searchParams] = useSearchParams();
   const eventType = searchParams.get("event") || "Birthday";
   const selectedPackageQuery = searchParams.get("package") || "1";
@@ -118,6 +126,11 @@ export function PackageSelectionPage() {
   const [selectedPackageId, setSelectedPackageId] =
     useState<string>(selectedPackageQuery);
   const [selectedPax, setSelectedPax] = useState<number>(initialPax);
+  // "Don't show again" is scoped to the current browser session AND the
+  // current account, so it is suppressed only for this visit/session — the
+  // modal always comes back when a new session starts or another user logs in.
+  const dismissStorageKey = `af-booking-rules-dismissed-${user?.user_id ?? "guest"}`;
+  const [dontShowAgain, setDontShowAgain] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(true);
   const [canContinueBooking, setCanContinueBooking] = useState(false);
 
@@ -231,6 +244,20 @@ export function PackageSelectionPage() {
     }
   }, [paxOptions, selectedPax]);
 
+  // Respect the session/account-scoped "don't show again" preference once the
+  // auth state has settled. Re-evaluates when the logged-in account changes,
+  // so the modal pops up again after a fresh login.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    let dismissed = false;
+    try {
+      dismissed = Boolean(sessionStorage.getItem(dismissStorageKey));
+    } catch {
+      dismissed = false;
+    }
+    setShowRulesModal(!dismissed);
+  }, [isBootstrapping, dismissStorageKey]);
+
   // Enable continue button after 10 seconds when modal opens
   useEffect(() => {
     if (showRulesModal) {
@@ -241,6 +268,18 @@ export function PackageSelectionPage() {
       return () => clearTimeout(timer);
     }
   }, [showRulesModal]);
+
+  const handleCloseRules = () => {
+    if (dontShowAgain) {
+      try {
+        sessionStorage.setItem(dismissStorageKey, "1");
+      } catch {
+        // Ignore storage errors (e.g., private mode)
+      }
+    }
+    setDontShowAgain(false);
+    setShowRulesModal(false);
+  };
 
   const handleProceedToBooking = () => {
     const targetUrl = `/booking?event=${encodeURIComponent(eventType)}&package=${selectedPackage.id}&pax=${selectedPax}`;
@@ -289,7 +328,7 @@ export function PackageSelectionPage() {
   return (
     <div className="bg-[#F5F0E8] min-h-screen">
       {/* Rules Popup Modal */}
-      <Dialog open={showRulesModal}>
+      <Dialog open={showRulesModal && !isBootstrapping}>
         <DialogContent
           showCloseButton={false}
           className="bg-[#2C1810] border-[#C8922A]/30 text-[#F5F0E8] max-h-[85vh] overflow-y-auto outline-none"
@@ -307,8 +346,19 @@ export function PackageSelectionPage() {
           </DialogHeader>
           <BookingRules />
           <DialogFooter>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none mb-4">
+              <input
+                type="checkbox"
+                checked={dontShowAgain}
+                onChange={(e) => setDontShowAgain(e.target.checked)}
+                className="h-4 w-4 shrink-0 rounded border-[#C8922A]/40 bg-[#1A0E08] text-[#C8922A] accent-[#C8922A] cursor-pointer"
+              />
+              <span className="text-sm text-[#F5F0E8]/80 font-['Lato']">
+                Don't show this again for this session
+              </span>
+            </label>
             <button
-              onClick={() => setShowRulesModal(false)}
+              onClick={handleCloseRules}
               disabled={!canContinueBooking}
               className="w-full px-6 py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -373,6 +423,21 @@ export function PackageSelectionPage() {
                 : `Found ${filteredPackages.length} package${filteredPackages.length !== 1 ? "s" : ""}`}
             </p>
           )}
+        </div>
+
+        {/* Booking Policies & Rules — reopen modal */}
+        <div className="flex justify-center mb-8">
+          <button
+            type="button"
+            onClick={() => setShowRulesModal(true)}
+            className="inline-flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#C8922A]/60 bg-[#C8922A]/10 px-5 py-3 text-sm font-['Lato'] font-semibold text-[#2C1810]/80 hover:border-[#C8922A] hover:bg-[#C8922A]/20 transition-colors"
+          >
+            <AlertTriangle size={18} className="text-[#C4541A] shrink-0" />
+            Booking Policies &amp; Rules
+            <span className="hidden sm:inline font-normal text-[#2C1810]/60">
+              — Review these before booking
+            </span>
+          </button>
         </div>
 
         {/* Package Grid */}
@@ -606,6 +671,14 @@ export function PackageSelectionPage() {
                 </span>
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowRulesModal(true)}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-[#C8922A]/40 px-4 py-2.5 mb-4 text-sm font-['Lato'] text-[#C8922A] hover:bg-[#C8922A]/10 hover:border-[#C8922A] transition-colors"
+            >
+              <AlertTriangle size={15} />
+              View Booking Policies &amp; Rules
+            </button>
             <button
               type="button"
               onClick={handleProceedToBooking}

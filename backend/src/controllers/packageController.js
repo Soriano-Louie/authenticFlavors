@@ -700,7 +700,7 @@ export async function deletePackage(req, res) {
       [id],
     );
 
-    res.status(200).json({ message: "Package deleted successfully." });
+    res.status(200).json({ message: "Package deactivated successfully." });
   } catch (error) {
     console.error("Error deleting package:", error);
     res.status(500).json({

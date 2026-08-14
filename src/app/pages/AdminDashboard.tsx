@@ -4236,12 +4236,12 @@ function PackagesSection() {
     setSubmitting(true);
     try {
       await deleteAdminPackage(accessToken, deletingPkg.package_id);
-      toast.success("Package deleted successfully.");
+      toast.success("Package deactivated successfully.");
       setDeletingPkg(null);
       fetchPackages();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to delete package.",
+        err instanceof Error ? err.message : "Failed to deactivate package.",
       );
     } finally {
       setSubmitting(false);
@@ -4695,14 +4695,14 @@ function PackagesSection() {
                 <AlertCircle size={26} className="text-[#C4541A]" />
               </div>
               <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-2">
-                Delete Package
+                Deactivate Package
               </h3>
               <p className="text-sm font-['Lato'] text-[#2C1810]/60 mb-6">
-                Are you sure you want to delete{" "}
+                Are you sure you want to deactivate{" "}
                 <span className="font-semibold text-[#2C1810]">
                   {deletingPkg.package_name}
                 </span>
-                ? This action will deactivate the package.
+                ? This action will hide the package from customers.
               </p>
               <div className="flex items-center justify-center gap-3">
                 <button
@@ -4718,7 +4718,7 @@ function PackagesSection() {
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {submitting && <Loader2 size={16} className="animate-spin" />}
-                  {submitting ? "Deleting..." : "Delete Package"}
+                  {submitting ? "Deactivating..." : "Deactivate Package"}
                 </button>
               </div>
             </div>
