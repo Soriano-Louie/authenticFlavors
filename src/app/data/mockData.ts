@@ -9,8 +9,7 @@ export const IMAGES = {
   buffet: "/Gourmet_Buffet.png",
   dessert:
     "https://images.unsplash.com/photo-1612723554566-88f9075be12f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ambiance:
-    "https://images.unsplash.com/photo-1769775555435-206cb7b9e8c1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  ambiance: "/Venue_Ambiance.jpg",
   familyStyle: "/Family_Fiesta.png",
   anniversary: "/Anniversary_Dinners.png",
 };

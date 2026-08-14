@@ -18,6 +18,11 @@ export function createApp() {
   const app = express();
   app.disable("x-powered-by");
 
+  // Render sits behind a reverse proxy that sets X-Forwarded-For. Trust the
+  // first hop so req.ip reflects the real client and express-rate-limit can
+  // key on it (fixes ERR_ERL_UNEXPECTED_X_FORWARDED_FOR).
+  app.set("trust proxy", 1);
+
   app.use(
     cors({
       origin: (origin, callback) => {
