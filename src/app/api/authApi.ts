@@ -170,9 +170,12 @@ export function getCurrentUser(accessToken: string): Promise<AuthMeResponse> {
   });
 }
 
-export function logout(): Promise<{ message: string }> {
+export function logout(accessToken: string): Promise<{ message: string }> {
   return request<{ message: string }>("/api/auth/logout", {
     method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 }
 

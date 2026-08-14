@@ -113,13 +113,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const logout = useCallback(async () => {
     try {
-      await apiLogout();
+      if (accessToken) {
+        await apiLogout(accessToken);
+      }
       toast.success("Logged out successfully");
     } finally {
       setAccessToken(null);
       setUser(null);
     }
-  }, []);
+  }, [accessToken]);
 
   const updateProfile = useCallback(
     async (payload: UpdateProfilePayload) => {
