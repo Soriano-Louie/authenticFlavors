@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
 import { ChatBot } from "./ChatBot";
@@ -13,15 +12,12 @@ export function Root() {
     location.pathname.startsWith(p),
   );
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname, location.search]);
-
   return (
     <div
       className="min-h-screen flex flex-col"
       style={{ fontFamily: "'Lato', sans-serif", backgroundColor: "#F5F0E8" }}
     >
+      <ScrollRestoration />
       {!hideChrome && <Navbar />}
       <AccessibilityControls offsetTop={hideChrome ? 16 : 80} />
       <main className="flex-1" style={{ paddingTop: hideChrome ? 0 : "4rem" }}>
