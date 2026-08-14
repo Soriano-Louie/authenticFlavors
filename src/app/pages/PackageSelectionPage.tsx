@@ -132,6 +132,10 @@ export function PackageSelectionPage() {
   const dismissStorageKey = `af-booking-rules-dismissed-${user?.user_id ?? "guest"}`;
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(true);
+  // Tracks whether the modal was opened by tapping the "Booking Policies &
+  // Rules" button (manual) vs. shown automatically on page load. The "Don't
+  // show again" checkbox only applies to the automatic popup.
+  const [rulesOpenedManually, setRulesOpenedManually] = useState(false);
   const [canContinueBooking, setCanContinueBooking] = useState(false);
 
   // Search and pagination state
@@ -255,22 +259,23 @@ export function PackageSelectionPage() {
     } catch {
       dismissed = false;
     }
+    setRulesOpenedManually(false);
     setShowRulesModal(!dismissed);
   }, [isBootstrapping, dismissStorageKey]);
 
-  // Enable continue button after 10 seconds when modal opens
+  // Enable continue button after 5 seconds when modal opens
   useEffect(() => {
     if (showRulesModal) {
       setCanContinueBooking(false);
       const timer = setTimeout(() => {
         setCanContinueBooking(true);
-      }, 10000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [showRulesModal]);
 
   const handleCloseRules = () => {
-    if (dontShowAgain) {
+    if (dontShowAgain && !rulesOpenedManually) {
       try {
         sessionStorage.setItem(dismissStorageKey, "1");
       } catch {
@@ -279,6 +284,11 @@ export function PackageSelectionPage() {
     }
     setDontShowAgain(false);
     setShowRulesModal(false);
+  };
+
+  const handleOpenRulesManually = () => {
+    setRulesOpenedManually(true);
+    setShowRulesModal(true);
   };
 
   const handleProceedToBooking = () => {
@@ -346,17 +356,19 @@ export function PackageSelectionPage() {
           </DialogHeader>
           <BookingRules />
           <DialogFooter>
-            <label className="flex items-center gap-2.5 cursor-pointer select-none mb-4">
-              <input
-                type="checkbox"
-                checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-                className="h-4 w-4 shrink-0 rounded border-[#C8922A]/40 bg-[#1A0E08] text-[#C8922A] accent-[#C8922A] cursor-pointer"
-              />
-              <span className="text-sm text-[#F5F0E8]/80 font-['Lato']">
-                Don't show this again for this session
-              </span>
-            </label>
+            {!rulesOpenedManually && (
+              <label className="flex items-center gap-2.5 cursor-pointer select-none mb-4">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="h-4 w-4 shrink-0 rounded border-[#C8922A]/40 bg-[#1A0E08] text-[#C8922A] accent-[#C8922A] cursor-pointer"
+                />
+                <span className="text-sm text-[#F5F0E8]/80 font-['Lato']">
+                  Don't show this again for this session
+                </span>
+              </label>
+            )}
             <button
               onClick={handleCloseRules}
               disabled={!canContinueBooking}
@@ -429,7 +441,7 @@ export function PackageSelectionPage() {
         <div className="flex justify-center mb-8">
           <button
             type="button"
-            onClick={() => setShowRulesModal(true)}
+            onClick={handleOpenRulesManually}
             className="inline-flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#C8922A]/60 bg-[#C8922A]/10 px-5 py-3 text-sm font-['Lato'] font-semibold text-[#2C1810]/80 hover:border-[#C8922A] hover:bg-[#C8922A]/20 transition-colors"
           >
             <AlertTriangle size={18} className="text-[#C4541A] shrink-0" />
@@ -673,7 +685,7 @@ export function PackageSelectionPage() {
             </div>
             <button
               type="button"
-              onClick={() => setShowRulesModal(true)}
+              onClick={handleOpenRulesManually}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-[#C8922A]/40 px-4 py-2.5 mb-4 text-sm font-['Lato'] text-[#C8922A] hover:bg-[#C8922A]/10 hover:border-[#C8922A] transition-colors"
             >
               <AlertTriangle size={15} />
