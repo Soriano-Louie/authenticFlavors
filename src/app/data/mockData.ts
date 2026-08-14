@@ -4,11 +4,9 @@ export const IMAGES = {
   birthday: "/Birthday_Celebrations.png",
   corporate: "/Corporate_Dinners.png",
   wedding: "/Wedding_Receptions.png",
-  gourmetPlating:
-    "https://images.unsplash.com/photo-1761095596757-db038313df59?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  gourmetPlating: "/Gourmet_Plating.jpg",
   buffet: "/Gourmet_Buffet.png",
-  dessert:
-    "https://images.unsplash.com/photo-1612723554566-88f9075be12f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+  dessert: "/Artisan_Desserts.jpg",
   ambiance: "/Venue_Ambiance.jpg",
   familyStyle: "/Family_Fiesta.png",
   anniversary: "/Anniversary_Dinners.png",
