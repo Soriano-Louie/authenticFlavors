@@ -357,7 +357,7 @@ export function PackageSelectionPage() {
           <BookingRules />
           <DialogFooter>
             {!rulesOpenedManually && (
-              <label className="flex items-center gap-2.5 cursor-pointer select-none mb-4">
+              <label className="flex items-center justify-center gap-2.5 cursor-pointer select-none mb-4">
                 <input
                   type="checkbox"
                   checked={dontShowAgain}
