@@ -134,7 +134,7 @@ const SIDEBAR_LINKS = [
   { key: "overview", label: "Overview", icon: BarChart2 },
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
-  { key: "menu-changes", label: "Menu Change Requests", icon: ChefHat },
+  { key: "menu-changes", label: "Menu Changes", icon: ChefHat },
   { key: "menu-management", label: "Menu Management", icon: BookOpen },
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },

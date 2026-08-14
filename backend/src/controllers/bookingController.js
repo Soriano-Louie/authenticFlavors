@@ -549,8 +549,8 @@ export async function getAdminBookings(req, res) {
       const searchFields = [
         "b.booking_reference LIKE ?",
         "CAST(b.ai_booking_reference AS CHAR) LIKE ?",
-        "b.first_name LIKE ?",
-        "b.last_name LIKE ?",
+        "u.first_name LIKE ?",
+        "u.last_name LIKE ?",
         "b.contact_name LIKE ?",
         "b.contact_email LIKE ?",
         "p.package_name LIKE ?",
