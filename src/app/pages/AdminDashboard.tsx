@@ -134,7 +134,7 @@ const SIDEBAR_LINKS = [
   { key: "overview", label: "Overview", icon: BarChart2 },
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
-  { key: "menu-changes", label: "Menu Changes", icon: ChefHat },
+  { key: "menu-changes", label: "Menu Change Requests", icon: ChefHat },
   { key: "menu-management", label: "Menu Management", icon: BookOpen },
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },
@@ -275,14 +275,16 @@ export function AdminDashboard() {
             <button
               key={key}
               onClick={() => navigate(key)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-['Lato'] transition-all ${
+              className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl text-sm font-['Lato'] leading-snug text-left transition-all ${
                 activeSection === key
                   ? "bg-gradient-to-r from-[#C8922A]/20 to-[#C4541A]/10 text-[#C8922A] border-l-2 border-[#C8922A]"
                   : "text-[#F5F0E8]/60 hover:bg-[#2C1810] hover:text-[#F5F0E8]"
               }`}
             >
-              <Icon size={17} />
-              {label}
+              <span className="mt-0.5 shrink-0">
+                <Icon size={17} />
+              </span>
+              <span className="flex-1 min-w-0">{label}</span>
             </button>
           ))}
         </nav>
