@@ -33,6 +33,7 @@ import {
 } from "../api/packageApi";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { LogoutConfirmationDialog } from "../components/LogoutConfirmationDialog";
+import { ReceiptViewer } from "../components/ReceiptViewer";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -732,6 +733,7 @@ export function CustomerDashboard() {
     PaymentInstruction[]
   >([]);
   const [showInstructions, setShowInstructions] = useState<number | null>(null);
+  const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
 
   // Cancellation state
   const [showCancellationModal, setShowCancellationModal] = useState(false);
@@ -745,7 +747,7 @@ export function CustomerDashboard() {
     useState(false);
   const [processingCancellation, setProcessingCancellation] = useState(false);
 
-  // Receipts are opened in a new tab via handleViewReceipt
+  // Receipts are shown in the same window via the ReceiptViewer lightbox
 
   // Logout state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -1072,7 +1074,7 @@ export function CustomerDashboard() {
 
   const handleViewReceipt = (receiptUrl: string) => {
     if (!receiptUrl) return;
-    window.open(receiptUrl, "_blank", "noopener,noreferrer");
+    setViewReceiptUrl(receiptUrl);
   };
 
   const handleLogoutClick = () => {
@@ -3021,6 +3023,13 @@ export function CustomerDashboard() {
         onOpenChange={setShowLogoutConfirm}
         onConfirm={handleConfirmLogout}
         loading={loggingOut}
+      />
+
+      {/* Receipt viewer (same-window lightbox) */}
+      <ReceiptViewer
+        open={viewReceiptUrl !== null}
+        receiptUrl={viewReceiptUrl}
+        onClose={() => setViewReceiptUrl(null)}
       />
 
       {/* Booking Details Modal */}

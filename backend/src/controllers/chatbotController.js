@@ -773,11 +773,18 @@ export async function cancelBookingSession(req, res) {
       });
     }
 
+    // Never downgrade a session that already completed successfully — this
+    // guards against stale cancel requests racing in on page unload after a
+    // completed chatbot booking.
+    if (sessions[0].session_status === "Completed") {
+      return res.status(200).json({ success: true });
+    }
+
     // Update ai_booking_sessions: mark cancelled
     await connection.query(
       `UPDATE ai_booking_sessions
        SET session_status = 'Cancelled', current_booking_step = 'CANCELLED'
-       WHERE session_id = ?`,
+       WHERE session_id = ? AND session_status != 'Completed'`,
       [session_id],
     );
 

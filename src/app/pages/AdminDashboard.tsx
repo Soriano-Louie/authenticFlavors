@@ -74,6 +74,7 @@ import {
   deleteAdminMenuItem,
 } from "../api/adminApi";
 import { toast } from "sonner";
+import { ReceiptViewer } from "../components/ReceiptViewer";
 import {
   BarChart2,
   Users,
@@ -2895,6 +2896,7 @@ function BookingsSection() {
   const [paymentsByBooking, setPaymentsByBooking] = useState<
     Record<number, Payment[]>
   >({});
+  const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [expandedBookingId, setExpandedBookingId] = useState<number | null>(
@@ -3580,9 +3582,8 @@ function BookingsSection() {
                                           <span className="col-span-2 flex items-center gap-2">
                                             <button
                                               onClick={() =>
-                                                window.open(
+                                                setViewReceiptUrl(
                                                   payment.receipt_url as string,
-                                                  "_blank",
                                                 )
                                               }
                                               className="inline-flex items-center gap-1 text-[#C8922A] hover:underline"
@@ -3945,6 +3946,13 @@ function BookingsSection() {
           </div>
         </div>
       )}
+
+      {/* Receipt viewer (same-window lightbox) */}
+      <ReceiptViewer
+        open={viewReceiptUrl !== null}
+        receiptUrl={viewReceiptUrl}
+        onClose={() => setViewReceiptUrl(null)}
+      />
     </div>
   );
 }

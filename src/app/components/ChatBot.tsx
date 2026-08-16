@@ -28,6 +28,8 @@ import {
   completeBookingSession,
   cancelBookingSession,
   cancelBookingSessionBeacon,
+  getConversations,
+  getMessages,
 } from "../api/chatApi";
 import { createBooking } from "../api/bookingApi";
 import { getBookingPayments } from "../api/paymentApi";
@@ -205,6 +207,7 @@ export function ChatBot() {
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const historyLoadedForRef = useRef<number | null>(null);
 
   // Prevent background scrolling when floating mode is active
   useEffect(() => {
@@ -251,6 +254,60 @@ export function ChatBot() {
     setCreatedBookingInfo(null);
     setWizard(initialWizardState);
   }, [activeUserId]);
+
+  // Restore the signed-in user's most recent conversation so their chat
+  // history survives page refreshes (it lives server-side until logout).
+  // Every fetch is scoped to the authenticated user on the backend, so
+  // history never crosses accounts. Internal "[Wizard Step: ...]" markers
+  // are hidden from the rendered history.
+  useEffect(() => {
+    if (!activeUserId || !accessToken) {
+      historyLoadedForRef.current = null;
+      return;
+    }
+    // Avoid refetching on token refreshes for the same session.
+    if (historyLoadedForRef.current === activeUserId) return;
+    historyLoadedForRef.current = activeUserId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getConversations(accessToken);
+        const convs = res.conversations || [];
+        if (convs.length === 0 || cancelled) return;
+        // Resume the most recent conversation the user left off in.
+        const latest = convs[0];
+        const msgRes = await getMessages(
+          accessToken,
+          latest.conversation_id,
+        );
+        if (cancelled) return;
+        const restored = (msgRes.messages || [])
+          .filter(
+            (m) =>
+              m.message_text &&
+              !m.message_text.startsWith("[Wizard Step"),
+          )
+          .map((m) => ({
+            id: m.message_id,
+            sender: m.sender === "AI" ? ("bot" as const) : ("user" as const),
+            text: m.message_text,
+            time: new Date(m.sent_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
+        if (restored.length > 0) {
+          setMessages(restored);
+          setConversationId(latest.conversation_id);
+        }
+      } catch (err) {
+        console.error("[ChatBot] Failed to restore chat history:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUserId, accessToken]);
 
   // Pre-fill user profile info when available
   useEffect(() => {
@@ -625,15 +682,26 @@ export function ChatBot() {
         checkoutUrl: undefined,
       });
 
-      // Complete the AI booking session
+      // Complete the AI booking session, then drop the session/conversation
+      // ids so the page-unload cancel beacon never fires on a completed
+      // booking (e.g. after "Proceed to Payment" triggers a page reload).
       if (bookingSessionId && conversationId && accessToken) {
         const summaryText = `Event type: ${wizard.eventType}. Pax: ${wizard.pax}. Package: ${wizard.packageName}. Date: ${wizard.eventDate}. Time: ${wizard.eventTime}. Price: ₱${res.total_price || wizard.totalPrice}.`;
-        completeBookingSession(accessToken, {
-          session_id: bookingSessionId,
-          conversation_id: conversationId,
-          booking_id: res.booking_id,
-          summary_text: summaryText,
-        }).catch(console.error);
+        try {
+          await completeBookingSession(accessToken, {
+            session_id: bookingSessionId,
+            conversation_id: conversationId,
+            booking_id: res.booking_id,
+            summary_text: summaryText,
+          });
+        } catch (err) {
+          console.error(
+            "[ChatBot] Failed to complete booking session:",
+            err,
+          );
+        }
+        setBookingSessionId(null);
+        setConversationId(null);
       }
 
       setWizard((prev) => ({ ...prev, step: "SUCCESS" }));
@@ -1161,19 +1229,19 @@ export function ChatBot() {
             {wizard.step === "VENUE" && (
               <div className="bg-white rounded-2xl p-3.5 border border-[#C8922A]/30 shadow-md space-y-3 animate-in fade-in duration-200">
                 <div className="flex items-start gap-3">
-                  <Check size={18} className="text-[#7A8C5C] shrink-0 mt-0.5" />
+                  <Check size={20} className="text-[#7A8C5C] shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs font-semibold text-[#2C1810] uppercase tracking-wider mb-1">
+                    <p className="text-sm font-semibold text-[#2C1810] uppercase tracking-wider mb-1">
                       Standard Venue Setup (Speakers Included)
                     </p>
-                    <p className="text-[10px] text-[#2C1810]/70 leading-relaxed">
+                    <p className="text-[0.85rem] text-[#2C1810]/70 leading-relaxed">
                       Your booking includes a standard venue setup with tables,
                       chairs, linens, and a sound system with speakers.
                     </p>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-[#2C1810]/60 font-semibold mb-1">
+                  <label className="block text-[0.85rem] text-[#2C1810]/60 font-semibold mb-1">
                     Special Requests / Other Notes
                   </label>
                   <textarea
@@ -1183,7 +1251,7 @@ export function ChatBot() {
                     }
                     placeholder="Any other requests — music preferences, décor themes, special seating arrangements..."
                     rows={2}
-                    className="w-full p-2 rounded-xl border border-[#C8922A]/30 text-[11px] text-[#2C1810] outline-none focus:border-[#C8922A] resize-none placeholder-[#2C1810]/30"
+                    className="w-full p-2 rounded-xl border border-[#C8922A]/30 text-[0.85rem] text-[#2C1810] outline-none focus:border-[#C8922A] resize-none placeholder-[#2C1810]/30"
                   />
                 </div>
                 <button
@@ -1204,7 +1272,7 @@ export function ChatBot() {
                       }).catch(console.error);
                     }
                   }}
-                  className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-xs rounded-xl font-bold cursor-pointer hover:opacity-90 shadow-md"
+                  className="w-full py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-sm rounded-xl font-bold cursor-pointer hover:opacity-90 shadow-md"
                 >
                   Continue to Menu Selection →
                 </button>
@@ -1435,15 +1503,15 @@ export function ChatBot() {
             {wizard.step === "SUMMARY" && (
               <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/40 shadow-xl space-y-3 animate-in zoom-in-95 duration-200 font-['Lato']">
                 <div className="flex items-center justify-between border-b border-[#C8922A]/20 pb-2">
-                  <h4 className="font-['Playfair_Display'] text-[#2C1810] font-bold text-sm">
+                  <h4 className="font-['Playfair_Display'] text-[#2C1810] font-bold text-base">
                     📋 Booking Review Summary
                   </h4>
-                  <span className="text-[10px] font-bold text-[#C8922A] bg-[#C8922A]/10 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-[#C8922A] bg-[#C8922A]/10 px-2 py-0.5 rounded-full">
                     Step Final
                   </span>
                 </div>
 
-                <div className="text-xs space-y-1.5 text-[#2C1810]">
+                <div className="text-[0.85rem] space-y-2 text-[#2C1810]">
                   <div className="flex justify-between">
                     <span className="text-[#2C1810]/60">Event Type:</span>
                     <span className="font-semibold">{wizard.eventType}</span>
@@ -1467,46 +1535,46 @@ export function ChatBot() {
                     <span className="font-semibold">{wizard.venueSetup}</span>
                   </div>
                   <div className="border-t border-[#C8922A]/10 pt-1.5">
-                    <span className="text-[#2C1810]/60 block text-[10px]">
+                    <span className="text-[#2C1810]/60 block text-xs">
                       Menu Selections:
                     </span>
-                    <p className="font-semibold text-[11px] text-[#C8922A]">
+                    <p className="font-semibold text-[0.85rem] text-[#C8922A]">
                       {Object.values(wizard.selectedMenuItems).join(", ") ||
                         "Standard Package Menu"}
                     </p>
                   </div>
                   <div className="border-t border-[#C8922A]/10 pt-1.5">
-                    <span className="text-[#2C1810]/60 block text-[10px]">
+                    <span className="text-[#2C1810]/60 block text-xs">
                       Dietary Notes:
                     </span>
-                    <p className="font-semibold text-[11px] text-[#C4541A]">
+                    <p className="font-semibold text-[0.85rem] text-[#C4541A]">
                       {wizard.dietaryNotes || "None"}
                     </p>
                   </div>
                   {wizard.notes && (
                     <div className="border-t border-[#C8922A]/10 pt-1.5">
-                      <span className="text-[#2C1810]/60 block text-[10px]">
+                      <span className="text-[#2C1810]/60 block text-xs">
                         Special Requests / Venue Notes:
                       </span>
-                      <p className="font-semibold text-[11px] text-[#2C1810]">
+                      <p className="font-semibold text-[0.85rem] text-[#2C1810]">
                         {wizard.notes}
                       </p>
                     </div>
                   )}
                   <div className="border-t border-[#C8922A]/15 pt-2 flex justify-between items-center">
                     <div>
-                      <span className="text-[#2C1810]/60 text-[10px] block">
+                      <span className="text-[#2C1810]/60 text-xs block">
                         Estimated Total Price:
                       </span>
-                      <span className="font-bold text-sm text-[#2C1810]">
+                      <span className="font-bold text-base text-[#2C1810]">
                         ₱{Number(wizard.totalPrice).toLocaleString("en-PH")}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] text-[#C8922A] font-bold block">
+                      <span className="text-xs text-[#C8922A] font-bold block">
                         Reservation Fee Due:
                       </span>
-                      <span className="font-bold text-sm text-[#C8922A]">
+                      <span className="font-bold text-base text-[#C8922A]">
                         ₱5,000.00
                       </span>
                     </div>
@@ -1518,14 +1586,14 @@ export function ChatBot() {
                     onClick={() =>
                       setWizard((prev) => ({ ...prev, step: "EVENT_TYPE" }))
                     }
-                    className="flex-1 py-2 bg-gray-100 text-[#2C1810]/70 text-xs rounded-xl font-bold hover:bg-gray-200 cursor-pointer"
+                    className="flex-1 py-2 bg-gray-100 text-[#2C1810]/70 text-sm rounded-xl font-bold hover:bg-gray-200 cursor-pointer"
                   >
                     Edit Booking
                   </button>
                   <button
                     onClick={handleConfirmBooking}
                     disabled={isLoading}
-                    className="flex-1 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-xs rounded-xl font-bold hover:opacity-90 shadow-md cursor-pointer disabled:opacity-50"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-sm rounded-xl font-bold hover:opacity-90 shadow-md cursor-pointer disabled:opacity-50"
                   >
                     Confirm Booking
                   </button>
@@ -1558,10 +1626,16 @@ export function ChatBot() {
 
                 <button
                   onClick={() => {
+                    // Close the chatbot popup before leaving so it never covers
+                    // the dashboard after a booking is confirmed.
+                    setOpen(false);
+                    setIsFloating(false);
                     if (createdBookingInfo.checkoutUrl) {
                       window.location.href = createdBookingInfo.checkoutUrl;
                     } else {
-                      navigate("/dashboard");
+                      // Full page navigation/reload so the dashboard is fresh
+                      // and the chatbot starts closed.
+                      window.location.href = "/dashboard";
                     }
                   }}
                   className="w-full py-3 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white text-xs rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-md cursor-pointer"
