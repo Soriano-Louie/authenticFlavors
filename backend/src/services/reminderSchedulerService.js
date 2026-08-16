@@ -1,5 +1,6 @@
 import { pool } from "../db/pool.js";
 import { createNotification } from "./notificationService.js";
+import { autoCancelUnpaidPastBookings } from "../controllers/bookingController.js";
 import {
   sendEventReminderEmail,
   sendFeedbackReminderEmail,
@@ -222,6 +223,9 @@ export function startReminderScheduler() {
     checkEventReminders();
     checkPaymentReminders();
     checkFeedbackReminders();
+    autoCancelUnpaidPastBookings().catch((err) =>
+      console.error("[ReminderScheduler] Error auto-cancelling unpaid past bookings:", err),
+    );
   }, 5000);
 
   // Run checks every 4 hours
@@ -229,5 +233,8 @@ export function startReminderScheduler() {
     checkEventReminders();
     checkPaymentReminders();
     checkFeedbackReminders();
+    autoCancelUnpaidPastBookings().catch((err) =>
+      console.error("[ReminderScheduler] Error auto-cancelling unpaid past bookings:", err),
+    );
   }, 4 * 60 * 60 * 1000);
 }

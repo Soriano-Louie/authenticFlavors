@@ -96,8 +96,8 @@ export async function submitVenueSetupRequest(req, res, next) {
     const customerName = `${booking.first_name} ${booking.last_name}`.trim();
     for (const admin of admins) {
       await createNotification({
-        user_id: admin.user_id,
-        booking_id: bookingId,
+        userId: admin.user_id,
+        bookingId,
         type: "venue_setup_requested",
         title: "New Venue Setup Request",
         message: `Customer ${customerName} submitted venue setup notes for booking ${booking.booking_reference || `#${bookingId}`}.`,
@@ -235,8 +235,8 @@ export async function approveVenueSetupRequest(req, res, next) {
 
     const customerName = `${request.first_name} ${request.last_name}`.trim();
     await createNotification({
-      user_id: request.user_id,
-      booking_id: request.booking_id,
+      userId: request.user_id,
+      bookingId: request.booking_id,
       type: "venue_setup_approved",
       title: "Venue Setup Request Approved",
       message: `Your venue setup request for booking ${request.booking_reference || `#${request.booking_id}`} has been approved!`,
@@ -342,8 +342,8 @@ export async function requestVenueSetupChanges(req, res, next) {
     );
 
     await createNotification({
-      user_id: request.user_id,
-      booking_id: request.booking_id,
+      userId: request.user_id,
+      bookingId: request.booking_id,
       type: "venue_setup_changes_requested",
       title: "Venue Setup Changes Requested",
       message: `The admin requested changes to your venue setup for booking ${request.booking_reference || `#${request.booking_id}`}. Please review and update your request.`,
@@ -440,8 +440,8 @@ export async function declineVenueSetupRequest(req, res, next) {
     );
 
     await createNotification({
-      user_id: request.user_id,
-      booking_id: request.booking_id,
+      userId: request.user_id,
+      bookingId: request.booking_id,
       type: "venue_setup_declined",
       title: "Venue Setup Request Declined",
       message: `Your venue setup request for booking ${request.booking_reference || `#${request.booking_id}`} was declined. Reason: ${admin_response.trim()}`,

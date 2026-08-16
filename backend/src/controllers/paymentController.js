@@ -125,16 +125,16 @@ export async function uploadReceiptFile(req, res) {
       });
     }
 
-    // Only allow upload when status is Pending or Rejected
-    if (
-      payment.payment_status !== "Pending" &&
-      payment.payment_status !== "Rejected"
-    ) {
+    // Allow upload for pending, rejected, or overdue payments. Overdue is
+    // included so customers can still settle after the due date and let the
+    // admin verify the receipt.
+    const UPLOADABLE_STATUSES = ["Pending", "Rejected", "Overdue"];
+    if (!UPLOADABLE_STATUSES.includes(payment.payment_status)) {
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
           message:
-            "Receipt can only be uploaded for pending or rejected payments.",
+            "Receipt can only be uploaded for pending, rejected, or overdue payments.",
         },
       });
     }
@@ -158,8 +158,7 @@ export async function uploadReceiptFile(req, res) {
     const lockedPayment = lockedPayments[0];
     if (
       !lockedPayment ||
-      (lockedPayment.payment_status !== "Pending" &&
-        lockedPayment.payment_status !== "Rejected")
+      !UPLOADABLE_STATUSES.includes(lockedPayment.payment_status)
     ) {
       await connection.rollback();
       if (result?.public_id) {
@@ -169,7 +168,7 @@ export async function uploadReceiptFile(req, res) {
         error: {
           code: "INVALID_STATE",
           message:
-            "Receipt can only be uploaded for pending or rejected payments.",
+            "Receipt can only be uploaded for pending, rejected, or overdue payments.",
         },
       });
     }
@@ -182,7 +181,7 @@ export async function uploadReceiptFile(req, res) {
            payment_status = 'For_Verification',
            payment_reference = NULL,
            payment_method = 'Receipt'
-       WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected')`,
+       WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected', 'Overdue')`,
       [result.secure_url, result.public_id, payment_id],
     );
 
@@ -294,16 +293,16 @@ export async function uploadReceipt(req, res) {
       });
     }
 
-    // Only allow upload when status is Pending or Rejected
-    if (
-      payment.payment_status !== "Pending" &&
-      payment.payment_status !== "Rejected"
-    ) {
+    // Allow upload for pending, rejected, or overdue payments. Overdue is
+    // included so customers can still settle after the due date and let the
+    // admin verify the receipt.
+    const UPLOADABLE_STATUSES = ["Pending", "Rejected", "Overdue"];
+    if (!UPLOADABLE_STATUSES.includes(payment.payment_status)) {
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
           message:
-            "Receipt can only be uploaded for pending or rejected payments.",
+            "Receipt can only be uploaded for pending, rejected, or overdue payments.",
         },
       });
     }
@@ -316,7 +315,7 @@ export async function uploadReceipt(req, res) {
            payment_status = 'For_Verification',
            payment_reference = NULL,
            payment_method = 'Receipt'
-       WHERE payment_id = ?`,
+       WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected', 'Overdue')`,
       [receipt_url, receipt_public_id || null, payment_id],
     );
 
@@ -425,13 +424,20 @@ export async function verifyReceipt(req, res) {
 
     const payment = payments[0];
 
-    if (payment.payment_status !== "For_Verification") {
+    // A receipt can be verified while For_Verification, or while Overdue if a
+    // receipt was already uploaded (covers payments that went overdue after
+    // the receipt was submitted). A receipt is required either way.
+    const VERIFIABLE_STATUSES = ["For_Verification", "Overdue"];
+    if (
+      !payment.receipt_url ||
+      !VERIFIABLE_STATUSES.includes(payment.payment_status)
+    ) {
       await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
           message:
-            "Only payments awaiting verification can be verified. Current status: " +
+            "Only payments awaiting verification with an uploaded receipt can be verified. Current status: " +
             payment.payment_status,
         },
       });
@@ -457,7 +463,7 @@ export async function verifyReceipt(req, res) {
              verified_by = ?, 
              verified_at = ?,
              admin_remarks = ?
-         WHERE payment_id = ? AND payment_status = 'For_Verification'`,
+         WHERE payment_id = ? AND payment_status IN ('For_Verification', 'Overdue')`,
         [paidAt, adminId, paidAt, admin_remarks || null, paymentId],
       );
 
@@ -591,7 +597,7 @@ export async function verifyReceipt(req, res) {
              verified_by = ?,
              verified_at = ?,
              admin_remarks = ?
-         WHERE payment_id = ? AND payment_status = 'For_Verification'`,
+         WHERE payment_id = ? AND payment_status IN ('For_Verification', 'Overdue')`,
         [
           adminId,
           getPhilippineDateTimeString(),

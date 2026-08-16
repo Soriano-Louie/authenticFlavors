@@ -439,6 +439,87 @@ export async function autoCompletePastBookings() {
   );
 }
 
+// Auto-cancel bookings that never paid the reservation (so no down payment was
+// ever released) and whose event date has already passed. This prevents stale
+// "Pending" bookings from lingering indefinitely after the event can no longer
+// happen.
+export async function autoCancelUnpaidPastBookings() {
+  // Skip the query entirely when nothing is due.
+  const [due] = await pool.query(
+    `SELECT booking_id FROM bookings
+     WHERE booking_status = 'Pending'
+       AND event_date < CURDATE()
+     LIMIT 1`,
+  );
+  if (due.length === 0) return;
+
+  const [rows] = await pool.query(
+    `SELECT b.booking_id, b.user_id, b.booking_reference, b.ai_booking_reference,
+            u.email, u.first_name, u.last_name
+     FROM bookings b
+     JOIN users u ON b.user_id = u.user_id
+     WHERE b.booking_status = 'Pending'
+       AND b.event_date < CURDATE()`,
+  );
+
+  if (rows.length === 0) return;
+  const ids = rows.map((b) => b.booking_id);
+  const placeholders = ids.map(() => "?").join(",");
+
+  // Cancel the associated unpaid payments (reservation / down / final).
+  await pool.query(
+    `UPDATE payments
+     SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+     WHERE booking_id IN (${placeholders})
+       AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+    ids,
+  );
+
+  const [cancelResult] = await pool.query(
+    `UPDATE bookings
+     SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+     WHERE booking_id IN (${placeholders}) AND booking_status = 'Pending'`,
+    ids,
+  );
+  if (cancelResult.affectedRows === 0) return;
+
+  for (const b of rows) {
+    const refStr =
+      b.booking_reference ||
+      (b.ai_booking_reference ? `#AF-${b.ai_booking_reference}` : `#BK${String(b.booking_id).padStart(4, "0")}`);
+    const reason =
+      "Your booking was automatically cancelled because the reservation / down payment was not received before the event date.";
+
+    logActivity({
+      actorUserId: null,
+      actorRole: "System",
+      activityType: "booking_cancelled_system",
+      action: `automatically cancelled Booking #${refStr.replace(/^#/, "")} - reservation / down payment not received before the event date`,
+      bookingId: b.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_cancelled_system):", err),
+    );
+
+    createNotification({
+      userId: b.user_id,
+      bookingId: b.booking_id,
+      type: "booking_cancelled_unpaid",
+      title: "Booking Cancelled",
+      message: `Your booking (${refStr}) has been cancelled because the reservation / down payment was not received before the event date.`,
+      link: `/dashboard?tab=events&bookingId=${b.booking_id}`,
+      sendEmailFn: () =>
+        sendBookingCancelledEmail(
+          b.email,
+          b.first_name,
+          { booking_reference: refStr },
+          reason,
+        ),
+    }).catch((err) =>
+      console.error("Notification creation failed (booking_cancelled_unpaid):", err),
+    );
+  }
+}
+
 // Fetch all bookings for authenticated customer
 export async function getBookings(req, res) {
   try {
@@ -446,6 +527,9 @@ export async function getBookings(req, res) {
 
     // Auto-complete past confirmed bookings before fetching
     await autoCompletePastBookings();
+
+    // Auto-cancel past pending bookings that never paid the reservation
+    await autoCancelUnpaidPastBookings();
 
     const [bookings] = await pool.query(
       `SELECT b.*, p.package_name, et.type_name, vs.setup_name
@@ -511,6 +595,9 @@ export async function getAdminBookings(req, res) {
   try {
     // Auto-complete past confirmed bookings before fetching
     await autoCompletePastBookings();
+
+    // Auto-cancel past pending bookings that never paid the reservation
+    await autoCancelUnpaidPastBookings();
 
     const { status, search } = req.query;
     const whereClauses = [];

@@ -3519,6 +3519,11 @@ function BookingsSection() {
                                   payment.payment_status === "Paid";
                                 const isPendingVerification =
                                   payment.payment_status === "For_Verification";
+                                const hasVerifiableReceipt =
+                                  !!payment.receipt_url &&
+                                  (payment.payment_status ===
+                                    "For_Verification" ||
+                                    payment.payment_status === "Overdue");
                                 const isActioning =
                                   isPendingAction &&
                                   actioningId === payment.payment_id;
@@ -3613,7 +3618,7 @@ function BookingsSection() {
                                           </span>
                                         )}
                                       </div>
-                                      {isPendingVerification && (
+                                      {hasVerifiableReceipt && (
                                         <div className="flex items-center gap-2 mt-2">
                                           <button
                                             onClick={() =>

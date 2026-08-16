@@ -132,8 +132,8 @@ export async function requestMenuChange(req, res, next) {
     const customerName = `${booking.first_name} ${booking.last_name}`.trim();
     for (const admin of admins) {
       await createNotification({
-        user_id: admin.user_id,
-        booking_id: bookingId,
+        userId: admin.user_id,
+        bookingId,
         type: "menu_change_requested",
         title: "New Menu Change Request",
         message: `Customer ${customerName} requested menu changes for booking ${booking.booking_reference || `#${bookingId}`}.`,
@@ -345,8 +345,8 @@ export async function approveMenuChangeRequest(req, res, next) {
 
     // In-app notification to customer
     await createNotification({
-      user_id: request.user_id,
-      booking_id: request.booking_id,
+      userId: request.user_id,
+      bookingId: request.booking_id,
       type: "menu_change_approved",
       title: "Menu Change Approved",
       message: `Your requested menu changes for booking ${request.booking_reference || `#${request.booking_id}`} have been approved!`,
@@ -439,8 +439,8 @@ export async function rejectMenuChangeRequest(req, res, next) {
 
     // In-app notification to customer
     await createNotification({
-      user_id: request.user_id,
-      booking_id: request.booking_id,
+      userId: request.user_id,
+      bookingId: request.booking_id,
       type: "menu_change_rejected",
       title: "Menu Change Request Update",
       message: `Your menu change request for booking ${request.booking_reference || `#${request.booking_id}`} was declined. Reason: ${rejection_reason.trim()}`,
