@@ -128,6 +128,24 @@ export async function seedDatabaseIfEmpty() {
       }
     }
 
+    // 1.1b Add 'Rejected' to the booking_status ENUM so rejected bookings have
+    // their own distinct state instead of being folded into 'Cancelled' (the
+    // admin "Rejected" filter and status history rely on this). Idempotent:
+    // runs only when the current ENUM lacks the value.
+    const [bookingStatusCheck] = await connection.query(
+      `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'booking_status'`,
+      [connection.config.database],
+    );
+    const currentBookingEnum = bookingStatusCheck[0]?.COLUMN_TYPE || "";
+    if (!currentBookingEnum.includes("Rejected")) {
+      await connection.query(
+        `ALTER TABLE bookings MODIFY COLUMN booking_status ENUM('Pending', 'Reserved', 'Confirmed', 'Completed', 'Cancelled', 'Rejected') NOT NULL DEFAULT 'Pending'`,
+      );
+      console.log(
+        "[MIGRATION] bookings.booking_status ENUM updated (added 'Rejected').",
+      );
+    }
+
     // 0.2 Ensure an index on bookings.event_date exists. The in-transaction
     // availability check (FOR UPDATE) needs it to take a scoped gap lock on a
     // single date instead of locking the whole table, and it speeds up all
@@ -622,7 +640,8 @@ export async function seedDatabaseIfEmpty() {
           CONCAT('cancelled Booking #', COALESCE(b.booking_reference, CONCAT('AF-', b.ai_booking_reference), CONCAT('BK-', b.booking_id))),
           b.booking_id, b.updated_at
         FROM bookings b JOIN ${adminSub} u
-        WHERE b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NULL
+        WHERE (b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NULL)
+           OR b.booking_status = 'Rejected'
 
         UNION ALL SELECT
           cu.user_id, CONCAT(cu.first_name, ' ', cu.last_name), 'Customer', 'receipt_uploaded',

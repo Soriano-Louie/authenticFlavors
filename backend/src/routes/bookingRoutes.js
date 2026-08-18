@@ -11,6 +11,7 @@ import {
   requestCancellation,
   getCancellationDetails,
   getDateAvailability,
+  getBookingConfig,
 } from "../controllers/bookingController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -18,6 +19,9 @@ export const bookingRouter = Router();
 
 // Public availability (single source of truth for occupied dates)
 bookingRouter.get("/availability", getDateAvailability);
+
+// Public booking rules (single source of truth for the 14-day lead-time cutoff)
+bookingRouter.get("/config", getBookingConfig);
 
 // Customer booking endpoints
 bookingRouter.post("/bookings", requireAuth, createBooking);

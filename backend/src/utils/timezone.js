@@ -20,3 +20,23 @@ export function getPhilippineDateTimeString() {
   const now = new Date(Date.now() + PH_TIMEZONE_OFFSET_MS);
   return now.toISOString().slice(0, 19).replace("T", " ");
 }
+
+/**
+ * Adds calendar days to a 'YYYY-MM-DD' date string. The arithmetic is done in
+ * UTC, so it is exact regardless of the server's local timezone or DST rules.
+ */
+export function addDaysToDateString(dateStr, days) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return shifted.toISOString().split("T")[0];
+}
+
+/**
+ * The earliest date a booking may be scheduled for, in Philippine time:
+ * the Manila "today" plus the lead-time window (default 14 days). This is the
+ * single source of truth for the booking cutoff so the backend validation and
+ * the exposed booking-config endpoint can never disagree.
+ */
+export function getMinimumEventDate(leadDays = 14) {
+  return addDaysToDateString(getPhilippineDateString(), leadDays);
+}

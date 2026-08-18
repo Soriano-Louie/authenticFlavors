@@ -1,10 +1,12 @@
 import crypto from "crypto";
 import { pool } from "../db/pool.js";
 import {
+  getMinimumEventDate,
   getPhilippineDateString,
   toPhilippineDateString,
 } from "../utils/timezone.js";
 import {
+  OPERATING_HOURS,
   isOperatingDay,
   isWithinOperatingHours,
   getOperatingHoursMessage,
@@ -23,6 +25,9 @@ import {
   isDateUnavailable,
   isDateUnavailableForUpdate,
 } from "../services/availabilityService.js";
+
+// Booking lead-time window (in Philippine days) required before an event.
+const MIN_EVENT_LEAD_DAYS = 14;
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
@@ -98,13 +103,10 @@ export async function createBooking(req, res) {
       });
     }
 
-    // 2a. Validate event date is at least 14 days (two weeks) from today
-    const minLeadTimeDate = new Date();
-    minLeadTimeDate.setDate(minLeadTimeDate.getDate() + 14);
-    // Format to local date string (YYYY-MM-DD) matching Philippine time
-    const minLeadTimeStr = minLeadTimeDate.toLocaleDateString("sv-SE", {
-      timeZone: "Asia/Manila",
-    });
+    // 2a. Validate event date is at least 14 days (two weeks) from today,
+    // computed entirely in Philippine time — the same value served by the
+    // booking-config endpoint the frontend uses, so the two can never drift.
+    const minLeadTimeStr = getMinimumEventDate(MIN_EVENT_LEAD_DAYS);
     if (event_date < minLeadTimeStr) {
       return res.status(400).json({
         error: {
@@ -235,9 +237,14 @@ export async function createBooking(req, res) {
     }
     const venue_setup_id = venueSetups[0].venue_setup_id;
 
-    // 5. Retrieve base price from DB
+    // 5. Retrieve base price from DB and enforce capacity limits. The package
+    // has a hard max_pax and the venue seats at most 70; both are checked here
+    // so an oversized booking never reaches the pricing / payments stage.
     const [pricingRows] = await connection.query(
-      "SELECT price FROM package_pricing WHERE package_id = ? AND pax_count = ?",
+      `SELECT pp.price, pkg.max_pax
+       FROM package_pricing pp
+       JOIN packages pkg ON pkg.package_id = pp.package_id
+       WHERE pp.package_id = ? AND pp.pax_count = ?`,
       [package_id, number_of_pax],
     );
     if (pricingRows.length === 0) {
@@ -250,17 +257,75 @@ export async function createBooking(req, res) {
         },
       });
     }
+
+    const MAX_VENUE_PAX = 70;
+    const packageMaxPax = pricingRows[0].max_pax;
+    if (packageMaxPax != null && number_of_pax > packageMaxPax) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `This package supports up to ${packageMaxPax} guests.`,
+        },
+      });
+    }
+    if (number_of_pax > MAX_VENUE_PAX) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `The venue can accommodate up to ${MAX_VENUE_PAX} guests.`,
+        },
+      });
+    }
+
     const basePrice = parseFloat(pricingRows[0].price);
 
-    // 6. Resolve menu selections and check additional prices
+    // 6. Resolve menu selections and check additional prices. Enforces: no
+    // duplicate items, only items from active categories, one item per
+    // category (backing the booking_menu_selections unique key), and — when
+    // the package defines inclusions — the item must be part of that package.
+    const [inclusionCheck] = await connection.query(
+      "SELECT COUNT(*) AS cnt FROM package_menu_inclusions WHERE package_id = ?",
+      [package_id],
+    );
+    const hasPackageInclusions = Number(inclusionCheck[0]?.cnt) > 0;
+
+    const seenItems = new Set();
+    const seenCategories = new Set();
     let resolvedMenuSelections = [];
     let additionalPriceSum = 0;
 
-    for (const itemName of menu_selections) {
+    for (const rawItemName of menu_selections) {
+      const itemName = String(rawItemName).trim();
+      if (!itemName) continue;
+
+      if (seenItems.has(itemName)) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: `Menu item '${itemName}' was selected more than once.`,
+          },
+        });
+      }
+      seenItems.add(itemName);
+
       const [itemRows] = await connection.query(
-        "SELECT menu_item_id, category_id, additional_price FROM menu_items WHERE item_name = ? AND availability_status = 'Active'",
-        [itemName],
+        `SELECT mi.menu_item_id, mi.category_id, mi.additional_price,
+                EXISTS (
+                  SELECT 1 FROM package_menu_inclusions pmi
+                  WHERE pmi.package_id = ? AND pmi.menu_item_id = mi.menu_item_id
+                ) AS is_included
+         FROM menu_items mi
+         JOIN menu_categories mc ON mc.category_id = mi.category_id
+         WHERE mi.item_name = ?
+           AND mi.availability_status = 'Active'
+           AND mc.status = 'Active'
+         LIMIT 1`,
+        [package_id, itemName],
       );
+
       if (itemRows.length === 0) {
         await connection.rollback();
         return res.status(400).json({
@@ -270,15 +335,43 @@ export async function createBooking(req, res) {
           },
         });
       }
+
+      if (hasPackageInclusions && Number(itemRows[0].is_included) !== 1) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: `Menu item '${itemName}' is not included in this package.`,
+          },
+        });
+      }
+
+      if (seenCategories.has(itemRows[0].category_id)) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Please select only one menu item per category.",
+          },
+        });
+      }
+      seenCategories.add(itemRows[0].category_id);
+
       resolvedMenuSelections.push(itemRows[0]);
       additionalPriceSum += parseFloat(itemRows[0].additional_price || 0);
     }
 
-    // 7. Verify price matching
+    // 7. Verify price matching. The total is always recomputed from the DB and
+    // the client value is never trusted for pricing; when one is supplied it
+    // must match, so the check cannot be bypassed with falsy/empty input.
     const calculatedTotal = basePrice + additionalPriceSum;
+    const hasSubmittedPrice =
+      req.body.total_price !== undefined &&
+      req.body.total_price !== null &&
+      req.body.total_price !== "";
     if (
-      total_price &&
-      Math.abs(calculatedTotal - parseFloat(total_price)) > 0.01
+      hasSubmittedPrice &&
+      Math.abs(calculatedTotal - parseFloat(req.body.total_price)) > 0.01
     ) {
       await connection.rollback();
       return res.status(400).json({
@@ -290,11 +383,14 @@ export async function createBooking(req, res) {
       });
     }
 
-    // Generate unique 6-digit refs (crypto-random with uniqueness retry)
-    const ai_booking_reference = is_ai_booking
+    // Generate unique 6-digit refs (crypto-random with uniqueness retry).
+    // References are UNIQUE at the DB level; if a concurrent booking wins the
+    // race for the same reference the INSERT throws ER_DUP_ENTRY, so we
+    // regenerate both candidate references and retry (max 3 attempts).
+    let ai_booking_reference = is_ai_booking
       ? await generateUniqueBookingReference(connection, "ai")
       : null;
-    const booking_reference = !is_ai_booking
+    let booking_reference = !is_ai_booking
       ? await generateUniqueBookingReference(connection, "bk")
       : null;
 
@@ -305,37 +401,50 @@ export async function createBooking(req, res) {
       original_pax: number_of_pax,
     });
 
-    // 8. Insert booking
-    const [bookingResult] = await connection.query(
-      `INSERT INTO bookings (
-        user_id, package_id, event_type_id, custom_event_type, venue_setup_id, number_of_pax,
-        contact_name, contact_email, contact_phone, event_date, start_time,
-        allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
-        ai_booking_reference, booking_reference, amount_paid, remaining_balance
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
-      [
-        userId,
-        package_id,
-        event_type_id,
-        event_type_name === "Other"
-          ? custom_event_type?.trim()
-          : null,
-        venue_setup_id,
-        number_of_pax,
-        contact_name,
-        contact_email,
-        contact_phone || null,
-        event_date,
-        start_time,
-        allergy_notes || null,
-        dietary_notes || null,
-        summaryData,
-        calculatedTotal,
-        ai_booking_reference,
-        booking_reference,
-        calculatedTotal,
-      ],
-    );
+    // 8. Insert booking (with collision retry on the unique reference columns)
+    const bookingParams = () => [
+      userId,
+      package_id,
+      event_type_id,
+      event_type_name === "Other" ? custom_event_type?.trim() : null,
+      venue_setup_id,
+      number_of_pax,
+      contact_name,
+      contact_email,
+      contact_phone || null,
+      event_date,
+      start_time,
+      allergy_notes || null,
+      dietary_notes || null,
+      summaryData,
+      calculatedTotal,
+      ai_booking_reference,
+      booking_reference,
+      calculatedTotal,
+    ];
+    let bookingResult;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        [bookingResult] = await connection.query(
+          `INSERT INTO bookings (
+            user_id, package_id, event_type_id, custom_event_type, venue_setup_id, number_of_pax,
+            contact_name, contact_email, contact_phone, event_date, start_time,
+            allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
+            ai_booking_reference, booking_reference, amount_paid, remaining_balance
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
+          bookingParams(),
+        );
+        break;
+      } catch (err) {
+        if (err?.code !== "ER_DUP_ENTRY" || attempt === 2) throw err;
+        ai_booking_reference = is_ai_booking
+          ? await generateUniqueBookingReference(connection, "ai")
+          : null;
+        booking_reference = !is_ai_booking
+          ? await generateUniqueBookingReference(connection, "bk")
+          : null;
+      }
+    }
 
     const booking_id = bookingResult.insertId;
 
@@ -357,11 +466,12 @@ export async function createBooking(req, res) {
       );
     }
 
-    // 10. Automatically create THREE payment records
-    const tzOffset = new Date().getTimezoneOffset() * 60000;
-    const localToday = new Date(Date.now() - tzOffset)
-      .toISOString()
-      .split("T")[0];
+    // 10. Automatically create THREE payment records. The reservation fee is
+    // due immediately (computed in Philippine time so it is never a day off),
+    // the down payment 14 days before the event, and the final payment on the
+    // event date. Installment values are clamped so a cheap package can never
+    // produce negative payment amounts.
+    const reservationDueDate = getPhilippineDateString();
 
     const eventDateObj = new Date(event_date);
     const downPaymentDateObj = new Date(eventDateObj);
@@ -369,15 +479,15 @@ export async function createBooking(req, res) {
     const downPaymentDueDate = downPaymentDateObj.toISOString().split("T")[0];
 
     const reservationFee = 5000.0;
-    const remainingVal = calculatedTotal - reservationFee;
-    const downPaymentVal = remainingVal * 0.5;
-    const finalPaymentVal = remainingVal - downPaymentVal;
+    const remainingVal = Math.max(calculatedTotal - reservationFee, 0);
+    const downPaymentVal = Math.max(0, remainingVal * 0.5);
+    const finalPaymentVal = Math.max(0, remainingVal - downPaymentVal);
 
     // Insert Reservation
     await connection.query(
       `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
        VALUES (?, 'Reservation', ?, ?, 'Pending')`,
-      [booking_id, reservationFee, localToday],
+      [booking_id, reservationFee, reservationDueDate],
     );
 
     // Insert Down Payment
@@ -461,34 +571,42 @@ async function generateUniqueBookingReference(connection, kind) {
 }
 
 // Auto-complete past confirmed/reserved bookings
+// Uses the Philippine calendar day so events are only completed once the
+// Manila date has actually passed (MySQL CURDATE() runs on the session/UTC
+// clock, which can be a day behind/ahead).
 export async function autoCompletePastBookings() {
+  const todayStr = getPhilippineDateString();
+
   // Skip the UPDATE entirely (and its table scan) when nothing is due.
   const [due] = await pool.query(
     `SELECT booking_id FROM bookings
-     WHERE booking_status IN (?, ?) AND event_date < CURDATE()
+     WHERE booking_status IN (?, ?) AND event_date < ?
      LIMIT 1`,
-    ACTIVE_BOOKING_STATUSES,
+    [...ACTIVE_BOOKING_STATUSES, todayStr],
   );
   if (due.length === 0) return;
 
   // Cancel any unpaid payments on bookings that are about to be completed so
   // they never linger as Overdue with no valid action left (the admin
-  // overdue-cancel would reject an already-completed booking).
+  // overdue-cancel would reject an already-completed booking). Receipts still
+  // under admin review (For_Verification) are left untouched — they must not
+  // be silently destroyed; verifyReceipt already blocks approving them on a
+  // Completed booking.
   await pool.query(
     `UPDATE payments p
      JOIN bookings b ON p.booking_id = b.booking_id
      SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
      WHERE b.booking_status IN (?, ?)
-       AND b.event_date < CURDATE()
-       AND p.payment_status IN ('Pending', 'Overdue', 'For_Verification')
+       AND b.event_date < ?
+       AND p.payment_status IN ('Pending', 'Overdue')
        AND p.payment_type != 'CancellationCharge'`,
-    ACTIVE_BOOKING_STATUSES,
+    [...ACTIVE_BOOKING_STATUSES, todayStr],
   );
 
   await pool.query(
     `UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
-     WHERE booking_status IN (?, ?) AND event_date < CURDATE()`,
-    ACTIVE_BOOKING_STATUSES,
+     WHERE booking_status IN (?, ?) AND event_date < ?`,
+    [...ACTIVE_BOOKING_STATUSES, todayStr],
   );
 }
 
@@ -496,80 +614,128 @@ export async function autoCompletePastBookings() {
 // ever released) and whose event date has already passed. This prevents stale
 // "Pending" bookings from lingering indefinitely after the event can no longer
 // happen.
+//
+// Only bookings WITHOUT a settled or under-review reservation are eligible: a
+// receipt uploaded but not yet verified (For_Verification) must never be
+// destroyed by this sweep. The whole check-and-cancel runs in one transaction
+// with FOR UPDATE locks so a booking verified concurrently (Pending ->
+// Reserved) is never half-cancelled.
 export async function autoCancelUnpaidPastBookings() {
+  const todayStr = getPhilippineDateString();
+
   // Skip the query entirely when nothing is due.
   const [due] = await pool.query(
-    `SELECT booking_id FROM bookings
-     WHERE booking_status = 'Pending'
-       AND event_date < CURDATE()
+    `SELECT b.booking_id FROM bookings b
+     WHERE b.booking_status = 'Pending'
+       AND b.event_date < ?
+       AND NOT EXISTS (
+         SELECT 1 FROM payments p
+         WHERE p.booking_id = b.booking_id
+           AND p.payment_type = 'Reservation'
+           AND p.payment_status IN ('Paid', 'For_Verification')
+       )
      LIMIT 1`,
+    [todayStr],
   );
   if (due.length === 0) return;
 
-  const [rows] = await pool.query(
-    `SELECT b.booking_id, b.user_id, b.booking_reference, b.ai_booking_reference,
-            u.email, u.first_name, u.last_name
-     FROM bookings b
-     JOIN users u ON b.user_id = u.user_id
-     WHERE b.booking_status = 'Pending'
-       AND b.event_date < CURDATE()`,
-  );
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
 
-  if (rows.length === 0) return;
-  const ids = rows.map((b) => b.booking_id);
-  const placeholders = ids.map(() => "?").join(",");
-
-  // Cancel the associated unpaid payments (reservation / down / final).
-  await pool.query(
-    `UPDATE payments
-     SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
-     WHERE booking_id IN (${placeholders})
-       AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
-    ids,
-  );
-
-  const [cancelResult] = await pool.query(
-    `UPDATE bookings
-     SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
-     WHERE booking_id IN (${placeholders}) AND booking_status = 'Pending'`,
-    ids,
-  );
-  if (cancelResult.affectedRows === 0) return;
-
-  for (const b of rows) {
-    const refStr =
-      b.booking_reference ||
-      (b.ai_booking_reference ? `#AF-${b.ai_booking_reference}` : `#BK${String(b.booking_id).padStart(4, "0")}`);
-    const reason =
-      "Your booking was automatically cancelled because the reservation / down payment was not received before the event date.";
-
-    logActivity({
-      actorUserId: null,
-      actorRole: "System",
-      activityType: "booking_cancelled_system",
-      action: `automatically cancelled Booking #${refStr.replace(/^#/, "")} - reservation / down payment not received before the event date`,
-      bookingId: b.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (booking_cancelled_system):", err),
+    const [rows] = await connection.query(
+      `SELECT b.booking_id, b.user_id, b.booking_reference, b.ai_booking_reference,
+              u.email, u.first_name, u.last_name
+       FROM bookings b
+       JOIN users u ON b.user_id = u.user_id
+       WHERE b.booking_status = 'Pending'
+         AND b.event_date < ?
+         AND NOT EXISTS (
+           SELECT 1 FROM payments p
+           WHERE p.booking_id = b.booking_id
+             AND p.payment_type = 'Reservation'
+             AND p.payment_status IN ('Paid', 'For_Verification')
+         )
+       FOR UPDATE`,
+      [todayStr],
     );
 
-    createNotification({
-      userId: b.user_id,
-      bookingId: b.booking_id,
-      type: "booking_cancelled_unpaid",
-      title: "Booking Cancelled",
-      message: `Your booking (${refStr}) has been cancelled because the reservation / down payment was not received before the event date.`,
-      link: `/dashboard?tab=events&bookingId=${b.booking_id}`,
-      sendEmailFn: () =>
-        sendBookingCancelledEmail(
-          b.email,
-          b.first_name,
-          { booking_reference: refStr },
-          reason,
-        ),
-    }).catch((err) =>
-      console.error("Notification creation failed (booking_cancelled_unpaid):", err),
+    if (rows.length === 0) {
+      await connection.rollback();
+      return;
+    }
+
+    const ids = rows.map((b) => b.booking_id);
+    const placeholders = ids.map(() => "?").join(",");
+
+    // Cancel only the unpaid installments of still-pending bookings. The JOIN
+    // re-checks booking_status so a concurrently-verified booking is never
+    // touched, and reservations under admin review (For_Verification) are
+    // preserved.
+    await connection.query(
+      `UPDATE payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
+       WHERE b.booking_id IN (${placeholders})
+         AND b.booking_status = 'Pending'
+         AND p.payment_status IN ('Pending', 'Overdue')
+         AND p.payment_type != 'CancellationCharge'`,
+      ids,
     );
+
+    const [cancelResult] = await connection.query(
+      `UPDATE bookings
+       SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id IN (${placeholders}) AND booking_status = 'Pending'`,
+      ids,
+    );
+    if (cancelResult.affectedRows === 0) {
+      await connection.rollback();
+      return;
+    }
+
+    await connection.commit();
+
+    for (const b of rows) {
+      const refStr =
+        b.booking_reference ||
+        (b.ai_booking_reference ? `#AF-${b.ai_booking_reference}` : `#BK${String(b.booking_id).padStart(4, "0")}`);
+      const reason =
+        "Your booking was automatically cancelled because the reservation / down payment was not received before the event date.";
+
+      logActivity({
+        actorUserId: null,
+        actorRole: "System",
+        activityType: "booking_cancelled_system",
+        action: `automatically cancelled Booking #${refStr.replace(/^#/, "")} - reservation / down payment not received before the event date`,
+        bookingId: b.booking_id,
+      }).catch((err) =>
+        console.error("Activity logging failed (booking_cancelled_system):", err),
+      );
+
+      createNotification({
+        userId: b.user_id,
+        bookingId: b.booking_id,
+        type: "booking_cancelled_unpaid",
+        title: "Booking Cancelled",
+        message: `Your booking (${refStr}) has been cancelled because the reservation / down payment was not received before the event date.`,
+        link: `/dashboard?tab=events&bookingId=${b.booking_id}`,
+        sendEmailFn: () =>
+          sendBookingCancelledEmail(
+            b.email,
+            b.first_name,
+            { booking_reference: refStr },
+            reason,
+          ),
+      }).catch((err) =>
+        console.error("Notification creation failed (booking_cancelled_unpaid):", err),
+      );
+    }
+  } catch (error) {
+    await connection.rollback();
+    console.error("Auto-cancel unpaid bookings sweep failed:", error);
+  } finally {
+    connection.release();
   }
 }
 
@@ -585,6 +751,29 @@ export async function getDateAvailability(_req, res) {
       error: {
         code: "DATABASE_ERROR",
         message: "Failed to fetch availability.",
+      },
+    });
+  }
+}
+
+// Booking rules shared with the frontend. The 14-day lead-time cutoff is
+// computed ONCE here, in Philippine time, and the frontend uses the returned
+// min_event_date for its calendar — the browser's local clock is never allowed
+// to decide the cutoff (fixes the backend/frontend boundary disagreement).
+export async function getBookingConfig(_req, res) {
+  try {
+    res.status(200).json({
+      min_event_date: getMinimumEventDate(MIN_EVENT_LEAD_DAYS),
+      min_lead_days: MIN_EVENT_LEAD_DAYS,
+      today: getPhilippineDateString(),
+      operating_hours: OPERATING_HOURS,
+    });
+  } catch (error) {
+    console.error("Error fetching booking config:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to fetch booking config.",
       },
     });
   }
@@ -682,17 +871,19 @@ export async function getAdminBookings(req, res) {
     if (status && status !== "All") {
       if (status === "Overdue") {
         // Derived from unsettled payments whose due date has passed.
-        // Completed and cancelled bookings are never considered overdue.
+        // Completed, cancelled, and rejected bookings are never overdue.
+        // The due-date cutoff uses the Philippine calendar day, not CURDATE().
         whereClauses.push(`
-          b.booking_status NOT IN ('Cancelled', 'Completed')
+          b.booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')
           AND EXISTS (
             SELECT 1 FROM payments p
             WHERE p.booking_id = b.booking_id
               AND p.payment_status IN ('Pending', 'Overdue')
               AND p.payment_type != 'CancellationCharge'
-              AND p.due_date < CURDATE()
+              AND p.due_date < ?
           )
         `);
+        params.push(getPhilippineDateString());
       } else if (ADMIN_BOOKING_STATUSES.includes(status)) {
         whereClauses.push("b.booking_status = ?");
         params.push(status);
@@ -943,6 +1134,28 @@ export async function verifyBooking(req, res) {
       });
     }
 
+    // A booking must not be promoted to Reserved/Confirmed before the
+    // reservation fee is accounted for (paid or at least uploaded for review).
+    // Receiving ₱0 and marking the booking reserved would be a false
+    // confirmation and could hand the date to a non-paying customer.
+    const [reservationRows] = await connection.query(
+      `SELECT payment_status FROM payments
+       WHERE booking_id = ? AND payment_type = 'Reservation'
+       ORDER BY payment_id DESC LIMIT 1`,
+      [bookingId],
+    );
+    const reservationStatus = reservationRows[0]?.payment_status;
+    if (!["Paid", "For_Verification"].includes(reservationStatus)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "RESERVATION_NOT_PAID",
+          message:
+            "This booking cannot be verified until the reservation fee has been paid (or a receipt is pending verification).",
+        },
+      });
+    }
+
     const amountPaid = parseFloat(booking.amount_paid || 0);
     const remainingBalance = parseFloat(
       booking.remaining_balance ?? booking.total_price,
@@ -1143,7 +1356,7 @@ export async function getAdminActivity(req, res) {
   }
 }
 
-// Admin reject booking (Pending -> Cancelled)
+// Admin reject booking (Pending -> Rejected)
 export async function rejectBooking(req, res) {
   const connection = await pool.getConnection();
   try {
@@ -1181,9 +1394,13 @@ export async function rejectBooking(req, res) {
       });
     }
 
+    // Store the rejection as its own distinct status (not 'Cancelled') so the
+    // admin "Rejected" filter works and rejections stay distinguishable from
+    // customer cancellations. cancellation_requested_at is deliberately left
+    // NULL so feedback-eligibility / history logic keeps telling them apart.
     const [updateResult] = await connection.query(
       `UPDATE bookings 
-       SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       SET booking_status = 'Rejected', updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND booking_status = 'Pending'`,
       [bookingId],
     );
@@ -1245,7 +1462,7 @@ export async function rejectBooking(req, res) {
 
     res.status(200).json({
       message: "Booking rejected successfully.",
-      booking_status: "Cancelled",
+      booking_status: "Rejected",
     });
   } catch (error) {
     await connection.rollback();
@@ -1336,6 +1553,17 @@ export async function requestCancellation(req, res) {
       });
     }
 
+    if (booking.booking_status === "Rejected") {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "This booking has already been rejected and can no longer be cancelled.",
+        },
+      });
+    }
+
     // Calculate days before event using Philippine calendar days so the
     // cancellation penalty is not off by one across UTC/PH boundaries.
     const todayMs = new Date(
@@ -1357,8 +1585,8 @@ export async function requestCancellation(req, res) {
       // ≥5 days: Only reservation fee forfeited (already paid)
       policyApplied = "standard";
       amountDue = 0; // Reservation fee already paid, no additional charge
-    } else if (daysBeforeEvent >= 1) {
-      // <5 days: 50% of total package price
+    } else if (daysBeforeEvent >= 2) {
+      // 2-4 days before: 50% of total package price
       policyApplied = "5_days_penalty";
       amountDue = booking.total_price * 0.5;
     } else {
@@ -1381,7 +1609,7 @@ export async function requestCancellation(req, res) {
            amount_due_on_cancellation = ?,
            cancellation_notes = ?,
            updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
+       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
       [policyApplied, amountDue, cancellation_reason || null, bookingId],
     );
 
@@ -1567,7 +1795,7 @@ export async function getCancellationDetails(req, res) {
     if (daysBeforeEvent >= 5) {
       estimatedPolicy = "standard";
       estimatedAmountDue = 0;
-    } else if (daysBeforeEvent >= 1) {
+    } else if (daysBeforeEvent >= 2) {
       estimatedPolicy = "5_days_penalty";
       estimatedAmountDue = booking.total_price * 0.5;
     } else {
@@ -1598,7 +1826,9 @@ export async function getCancellationDetails(req, res) {
       total_price: booking.total_price,
       amount_already_paid: amountAlreadyPaid,
       days_before_event: daysBeforeEvent,
-      is_cancelled: booking.booking_status === "Cancelled",
+      is_cancelled:
+        booking.booking_status === "Cancelled" ||
+        booking.booking_status === "Rejected",
       cancellation_details:
         booking.booking_status === "Cancelled"
           ? {
@@ -1610,7 +1840,8 @@ export async function getCancellationDetails(req, res) {
             }
           : null,
       estimated_cancellation:
-        booking.booking_status !== "Cancelled"
+        booking.booking_status !== "Cancelled" &&
+        booking.booking_status !== "Rejected"
           ? {
               policy_would_apply: estimatedPolicy,
               estimated_amount_due: estimatedAmountDue,

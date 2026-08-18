@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
-import { createBooking, getDateAvailability } from "../api/bookingApi";
+import { createBooking, getBookingConfig, getDateAvailability } from "../api/bookingApi";
 import { BookingRules } from "../components/BookingRules";
 import {
   getPackages,
@@ -69,7 +69,8 @@ function validateTimeAgainstOperatingHours(time: string): string | null {
   const totalMinutes = hours * 60 + minutes;
   const openMinutes = OPERATING_HOURS.openHour * 60;
   const closeMinutes = OPERATING_HOURS.closeHour * 60;
-  if (totalMinutes < openMinutes || totalMinutes > closeMinutes) {
+  // A start time equal to closing is invalid: no catering time would remain.
+  if (totalMinutes < openMinutes || totalMinutes >= closeMinutes) {
     const openLabel = `${OPERATING_HOURS.openHour}:00 ${OPERATING_HOURS.openHour >= 12 ? "PM" : "AM"}`;
     const closeLabel = `${OPERATING_HOURS.closeHour}:00 ${OPERATING_HOURS.closeHour >= 12 ? "PM" : "AM"}`;
     return `Start time must be between ${openLabel} and ${closeLabel} (Tuesday to Sunday).`;
@@ -212,6 +213,7 @@ export function BookingPage() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(
     null,
   );
+  const [minEventDate, setMinEventDate] = useState<string | null>(null);
   const [guestCount, setGuestCount] = useState(normalizedInitialPax);
   const [eventType, setEventType] = useState(preselectedEventType);
   const [customEventType, setCustomEventType] = useState("");
@@ -310,6 +312,33 @@ export function BookingPage() {
   useEffect(() => {
     refreshAvailability();
   }, [refreshAvailability]);
+
+  // Server-authoritative 14-day lead-time cutoff, computed in Philippine time
+  // on the backend. A local estimate is used only as a transient fallback
+  // until the config loads — it is never the authority.
+  const fallbackMinEventDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+  }, []);
+  const effectiveMinEventDate = minEventDate ?? fallbackMinEventDate;
+
+  useEffect(() => {
+    let cancelled = false;
+    getBookingConfig()
+      .then((config) => {
+        if (!cancelled && config.min_event_date) {
+          setMinEventDate(config.min_event_date);
+        }
+      })
+      .catch(() => {
+        // Keep the transient local fallback; the backend still enforces the
+        // real cutoff on submit.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Re-check every time the user lands back on the event details step.
   useEffect(() => {
@@ -755,11 +784,7 @@ export function BookingPage() {
                     value={eventDate}
                     onChange={(e) => {
                       const value = e.target.value;
-                      const minDate = new Date();
-                      minDate.setDate(minDate.getDate() + 14);
-                      const minStr = minDate.toLocaleDateString("sv-SE", {
-                        timeZone: "Asia/Manila",
-                      });
+                      const minStr = effectiveMinEventDate;
                       if (value < minStr) {
                         setSubmitError(
                           "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.",
@@ -791,13 +816,7 @@ export function BookingPage() {
                       setSubmitError(null);
                       setEventDate(value);
                     }}
-                    min={(() => {
-                      const minDate = new Date();
-                      minDate.setDate(minDate.getDate() + 14);
-                      return minDate.toLocaleDateString("sv-SE", {
-                        timeZone: "Asia/Manila",
-                      });
-                    })()}
+                    min={effectiveMinEventDate}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
                   {availabilityError && (

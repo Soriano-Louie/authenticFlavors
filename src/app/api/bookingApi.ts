@@ -77,8 +77,24 @@ export interface DateAvailability {
   occupiedDays: OccupiedDay[];
 }
 
+export interface BookingConfig {
+  min_event_date: string;
+  min_lead_days: number;
+  today: string;
+  operating_hours: {
+    closedDays: number[];
+    openTime: string;
+    closeTime: string;
+    timezone: string;
+  };
+}
+
 export function getDateAvailability(): Promise<DateAvailability> {
   return request<DateAvailability>("/api/bookings/availability");
+}
+
+export function getBookingConfig(): Promise<BookingConfig> {
+  return request<BookingConfig>("/api/bookings/config");
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {

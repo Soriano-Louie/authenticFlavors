@@ -551,7 +551,7 @@ export async function verifyReceipt(req, res) {
              amount_paid = ?,
              remaining_balance = ?,
              updated_at = CURRENT_TIMESTAMP
-         WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
+         WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
         [newBookingStatus, newAmountPaid, newRemaining, payment.booking_id],
       );
 
@@ -929,7 +929,7 @@ export async function cancelBookingForOverdue(req, res) {
       `UPDATE bookings 
        SET booking_status = 'Cancelled', cancellation_processed_at = CURRENT_TIMESTAMP,
            cancellation_notes = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
+       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
       [
         "Cancelled by an administrator due to overdue payment.",
         payment.booking_id,

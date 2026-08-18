@@ -15,7 +15,8 @@ export function isOperatingDay(dateStr) {
 export function isWithinOperatingHours(timeStr) {
   if (!timeStr) return false;
   const time = timeStr.slice(0, 8);
-  return time >= OPERATING_HOURS.openTime && time <= OPERATING_HOURS.closeTime;
+  // A start time equal to closing is invalid: no catering time would remain.
+  return time >= OPERATING_HOURS.openTime && time < OPERATING_HOURS.closeTime;
 }
 
 export function getOperatingHoursMessage() {
