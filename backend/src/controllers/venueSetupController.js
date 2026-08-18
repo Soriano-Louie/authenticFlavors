@@ -52,6 +52,31 @@ export async function submitVenueSetupRequest(req, res, next) {
 
     const booking = bookings[0];
 
+    // Only confirmed (fully-paid) bookings may have venue setup work reviewed;
+    // pending, cancelled, rejected, or completed bookings must not.
+    if (booking.booking_status !== "Confirmed") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATUS",
+          message:
+            "Venue setup requests are only allowed for confirmed bookings.",
+        },
+      });
+    }
+
+    // 14-day rule check (mirrors the menu-change guard) so customers cannot
+    // submit setup work at the last minute.
+    const daysUntilEvent = getDaysUntilEvent(booking.event_date);
+    if (daysUntilEvent < 14) {
+      return res.status(400).json({
+        error: {
+          code: "VENUE_SETUP_RESTRICTED",
+          message:
+            "Venue setup requests are only allowed until 14 days before the scheduled event.",
+        },
+      });
+    }
+
     const [existingActive] = await pool.query(
       `SELECT request_id FROM venue_setup_requests
        WHERE booking_id = ? AND status IN ('Pending', 'Changes_Requested') LIMIT 1`,

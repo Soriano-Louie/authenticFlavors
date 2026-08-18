@@ -143,8 +143,13 @@ export function getCustomerBookings(
 
 export function getAdminBookings(
   accessToken: string,
-  params?: { status?: string; search?: string },
-): Promise<{ bookings: Booking[] }> {
+  params?: { status?: string; search?: string; page?: number; limit?: number },
+): Promise<{
+  bookings: Booking[];
+  total: number;
+  page: number;
+  limit: number;
+}> {
   const query = new URLSearchParams();
   if (params?.status && params.status !== "All") {
     query.set("status", params.status);
@@ -152,16 +157,21 @@ export function getAdminBookings(
   if (params?.search && params.search.trim()) {
     query.set("search", params.search.trim());
   }
+  if (params?.page != null) {
+    query.set("page", String(params.page));
+  }
+  if (params?.limit != null) {
+    query.set("limit", String(params.limit));
+  }
   const qs = query.toString();
-  return request<{ bookings: Booking[] }>(
-    `/api/admin/bookings${qs ? `?${qs}` : ""}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+  return request<
+    { bookings: Booking[]; total: number; page: number; limit: number }
+  >(`/api/admin/bookings${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
     },
-  );
+  });
 }
 
 export function completeBooking(

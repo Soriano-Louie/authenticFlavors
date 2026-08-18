@@ -234,6 +234,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     // Fetch request details
     const [requests] = await connection.query(
       `SELECT mcr.*, b.booking_reference, b.event_date, b.package_id, b.dietary_notes as current_dietary_notes,
+              b.number_of_pax, b.total_price, b.amount_paid,
               u.user_id, u.first_name, u.last_name, u.email
        FROM menu_change_requests mcr
        JOIN bookings b ON mcr.booking_id = b.booking_id
@@ -277,23 +278,34 @@ export async function approveMenuChangeRequest(req, res, next) {
       [request.booking_id],
     );
 
+    // Accumulate the additional price of the approved items while re-inserting.
+    let additionalPriceSum = 0;
     for (const itemName of newSelections) {
       const [menuItems] = await connection.query(
-        "SELECT menu_item_id, category_id FROM menu_items WHERE item_name = ? LIMIT 1",
+        "SELECT menu_item_id, category_id, additional_price FROM menu_items WHERE item_name = ? AND availability_status = 'Active' LIMIT 1",
         [itemName],
       );
 
-      if (menuItems.length > 0) {
-        await connection.query(
-          `INSERT INTO booking_menu_selections (booking_id, category_id, menu_item_id)
-           VALUES (?, ?, ?)`,
-          [
-            request.booking_id,
-            menuItems[0].category_id,
-            menuItems[0].menu_item_id,
-          ],
-        );
+      if (menuItems.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: `Menu item '${itemName}' is no longer available (missing or inactive). Ask the customer to choose a different item and resubmit the request.`,
+          },
+        });
       }
+
+      await connection.query(
+        `INSERT INTO booking_menu_selections (booking_id, category_id, menu_item_id)
+         VALUES (?, ?, ?)`,
+        [
+          request.booking_id,
+          menuItems[0].category_id,
+          menuItems[0].menu_item_id,
+        ],
+      );
+      additionalPriceSum += parseFloat(menuItems[0].additional_price || 0);
     }
 
     // Update dietary notes on booking if provided in request
@@ -301,6 +313,53 @@ export async function approveMenuChangeRequest(req, res, next) {
       await connection.query(
         "UPDATE bookings SET dietary_notes = ? WHERE booking_id = ?",
         [request.dietary_notes, request.booking_id],
+      );
+    }
+
+    // Recompute the booking price from the approved selections. Menu items add
+    // an additional_price on top of the package base price (same formula as
+    // createBooking), so switching to pricier items must raise the total and
+    // charge the difference; downgrades lower the total (no refund is issued).
+    const [pricingRows] = await connection.query(
+      "SELECT price FROM package_pricing WHERE package_id = ? AND pax_count = ?",
+      [request.package_id, request.number_of_pax],
+    );
+    if (pricingRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message:
+            "Selected guest count tier is not available for this package.",
+        },
+      });
+    }
+
+    const newTotal =
+      parseFloat(pricingRows[0].price) + additionalPriceSum;
+    const oldTotal = parseFloat(request.total_price);
+    const amountPaid = parseFloat(request.amount_paid || 0);
+    const newRemaining = Math.max(newTotal - amountPaid, 0);
+    const priceDelta = newTotal - oldTotal;
+
+    // Update the booking's total and remaining balance. A menu change is only
+    // allowed on confirmed (fully-paid) bookings, so a price increase becomes
+    // the new remaining balance the customer still owes.
+    await connection.query(
+      `UPDATE bookings
+       SET total_price = ?, remaining_balance = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [newTotal, newRemaining, request.booking_id],
+    );
+
+    // If the approved changes cost more, create a Pending payment row for the
+    // difference. It flows through the normal receipt → admin-verification
+    // path (verifyReceipt credits bookings.amount_paid on approval).
+    if (priceDelta > 0.01) {
+      await connection.query(
+        `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+         VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
+        [request.booking_id, priceDelta, request.event_date],
       );
     }
 
@@ -322,10 +381,13 @@ export async function approveMenuChangeRequest(req, res, next) {
         JSON.stringify({
           menu_selections: oldSelections,
           dietary_notes: request.current_dietary_notes,
+          total_price: oldTotal,
         }),
         JSON.stringify({
           menu_selections: newSelections,
           dietary_notes: request.dietary_notes || request.current_dietary_notes,
+          total_price: newTotal,
+          remaining_balance: newRemaining,
         }),
         adminId,
       ],

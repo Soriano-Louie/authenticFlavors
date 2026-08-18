@@ -357,7 +357,7 @@ async function buildRestaurantContext() {
       "- Closed on: Mondays\n" +
       "- Contact Email: events@authenticflavors.ph\n" +
       "- Contact Phone: +63 (2) 8888-RAMOS\n" +
-      "- Payment Methods: GCash, Maya, Bank Transfer, Credit/Debit Cards (via PayMongo)",
+      "- Payment Methods: GCash, Maya, Bank Transfer, and Cash",
   );
 
   // 2. Booking process
@@ -858,7 +858,7 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     "1. Catering packages, pricing, inclusions, pax tiers, and comparisons.\n" +
     "2. Menu selections, dishes, dietary preferences, allergens, and food-related questions about our offerings.\n" +
     "3. Bookings and reservations (flow described below), booking status, cancellation, rescheduling, and refunds.\n" +
-    "4. Payments (GCash, Maya, PayMongo, bank transfer), down payment, balance, and payment steps.\n" +
+    "4. Payments (GCash, Maya, bank transfer, cash), down payment, balance, and payment steps.\n" +
     "5. Venues and setups (Standard, Garden Pavilion, Indoor Private Dining), décor, and add-ons.\n" +
     "6. Policies: operating hours (closed on Mondays), lead time, guest capacity (max 70), guidelines, and terms.\n" +
     "7. Upcoming event schedules / the Calendar of Private Dining Schedules (upcoming booked event dates, times, package, and guest count) AND announcements/postings. For \"upcoming events\" or \"private dining schedules\", list the UPCOMING EVENT SCHEDULE section first, then announcements.\n" +
@@ -893,7 +893,8 @@ export async function generateChatResponse(userMessage, history = [], userProfil
     "3. Validate each input gracefully. If an event date is a Monday or invalid/past, explain politely and ask for a valid date. If pax count doesn't match available package tiers, suggest valid package/pax options.\n" +
     "4. If the user wants to cancel or restart the booking, acknowledge and clear booking context.\n" +
     "5. ONCE ALL REQUIRED DETAILS ARE COLLECTED AND VALIDATED, present a clear **BOOKING SUMMARY** listing all collected details and ask the user explicitly to confirm.\n" +
-    "6. Structure your responses clearly using Markdown (bold headings, bullet points).\n\n" +
+    "6. You CANNOT create or finalize bookings yourself. NEVER claim that a booking was created, confirmed, submitted, or charged. After the user confirms the summary, politely instruct them to click the booking button / proceed with the booking form in this chat widget to officially submit it — only that interactive booking flow creates real bookings.\n" +
+    "7. Structure your responses clearly using Markdown (bold headings, bullet points).\n\n" +
     userContextStr + "\n\n" +
     restaurantContext +
     "\n\n" +

@@ -1387,6 +1387,102 @@ export function CustomerDashboard() {
               );
             })()}
 
+          {/* Additional payment installments (e.g. menu-change surcharge) */}
+          {payments
+            .filter(
+              (p) =>
+                (p.payment_type === "Reservation" &&
+                  reservation &&
+                  p.payment_id !== reservation.payment_id) ||
+                (p.payment_type === "DownPayment" &&
+                  downPayment &&
+                  p.payment_id !== downPayment.payment_id) ||
+                (p.payment_type === "FinalPayment" &&
+                  finalPayment &&
+                  p.payment_id !== finalPayment.payment_id),
+            )
+            .map((extraPayment) => {
+              const statusInfo = getPaymentStatusInfo(extraPayment);
+              return (
+                <div
+                  key={extraPayment.payment_id}
+                  className="flex flex-col bg-white/50 p-3 rounded-xl border border-[#C8922A]/5 gap-2"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#2C1810] block">
+                        {extraPayment.payment_type === "FinalPayment"
+                          ? "Final Payment (Additional)"
+                          : extraPayment.payment_type}
+                      </span>
+                      <span className="text-[#2C1810]/50 block">
+                        Due: {formatDate(extraPayment.due_date)}
+                      </span>
+                      <span className="text-[#C8922A] font-medium block">
+                        ₱
+                        {Number(extraPayment.amount).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-xs ${statusInfo.colorClass}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                      {statusInfo.canUpload && (
+                        <button
+                          onClick={() =>
+                            handlePayNow(
+                              extraPayment.payment_id,
+                              booking.booking_id,
+                            )
+                          }
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {statusInfo.message && (
+                    <p
+                      className={`text-xs font-['Lato'] mt-1 ${statusInfo.colorClass === "bg-[#C4541A]/10 text-[#C4541A]" ? "text-[#C4541A]" : "text-[#2C1810]/50"}`}
+                    >
+                      {statusInfo.message}
+                    </p>
+                  )}
+                  {extraPayment.receipt_url && (
+                    <div className="mt-2 pt-2 border-t border-[#C8922A]/10">
+                      <p className="text-xs font-['Lato'] text-[#2C1810]/60 mb-1.5">
+                        Uploaded Receipt:
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={extraPayment.receipt_url}
+                          alt="Payment Receipt"
+                          className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"
+                          onClick={() =>
+                            handleViewReceipt(extraPayment.receipt_url!)
+                          }
+                        />
+                        <button
+                          onClick={() =>
+                            handleViewReceipt(extraPayment.receipt_url!)
+                          }
+                          className="flex items-center gap-1 px-3 py-1.5 bg-[#C8922A]/10 hover:bg-[#C8922A]/20 text-[#C8922A] rounded-full text-xs font-['Lato'] transition-colors cursor-pointer"
+                        >
+                          <Eye size={12} />
+                          View Full Size
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
           {/* Request Menu Change Section */}
           {(() => {
             const isConfirmed = booking.booking_status === "Confirmed";
@@ -3360,7 +3456,23 @@ export function CustomerDashboard() {
                     )}
 
                     {/* Payment cards */}
-                    {[reservation, downPayment, finalPayment]
+                    {[
+                      reservation,
+                      downPayment,
+                      finalPayment,
+                      ...payments.filter(
+                        (p) =>
+                          (p.payment_type === "Reservation" &&
+                            reservation &&
+                            p.payment_id !== reservation.payment_id) ||
+                          (p.payment_type === "DownPayment" &&
+                            downPayment &&
+                            p.payment_id !== downPayment.payment_id) ||
+                          (p.payment_type === "FinalPayment" &&
+                            finalPayment &&
+                            p.payment_id !== finalPayment.payment_id),
+                      ),
+                    ]
                       .filter(Boolean)
                       .map((payment) => {
                         const statusInfo = getPaymentStatusInfo(payment!);

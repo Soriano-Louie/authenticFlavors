@@ -117,3 +117,41 @@ export async function isDateUnavailable(
   );
   return rows.length > 0;
 }
+
+/**
+ * Authoritative availability check for use INSIDE an open transaction.
+ * Same rules as `isDateUnavailable`, but performs a locking read
+ * (`SELECT ... FOR UPDATE`) so that concurrent `createBooking` calls for the
+ * same date serialize on the event_date index: the losing transaction waits
+ * until the winner commits, then sees the just-inserted booking and is
+ * rejected. Must receive the transaction `connection`, not the `pool`.
+ */
+export async function isDateUnavailableForUpdate(
+  connection,
+  eventDate,
+  excludeBookingId = null,
+) {
+  // 1. Admin-declared blocked date?
+  const [blocked] = await connection.query(
+    "SELECT blocked_date_id FROM blocked_dates WHERE blocked_date = ? LIMIT 1 FOR UPDATE",
+    [eventDate],
+  );
+  if (blocked.length > 0) return true;
+
+  // 2. Bookings already at capacity? Locking read: next-key + gap locks on the
+  // event_date index serialize concurrent inserts for this date until commit.
+  const params = [...OCCUPYING_BOOKING_STATUSES, eventDate];
+  let whereClause = "booking_status IN (?, ?, ?) AND event_date = ?";
+  if (excludeBookingId != null) {
+    whereClause += " AND booking_id != ?";
+    params.push(excludeBookingId);
+  }
+  const [rows] = await connection.query(
+    `SELECT booking_id FROM bookings
+     WHERE ${whereClause}
+     LIMIT ?
+     FOR UPDATE`,
+    [...params, CAPACITY_PER_DAY],
+  );
+  return rows.length >= CAPACITY_PER_DAY;
+}

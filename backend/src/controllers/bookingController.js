@@ -21,6 +21,7 @@ import {
   ACTIVE_BOOKING_STATUSES,
   getDateOccupancy,
   isDateUnavailable,
+  isDateUnavailableForUpdate,
 } from "../services/availabilityService.js";
 
 // Create Booking inside transaction
@@ -130,6 +131,8 @@ export async function createBooking(req, res) {
     // 2c. Reject dates that are already unavailable for any reason: occupied by
     // active bookings (single shared rule for manual and chatbot bookings) or
     // blocked by an admin (e.g. a rest day). Cancelled bookings never block it.
+    // This pre-check is a best-effort fast path; the authoritative, race-proof
+    // check runs inside the transaction below.
     if (await isDateUnavailable(pool, event_date)) {
       return res.status(409).json({
         error: {
@@ -142,6 +145,22 @@ export async function createBooking(req, res) {
 
     // Start database transaction
     await connection.beginTransaction();
+
+    // 2c-2. Authoritative availability check inside the transaction. It takes a
+    // locking read (FOR UPDATE) on the event_date index, so two concurrent
+    // bookings for the same date serialize: the losing request waits, then sees
+    // the just-inserted booking and is rejected — making the one-booking-per-day
+    // rule atomic even under concurrency.
+    if (await isDateUnavailableForUpdate(connection, event_date)) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "DATE_UNAVAILABLE",
+          message:
+            "The selected date is no longer available. Please choose another date.",
+        },
+      });
+    }
 
     // 3. Resolve event_type_id
     const [eventTypes] = await connection.query(
@@ -452,6 +471,20 @@ export async function autoCompletePastBookings() {
   );
   if (due.length === 0) return;
 
+  // Cancel any unpaid payments on bookings that are about to be completed so
+  // they never linger as Overdue with no valid action left (the admin
+  // overdue-cancel would reject an already-completed booking).
+  await pool.query(
+    `UPDATE payments p
+     JOIN bookings b ON p.booking_id = b.booking_id
+     SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
+     WHERE b.booking_status IN (?, ?)
+       AND b.event_date < CURDATE()
+       AND p.payment_status IN ('Pending', 'Overdue', 'For_Verification')
+       AND p.payment_type != 'CancellationCharge'`,
+    ACTIVE_BOOKING_STATUSES,
+  );
+
   await pool.query(
     `UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
      WHERE booking_status IN (?, ?) AND event_date < CURDATE()`,
@@ -637,6 +670,12 @@ export async function getAdminBookings(req, res) {
     await autoCancelUnpaidPastBookings();
 
     const { status, search } = req.query;
+
+    // Pagination: cap the page size so large datasets stay responsive.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
+
     const whereClauses = [];
     const params = [];
 
@@ -689,6 +728,18 @@ export async function getAdminBookings(req, res) {
     const whereSql =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
+    const [[totalRows]] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN event_types et ON b.event_type_id = et.event_type_id
+       JOIN venue_setups vs ON b.venue_setup_id = vs.venue_setup_id
+       JOIN users u ON b.user_id = u.user_id
+       ${whereSql}`,
+      params,
+    );
+    const total = totalRows?.total ?? 0;
+
     const [bookings] = await pool.query(
       `SELECT b.*, p.package_name, et.type_name, vs.setup_name,
               u.first_name, u.middle_name, u.last_name
@@ -698,8 +749,9 @@ export async function getAdminBookings(req, res) {
        JOIN venue_setups vs ON b.venue_setup_id = vs.venue_setup_id
        JOIN users u ON b.user_id = u.user_id
        ${whereSql}
-       ORDER BY b.created_at DESC`,
-      params,
+       ORDER BY b.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
     );
 
     // Fetch menu selections for all bookings in one query (avoids N+1)
@@ -728,7 +780,7 @@ export async function getAdminBookings(req, res) {
       menu_selections: menuByBooking.get(booking.booking_id) ?? [],
     }));
 
-    res.status(200).json({ bookings: bookingsWithDetails });
+    res.status(200).json({ bookings: bookingsWithDetails, total, page, limit });
   } catch (error) {
     console.error("Error fetching admin bookings:", error);
     res.status(500).json({
@@ -1028,12 +1080,22 @@ export async function getAdminStats(req, res) {
 // Admin recent activity feed
 export async function getAdminActivity(req, res) {
   try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 200);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
+
+    const [[totalRows]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM activity_logs",
+    );
+    const total = totalRows?.total ?? 0;
+
     const [rows] = await pool.query(
       `SELECT activity_id, actor_name, actor_role, activity_type, action,
               booking_id, created_at
        FROM activity_logs
        ORDER BY created_at DESC, activity_id DESC
-       LIMIT 25`,
+       LIMIT ? OFFSET ?`,
+      [limit, offset],
     );
 
     const activities = rows.map((act) => {
@@ -1069,7 +1131,7 @@ export async function getAdminActivity(req, res) {
       };
     });
 
-    res.status(200).json({ activities });
+    res.status(200).json({ activities, total, page, limit });
   } catch (error) {
     console.error("Error fetching admin activity:", error);
     res.status(500).json({
@@ -1135,6 +1197,16 @@ export async function rejectBooking(req, res) {
         },
       });
     }
+
+    // Cancel the booking's pending payments so they can no longer be paid,
+    // uploaded against, or verified, and never linger as Overdue for a booking
+    // that no longer exists. Mirrors requestCancellation / auto-cancel flows.
+    await connection.query(
+      `UPDATE payments
+       SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+      [bookingId],
+    );
 
     await connection.commit();
 
@@ -1298,8 +1370,6 @@ export async function requestCancellation(req, res) {
     // Calculate additional amount due (what they still need to pay)
     const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
     additionalAmountDue = Math.max(0, amountDue - amountAlreadyPaid);
-
-    await connection.beginTransaction();
 
     // Update booking with cancellation details (only if not already cancelled)
     const [cancelUpdate] = await connection.query(

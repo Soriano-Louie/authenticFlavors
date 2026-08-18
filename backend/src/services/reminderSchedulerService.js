@@ -1,6 +1,10 @@
 import { pool } from "../db/pool.js";
 import { createNotification } from "./notificationService.js";
-import { autoCancelUnpaidPastBookings } from "../controllers/bookingController.js";
+import { ACTIVE_BOOKING_STATUSES } from "./availabilityService.js";
+import {
+  autoCancelUnpaidPastBookings,
+  autoCompletePastBookings,
+} from "../controllers/bookingController.js";
 import {
   sendEventReminderEmail,
   sendFeedbackReminderEmail,
@@ -14,7 +18,8 @@ import {
  */
 async function checkEventReminders() {
   try {
-    // Select active confirmed bookings
+    // Select active bookings (Reserved or Confirmed) — every confirmed/upcoming
+    // event should be reminded about, whether or not it is fully paid yet.
     const [bookings] = await pool.query(
       `SELECT b.booking_id, b.user_id, b.event_date, b.booking_reference, b.ai_booking_reference,
               u.email, u.first_name, p.package_name,
@@ -22,8 +27,9 @@ async function checkEventReminders() {
        FROM bookings b
        JOIN users u ON b.user_id = u.user_id
        LEFT JOIN packages p ON b.package_id = p.package_id
-       WHERE b.booking_status IN ('Confirmed', 'In_Progress')
+       WHERE b.booking_status IN (?, ?)
          AND DATEDIFF(b.event_date, CURDATE()) IN (7, 1)`,
+      ACTIVE_BOOKING_STATUSES,
     );
 
     for (const b of bookings) {
@@ -220,6 +226,9 @@ async function checkFeedbackReminders() {
 export function startReminderScheduler() {
   // Run checks immediately on startup
   setTimeout(() => {
+    autoCompletePastBookings().catch((err) =>
+      console.error("[ReminderScheduler] Error auto-completing past bookings:", err),
+    );
     checkEventReminders();
     checkPaymentReminders();
     checkFeedbackReminders();
@@ -230,6 +239,9 @@ export function startReminderScheduler() {
 
   // Run checks every 4 hours
   setInterval(() => {
+    autoCompletePastBookings().catch((err) =>
+      console.error("[ReminderScheduler] Error auto-completing past bookings:", err),
+    );
     checkEventReminders();
     checkPaymentReminders();
     checkFeedbackReminders();

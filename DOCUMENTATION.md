@@ -283,7 +283,7 @@ The application uses **Brevo's HTTP API** (not SMTP) for transactional email del
 | Upcoming Payment Reminder | `sendUpcomingPaymentReminder()`   | Sent 3 days before a payment is due                           |
 | Payment Due Today         | `sendPaymentDueToday()`           | Sent on the day a payment is due                              |
 | Overdue Payment Notice    | `sendPaymentOverdueNotice()`      | Sent when a payment is past due, with red urgency styling     |
-| Scheduled Reminders       | `sendScheduledPaymentReminders()` | Cron-job function that sends all three reminder types at once |
+| Scheduled Reminders       | `reminderSchedulerService`        | Runs every 4 hours; dispatches 3-day / due-today / overdue payment and event reminders |
 
 ### Environment Variables
 

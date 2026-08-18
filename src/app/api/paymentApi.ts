@@ -205,8 +205,18 @@ export function getBookingPayments(
 // Admin: Get all payments
 export function getAllPayments(
   accessToken: string,
-): Promise<{ payments: Payment[] }> {
-  return request<{ payments: Payment[] }>("/api/payments/admin/all", {
+): Promise<{
+  payments: Payment[];
+  total: number;
+  page: number;
+  limit: number;
+}> {
+  return request<{
+    payments: Payment[];
+    total: number;
+    page: number;
+    limit: number;
+  }>("/api/payments/admin/all", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,

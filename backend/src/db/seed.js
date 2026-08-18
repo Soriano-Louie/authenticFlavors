@@ -128,6 +128,23 @@ export async function seedDatabaseIfEmpty() {
       }
     }
 
+    // 0.2 Ensure an index on bookings.event_date exists. The in-transaction
+    // availability check (FOR UPDATE) needs it to take a scoped gap lock on a
+    // single date instead of locking the whole table, and it speeds up all
+    // occupancy/availability queries.
+    const [eventDateIndexes] = await connection.query(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'event_date'
+       LIMIT 1`,
+      [connection.config.database],
+    );
+    if (eventDateIndexes.length === 0) {
+      await connection.query(
+        "ALTER TABLE bookings ADD INDEX idx_bookings_event_date (event_date)",
+      );
+      console.log("[MIGRATION] Added index on bookings.event_date.");
+    }
+
     // 0.2 Add custom_event_type column to bookings table
     const [customEventTypeColumn] = await connection.query(
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -889,12 +906,12 @@ export async function seedDatabaseIfEmpty() {
         [
           "Reservations",
           "How do I make a reservation?",
-          "You can make a reservation by visiting our Book a Package page on our website. We recommend booking at least 24 hours in advance.",
+          "You can make a reservation by visiting our Book a Package page on our website and selecting your preferred package, date, and menu. Bookings must be made at least 14 days (two weeks) in advance so there is enough time to settle the down payment.",
         ],
         [
           "Reservations",
           "What is your cancellation policy?",
-          "You may cancel or modify your reservation free of charge up to 4 hours before your scheduled time. Late cancellations or no-shows may be charged a fee of ₱500 per person.",
+          "Cancellations made at least 5 days before your event forfeit the ₱5,000 reservation fee. Cancellations made less than 5 days before the event are charged 50% of the total package price, and cancellations made 1 day before or on the day of the event are charged 100% of the total package price.",
         ],
         [
           "Reservations",
@@ -946,7 +963,7 @@ export async function seedDatabaseIfEmpty() {
         [
           "Pricing & Payment",
           "Can I split the bill?",
-          "Yes, we allow bill splitting for groups. Each split payment can be made via cash or card for your convenience.",
+          "Yes, bill splitting is allowed but only for the final payment, and it must be done in person at the restaurant. The reservation fee and down payment are settled per booking via cash, GCash, Maya, or online banking transfer.",
         ],
         // Catering & Events
         [
@@ -1008,6 +1025,31 @@ export async function seedDatabaseIfEmpty() {
         `[SEED] knowledge_base seeded with ${kbEntries.length} FAQ entries.`,
       );
     }
+
+    // Idempotently correct FAQ answers that previously contradicted the
+    // implemented business rules, so databases seeded before the rules existed
+    // also pick up the fix on the next server start.
+    await connection.query(
+      `UPDATE knowledge_base SET answer = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE question = 'How do I make a reservation?'`,
+      [
+        "You can make a reservation by visiting our Book a Package page on our website and selecting your preferred package, date, and menu. Bookings must be made at least 14 days (two weeks) in advance so there is enough time to settle the down payment.",
+      ],
+    );
+    await connection.query(
+      `UPDATE knowledge_base SET answer = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE question = 'What is your cancellation policy?'`,
+      [
+        "Cancellations made at least 5 days before your event forfeit the ₱5,000 reservation fee. Cancellations made less than 5 days before the event are charged 50% of the total package price, and cancellations made 1 day before or on the day of the event are charged 100% of the total package price.",
+      ],
+    );
+    await connection.query(
+      `UPDATE knowledge_base SET answer = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE question = 'Can I split the bill?'`,
+      [
+        "Yes, bill splitting is allowed but only for the final payment, and it must be done in person at the restaurant. The reservation fee and down payment are settled per booking via cash, GCash, Maya, or online banking transfer.",
+      ],
+    );
   } catch (error) {
     console.error("[SEED] Error seeding database:", error);
   } finally {

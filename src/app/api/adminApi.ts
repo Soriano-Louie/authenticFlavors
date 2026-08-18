@@ -64,8 +64,18 @@ export function getAdminStats(accessToken: string): Promise<AdminStats> {
 
 export function getAdminActivity(
   accessToken: string,
-): Promise<{ activities: AdminActivity[] }> {
-  return request<{ activities: AdminActivity[] }>("/api/admin/activity", {
+): Promise<{
+  activities: AdminActivity[];
+  total: number;
+  page: number;
+  limit: number;
+}> {
+  return request<{
+    activities: AdminActivity[];
+    total: number;
+    page: number;
+    limit: number;
+  }>("/api/admin/activity", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,

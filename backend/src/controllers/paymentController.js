@@ -5,10 +5,10 @@ import {
 } from "../services/cloudinaryService.js";
 import {
   sendUpcomingPaymentReminder,
-  sendPaymentDueToday,
   sendPaymentOverdueNotice,
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail,
+  sendBookingCancelledEmail,
 } from "../services/emailService.js";
 import { createNotification } from "../services/notificationService.js";
 import { logActivity } from "../services/activityService.js";
@@ -81,6 +81,7 @@ export async function getPaymentInstructions(req, res) {
 // ──────────────────────────────────────────
 export async function uploadReceiptFile(req, res) {
   const connection = await pool.getConnection();
+  let uploadResult = null;
   try {
     const { payment_id } = req.body;
     const userId = Number(req.auth.sub);
@@ -147,6 +148,7 @@ export async function uploadReceiptFile(req, res) {
 
     // Upload to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, "receipts");
+    uploadResult = result;
 
     // Re-check the payment status under lock before persisting, so a slow
     // Cloudinary upload can never overwrite a payment the admin just verified.
@@ -241,6 +243,16 @@ export async function uploadReceiptFile(req, res) {
     });
   } catch (error) {
     await connection.rollback();
+    // If a receipt was uploaded to Cloudinary but the transaction failed,
+    // remove the orphaned file so it never lingers without a DB reference.
+    if (uploadResult?.public_id) {
+      await deleteFromCloudinary(uploadResult.public_id).catch((delErr) =>
+        console.error(
+          "Failed to clean up orphaned receipt on Cloudinary:",
+          delErr,
+        ),
+      );
+    }
     console.error("Upload receipt file failed:", error);
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to upload receipt." },
@@ -308,7 +320,7 @@ export async function uploadReceipt(req, res) {
       });
     }
 
-    await connection.query(
+    const [receiptUpdate] = await connection.query(
       `UPDATE payments 
        SET receipt_url = ?, 
            receipt_public_id = ?, 
@@ -319,6 +331,15 @@ export async function uploadReceipt(req, res) {
        WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected', 'Overdue')`,
       [receipt_url, receipt_public_id || null, payment_id],
     );
+
+    if (receiptUpdate.affectedRows === 0) {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Payment status changed while uploading. Please try again.",
+        },
+      });
+    }
 
     const paymentTypeLabel =
       payment.payment_type === "Reservation"
@@ -758,6 +779,8 @@ export async function getOverduePayments(req, res) {
        JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_status IN ('Pending', 'Overdue')
          AND p.due_date < CURDATE()
+         AND p.payment_type != 'CancellationCharge'
+         AND b.booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')
        ORDER BY p.due_date ASC`,
     );
 
@@ -850,9 +873,10 @@ export async function cancelBookingForOverdue(req, res) {
 
     // Get the payment and its booking
     const [payments] = await connection.query(
-      `SELECT p.*, b.booking_status, b.booking_reference
+      `SELECT p.*, b.booking_status, b.booking_reference, b.event_date, b.user_id, u.email, u.first_name
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_id = ?
        FOR UPDATE`,
       [paymentId],
@@ -899,12 +923,17 @@ export async function cancelBookingForOverdue(req, res) {
       [payment.booking_id],
     );
 
-    // Cancel the booking (guarded so it cannot be re-cancelled)
+    // Cancel the booking (guarded so it cannot be re-cancelled). Records the
+    // cancellation reason so the customer/admin can trace why it was cancelled.
     const [bookingUpdate] = await connection.query(
       `UPDATE bookings 
-       SET booking_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       SET booking_status = 'Cancelled', cancellation_processed_at = CURRENT_TIMESTAMP,
+           cancellation_notes = ?, updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Completed')`,
-      [payment.booking_id],
+      [
+        "Cancelled by an administrator due to overdue payment.",
+        payment.booking_id,
+      ],
     );
 
     if (bookingUpdate.affectedRows === 0) {
@@ -932,6 +961,32 @@ export async function cancelBookingForOverdue(req, res) {
       console.error("Activity logging failed (booking_cancelled_admin):", err),
     );
 
+    // Notify the customer so they are never silently cancelled. Mirrors the
+    // rejectBooking / auto-cancel flows.
+    createNotification({
+      userId: payment.user_id,
+      bookingId: payment.booking_id,
+      type: "booking_cancelled_overdue",
+      title: "Booking Cancelled",
+      message: `Your booking (${refStr}) was cancelled because a required payment was not settled before the due date.`,
+      link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+      sendEmailFn: () =>
+        sendBookingCancelledEmail(
+          payment.email,
+          payment.first_name,
+          {
+            booking_reference: refStr,
+            event_date: payment.event_date,
+          },
+          "Your booking was cancelled by an administrator because a required payment was not settled before the due date. If you have already made a payment, please contact us.",
+        ),
+    }).catch((err) =>
+      console.error(
+        "Notification creation failed (booking_cancelled_overdue):",
+        err,
+      ),
+    );
+
     res.status(200).json({
       message: "Booking cancelled due to overdue payment.",
       booking_status: "Cancelled",
@@ -944,128 +999,6 @@ export async function cancelBookingForOverdue(req, res) {
     });
   } finally {
     connection.release();
-  }
-}
-
-// ──────────────────────────────────────────
-// Send scheduled payment reminders (called by cron)
-// ──────────────────────────────────────────
-export async function sendScheduledPaymentReminders() {
-  try {
-    await autoUpdateOverduePayments();
-
-    // Send reminder for payments due in 3 days
-    const [upcomingPayments] = await pool.query(
-      `SELECT p.*, b.booking_reference,
-              u.first_name, u.last_name, u.email
-       FROM payments p
-       JOIN bookings b ON p.booking_id = b.booking_id
-       JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
-    );
-
-    for (const payment of upcomingPayments) {
-      try {
-        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
-        await sendUpcomingPaymentReminder(payment.email, fullName, {
-          payment_type: payment.payment_type,
-          amount: payment.amount,
-          due_date: payment.due_date,
-          booking_reference: payment.booking_reference,
-        });
-        await pool.query(
-          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
-          [payment.payment_id],
-        );
-      } catch (err) {
-        console.error(
-          "Failed to send upcoming reminder for payment:",
-          payment.payment_id,
-          err,
-        );
-      }
-    }
-
-    // Send "due today" emails
-    const [dueTodayPayments] = await pool.query(
-      `SELECT p.*, b.booking_reference,
-              u.first_name, u.last_name, u.email
-       FROM payments p
-       JOIN bookings b ON p.booking_id = b.booking_id
-       JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date = CURDATE()
-         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
-    );
-
-    for (const payment of dueTodayPayments) {
-      try {
-        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
-        await sendPaymentDueToday(payment.email, fullName, {
-          payment_type: payment.payment_type,
-          amount: payment.amount,
-          due_date: payment.due_date,
-          booking_reference: payment.booking_reference,
-        });
-        await pool.query(
-          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
-          [payment.payment_id],
-        );
-      } catch (err) {
-        console.error(
-          "Failed to send due today notice for payment:",
-          payment.payment_id,
-          err,
-        );
-      }
-    }
-
-    // Send overdue notices for payments 1+ day past due
-    const [overduePayments] = await pool.query(
-      `SELECT p.*, b.booking_reference,
-              u.first_name, u.last_name, u.email,
-              DATEDIFF(CURDATE(), p.due_date) AS overdue_days
-       FROM payments p
-       JOIN bookings b ON p.booking_id = b.booking_id
-       JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND p.due_date < CURDATE()
-         AND (p.reminder_sent_at IS NULL OR p.reminder_sent_at < CURDATE())`,
-    );
-
-    for (const payment of overduePayments) {
-      try {
-        const fullName = `${payment.first_name} ${payment.last_name}`.trim();
-        await sendPaymentOverdueNotice(payment.email, fullName, {
-          payment_type: payment.payment_type,
-          amount: payment.amount,
-          due_date: payment.due_date,
-          booking_reference: payment.booking_reference,
-          overdue_days: payment.overdue_days,
-        });
-        await pool.query(
-          "UPDATE payments SET reminder_sent_at = NOW() WHERE payment_id = ?",
-          [payment.payment_id],
-        );
-      } catch (err) {
-        console.error(
-          "Failed to send overdue notice for payment:",
-          payment.payment_id,
-          err,
-        );
-      }
-    }
-
-    return {
-      upcomingSent: upcomingPayments.length,
-      dueTodaySent: dueTodayPayments.length,
-      overdueSent: overduePayments.length,
-    };
-  } catch (error) {
-    console.error("Send scheduled payment reminders failed:", error);
-    throw error;
   }
 }
 
@@ -1135,6 +1068,19 @@ export async function getBookingPayments(req, res) {
 // ──────────────────────────────────────────
 export async function getAllPayments(req, res) {
   try {
+    // Pagination: cap the page size so large datasets stay responsive.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
+
+    const [[totalRows]] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id`,
+    );
+    const total = totalRows?.total ?? 0;
+
     const [payments] = await pool.query(
       `SELECT p.*, b.user_id AS booking_user_id, b.booking_status, b.event_date,
               u.first_name, u.last_name, u.email
@@ -1149,10 +1095,12 @@ export async function getAllPayments(req, res) {
            WHEN 'Paid' THEN 3
            ELSE 4
          END,
-         p.created_at DESC`,
+         p.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset],
     );
 
-    res.status(200).json({ payments });
+    res.status(200).json({ payments, total, page, limit });
   } catch (error) {
     console.error("Get all payments failed:", error);
     res.status(500).json({
