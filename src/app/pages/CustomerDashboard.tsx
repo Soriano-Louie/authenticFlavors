@@ -89,6 +89,18 @@ function getPaymentStatusInfo(payment: Payment): {
   message: string;
   canUpload: boolean;
 } {
+  // Cancellation charges are settled in person with the admin — there is no
+  // "Pay Now" / receipt upload for them (review §2.3).
+  if (payment.payment_type === "CancellationCharge") {
+    return {
+      label: "Settle In Person",
+      colorClass: "bg-[#C8922A]/15 text-[#C8922A]",
+      message:
+        "This cancellation charge is settled in person with the admin. Contact the restaurant to arrange payment.",
+      canUpload: false,
+    };
+  }
+
   switch (payment.payment_status) {
     case "Pending":
       return {

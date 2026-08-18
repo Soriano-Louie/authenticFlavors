@@ -335,12 +335,14 @@ export async function approveMenuChangeRequest(req, res, next) {
       });
     }
 
-    const newTotal =
-      parseFloat(pricingRows[0].price) + additionalPriceSum;
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const newTotal = round2(
+      parseFloat(pricingRows[0].price) + additionalPriceSum,
+    );
     const oldTotal = parseFloat(request.total_price);
     const amountPaid = parseFloat(request.amount_paid || 0);
-    const newRemaining = Math.max(newTotal - amountPaid, 0);
-    const priceDelta = newTotal - oldTotal;
+    const newRemaining = Math.max(round2(newTotal - amountPaid), 0);
+    const priceDelta = round2(newTotal - oldTotal);
 
     // Update the booking's total and remaining balance. A menu change is only
     // allowed on confirmed (fully-paid) bookings, so a price increase becomes
@@ -352,15 +354,42 @@ export async function approveMenuChangeRequest(req, res, next) {
       [newTotal, newRemaining, request.booking_id],
     );
 
-    // If the approved changes cost more, create a Pending payment row for the
-    // difference. It flows through the normal receipt → admin-verification
-    // path (verifyReceipt credits bookings.amount_paid on approval).
+    // If the approved changes cost more, the difference becomes a FinalPayment
+    // row. It flows through the normal receipt → admin-verification path
+    // (verifyReceipt credits bookings.amount_paid on approval).
+    //
+    // One row per type rule (option A): if there is still an unsettled original
+    // FinalPayment (Pending / Overdue / Rejected — re-uploadable payments),
+    // increase its amount instead of inserting a second row. When the original
+    // is already Paid — or a settlement is in flight (For_Verification) or was
+    // Cancelled — a new row is inserted, since merging into it would either
+    // credit a receipt that never covered the delta or resurrect a dead row.
     if (priceDelta > 0.01) {
-      await connection.query(
-        `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
-         VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
-        [request.booking_id, priceDelta, request.event_date],
+      const [finalPayments] = await connection.query(
+        `SELECT payment_id, payment_status FROM payments
+         WHERE booking_id = ? AND payment_type = 'FinalPayment'
+         ORDER BY payment_id ASC`,
+        [request.booking_id],
       );
+      const original = finalPayments[0];
+      const MERGEABLE_STATUSES = ["Pending", "Overdue", "Rejected"];
+      if (
+        original &&
+        MERGEABLE_STATUSES.includes(original.payment_status)
+      ) {
+        await connection.query(
+          `UPDATE payments
+           SET amount = amount + ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE payment_id = ?`,
+          [priceDelta, request.event_date, original.payment_id],
+        );
+      } else {
+        await connection.query(
+          `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+           VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
+          [request.booking_id, priceDelta, request.event_date],
+        );
+      }
     }
 
     // Update request status to Approved

@@ -127,6 +127,18 @@ export async function uploadReceiptFile(req, res) {
       });
     }
 
+    // Cancellation charges are settled in person (verified by the admin in
+    // cash). No receipt is ever uploaded against them.
+    if (payment.payment_type === "CancellationCharge") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Cancellation charges are settled in person with the admin — please contact the restaurant to arrange payment.",
+        },
+      });
+    }
+
     // Allow upload for pending, rejected, or overdue payments. Overdue is
     // included so customers can still settle after the due date and let the
     // admin verify the receipt.
@@ -141,14 +153,14 @@ export async function uploadReceiptFile(req, res) {
       });
     }
 
-    // Delete old receipt from Cloudinary if re-uploading
-    if (payment.receipt_public_id) {
-      await deleteFromCloudinary(payment.receipt_public_id);
-    }
-
-    // Upload to Cloudinary
+    // Upload to Cloudinary FIRST. The old receipt asset is only deleted after
+    // the new row is persisted, so a re-upload can never leave a broken
+    // receipt_url if the new upload or the DB write fails (2.8).
     const result = await uploadToCloudinary(req.file.buffer, "receipts");
     uploadResult = result;
+
+    // Remember the previous asset so it can be deleted best-effort after commit.
+    const oldReceiptPublicId = payment.receipt_public_id;
 
     // Re-check the payment status under lock before persisting, so a slow
     // Cloudinary upload can never overwrite a payment the admin just verified.
@@ -199,6 +211,17 @@ export async function uploadReceiptFile(req, res) {
     }
 
     await connection.commit();
+
+    // The new receipt is now live in the DB — delete the replaced asset
+    // best-effort (never fail the request if Cloudinary cleanup errors).
+    if (oldReceiptPublicId) {
+      deleteFromCloudinary(oldReceiptPublicId).catch((delErr) =>
+        console.error(
+          "Failed to delete replaced receipt on Cloudinary:",
+          delErr,
+        ),
+      );
+    }
 
     const paymentTypeLabel =
       payment.payment_type === "Reservation"
@@ -306,6 +329,18 @@ export async function uploadReceipt(req, res) {
       });
     }
 
+    // Cancellation charges are settled in person (verified by the admin in
+    // cash). No receipt is ever uploaded against them.
+    if (payment.payment_type === "CancellationCharge") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Cancellation charges are settled in person with the admin — please contact the restaurant to arrange payment.",
+        },
+      });
+    }
+
     // Allow upload for pending, rejected, or overdue payments. Overdue is
     // included so customers can still settle after the due date and let the
     // admin verify the receipt.
@@ -319,6 +354,10 @@ export async function uploadReceipt(req, res) {
         },
       });
     }
+
+    // Remember the previous asset so it can be deleted best-effort after the
+    // new receipt row is persisted (2.8).
+    const oldReceiptPublicId = payment.receipt_public_id;
 
     const [receiptUpdate] = await connection.query(
       `UPDATE payments 
@@ -339,6 +378,16 @@ export async function uploadReceipt(req, res) {
           message: "Payment status changed while uploading. Please try again.",
         },
       });
+    }
+
+    // New receipt is live — delete the replaced Cloudinary asset best-effort.
+    if (oldReceiptPublicId && oldReceiptPublicId !== receipt_public_id) {
+      deleteFromCloudinary(oldReceiptPublicId).catch((delErr) =>
+        console.error(
+          "Failed to delete replaced receipt on Cloudinary:",
+          delErr,
+        ),
+      );
     }
 
     const paymentTypeLabel =
@@ -500,10 +549,13 @@ export async function verifyReceipt(req, res) {
       }
 
       // Update booking: add amount_paid, reduce remaining_balance, update status
-      const newAmountPaid =
-        parseFloat(payment.amount_paid) + parseFloat(payment.amount);
+      // Money is rounded to cents after every operation (2.13).
+      const round2 = (n) => Math.round(n * 100) / 100;
+      const newAmountPaid = round2(
+        parseFloat(payment.amount_paid) + parseFloat(payment.amount),
+      );
       const newRemaining = Math.max(
-        parseFloat(payment.total_price) - newAmountPaid,
+        round2(parseFloat(payment.total_price) - newAmountPaid),
         0,
       );
 
@@ -514,6 +566,14 @@ export async function verifyReceipt(req, res) {
         payment.booking_status === "Pending"
       ) {
         newBookingStatus = "Reserved";
+      }
+      // Promotion Reserved -> Confirmed once the down payment is settled
+      // (state machine option B in the review — match the docs + chatbot copy).
+      if (
+        payment.payment_type === "DownPayment" &&
+        payment.booking_status === "Reserved"
+      ) {
+        newBookingStatus = "Confirmed";
       }
       // If remaining balance is 0 -> Confirmed
       if (newRemaining <= 0) {
@@ -714,6 +774,9 @@ export async function verifyReceipt(req, res) {
 // ──────────────────────────────────────────
 export async function getPaymentStatus(req, res) {
   try {
+    // Keep status freshest possible: flip due Pending rows to Overdue first.
+    await autoUpdateOverduePayments();
+
     const { paymentId } = req.params;
     const userId = Number(req.auth.sub);
 
@@ -809,13 +872,27 @@ export async function sendPaymentReminder(req, res) {
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
-       WHERE p.payment_id = ?`,
+       WHERE p.payment_id = ? AND p.payment_status IN ('Pending', 'Overdue')`,
       [paymentId],
     );
 
     if (payments.length === 0) {
-      return res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Payment not found." },
+      // Make sure the 400 isn't hiding a wrong payment id.
+      const [anyPayment] = await pool.query(
+        "SELECT payment_status FROM payments WHERE payment_id = ?",
+        [paymentId],
+      );
+      if (anyPayment.length === 0) {
+        return res.status(404).json({
+          error: { code: "NOT_FOUND", message: "Payment not found." },
+        });
+      }
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Reminders can only be sent for pending or overdue payments.",
+        },
       });
     }
 
@@ -915,11 +992,13 @@ export async function cancelBookingForOverdue(req, res) {
       });
     }
 
-    // Cancel all unpaid payments for this booking
+    // Cancel all unsettled installments for this booking. Rows under admin
+    // review (For_Verification) are excluded: an in-flight receipt must never
+    // be silently destroyed — the admin has already looked at it (2.4).
     await connection.query(
       `UPDATE payments 
        SET payment_status = 'Cancelled'
-       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue')`,
       [payment.booking_id],
     );
 
@@ -1035,19 +1114,25 @@ export async function getBookingPayments(req, res) {
       });
     }
 
-    // Explicit projection: never leak internal admin remarks or receipt
-    // storage metadata (e.g. Cloudinary public id / stored file names) to the
-    // frontend, including for admin viewers of this endpoint.
+    // Explicit projection: the endpoint is restricted to the booking owner and
+    // admins, so admin_remarks (the rejection reason is meant for the customer)
+    // and receipt_uploaded_at are safe to include. Only internal storage
+    // metadata (Cloudinary public ids / file names) stays hidden.
     const [payments] = await pool.query(
       `SELECT payment_id, booking_id, payment_type, amount, due_date,
               paid_at, payment_status, payment_reference, payment_method,
-              receipt_url, is_cancellation_charge, created_at, updated_at
+              receipt_url, receipt_uploaded_at, admin_remarks,
+              is_cancellation_charge, created_at, updated_at,
+              CASE WHEN payment_status = 'Overdue'
+                   THEN DATEDIFF(CURDATE(), due_date) ELSE 0 END AS overdue_days
        FROM payments WHERE booking_id = ? ORDER BY 
        CASE payment_type 
          WHEN 'Reservation' THEN 1 
          WHEN 'DownPayment' THEN 2 
          WHEN 'FinalPayment' THEN 3 
-       END`,
+         ELSE 4 
+       END,
+       payment_id ASC`,
       [bookingId],
     );
 
@@ -1068,6 +1153,9 @@ export async function getBookingPayments(req, res) {
 // ──────────────────────────────────────────
 export async function getAllPayments(req, res) {
   try {
+    // Admin list must reflect the true overdue state, not a stale one.
+    await autoUpdateOverduePayments();
+
     // Pagination: cap the page size so large datasets stay responsive.
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -1113,6 +1201,127 @@ export async function getAllPayments(req, res) {
 }
 
 // ──────────────────────────────────────────
+// Admin: Record a cancellation charge as settled in person (cash)
+// ──────────────────────────────────────────
+export async function settleCancellationCharge(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const { paymentId } = req.params;
+    const adminId = Number(req.auth.sub);
+
+    await connection.beginTransaction();
+
+    const [payments] = await connection.query(
+      `SELECT p.*, b.user_id AS booking_user_id, b.booking_reference,
+              b.ai_booking_reference, u.email, u.first_name
+       FROM payments p
+       JOIN bookings b ON p.booking_id = b.booking_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE p.payment_id = ?
+       FOR UPDATE`,
+      [paymentId],
+    );
+
+    if (payments.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Payment not found." },
+      });
+    }
+
+    const payment = payments[0];
+
+    if (payment.payment_type !== "CancellationCharge") {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Only cancellation charges are settled this way. Use receipt verification for other payment types.",
+        },
+      });
+    }
+
+    if (!["Pending", "Overdue"].includes(payment.payment_status)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message:
+            "Only pending or overdue cancellation charges can be marked as settled.",
+        },
+      });
+    }
+
+    const paidAt = getPhilippineDateTimeString();
+    const [settleUpdate] = await connection.query(
+      `UPDATE payments
+       SET payment_status = 'Paid',
+           payment_method = 'Cash',
+           paid_at = ?,
+           verified_by = ?,
+           verified_at = ?
+       WHERE payment_id = ? AND payment_status IN ('Pending', 'Overdue')`,
+      [paidAt, adminId, paidAt, paymentId],
+    );
+
+    if (settleUpdate.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Payment has already been settled by another request.",
+        },
+      });
+    }
+
+    await connection.commit();
+
+    const refStr =
+      payment.booking_reference ||
+      (payment.ai_booking_reference
+        ? `#AF-${payment.ai_booking_reference}`
+        : `#BK${String(payment.booking_id).padStart(4, "0")}`);
+    const formattedAmount = `₱${Number(payment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
+    logActivity({
+      actorUserId: adminId,
+      actorRole: "Admin",
+      activityType: "payment_approved",
+      action: `recorded the cancellation charge (${formattedAmount}) as settled in cash for Booking #${refStr.replace(/^#/, "")}`,
+      bookingId: payment.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (settle cancellation):", err),
+    );
+
+    createNotification({
+      userId: payment.booking_user_id,
+      bookingId: payment.booking_id,
+      type: "payment_approved_cancellationcharge",
+      title: "Cancellation Charge Settled",
+      message: `Your cancellation charge of ${formattedAmount} (${refStr}) has been settled in person.`,
+      link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
+    }).catch((err) => console.error("Notification creation failed:", err));
+
+    res.status(200).json({
+      message: "Cancellation charge marked as settled (cash).",
+      payment_status: "Paid",
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Settle cancellation charge failed:", error);
+    res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to settle cancellation charge.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+// ──────────────────────────────────────────
 // Admin: Update payment instructions
 // ──────────────────────────────────────────
 export async function updatePaymentInstructions(req, res) {
@@ -1129,7 +1338,7 @@ export async function updatePaymentInstructions(req, res) {
       });
     }
 
-    await pool.query(
+    const [result] = await pool.query(
       `UPDATE payment_instructions 
        SET instruction_text = COALESCE(?, instruction_text),
            account_details = COALESCE(?, account_details),
@@ -1142,6 +1351,15 @@ export async function updatePaymentInstructions(req, res) {
         instruction_id,
       ],
     );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        error: {
+          code: "INSTRUCTION_NOT_FOUND",
+          message: "Payment instruction not found.",
+        },
+      });
+    }
 
     res.status(200).json({ message: "Payment instructions updated." });
   } catch (error) {

@@ -27,6 +27,7 @@ import {
   getOverduePayments,
   sendPaymentReminder,
   cancelBookingForOverdue,
+  settleCancellationCharge,
   type Payment,
 } from "../api/paymentApi";
 import {
@@ -2913,6 +2914,14 @@ function BookingsSection() {
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [remindingId, setRemindingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<{
+    paymentId: number;
+    bookingId: number;
+    bookingRef: string;
+    items: Payment[];
+  } | null>(null);
+  const [cancellingItems, setCancellingItems] = useState<number[]>([]);
   const [bookingSearch, setBookingSearch] = useState("");
   const [bookingStatus, setBookingStatus] = useState<string>("All");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -3106,6 +3115,7 @@ function BookingsSection() {
     Reservation: "Reservation Fee",
     DownPayment: "Down Payment",
     FinalPayment: "Final Payment",
+    CancellationCharge: "Cancellation Charge",
   };
 
   const paymentStatusStyle = (s: string) =>
@@ -3115,9 +3125,13 @@ function BookingsSection() {
         ? "bg-[#C4541A]/15 text-[#C4541A]"
         : s === "Rejected"
           ? "bg-[#C4541A]/15 text-[#C4541A]"
-          : s === "For_Verification"
-            ? "bg-[#C8922A]/15 text-[#C8922A]"
-            : "bg-gray-100 text-gray-600";
+          : s === "Overdue"
+            ? "bg-[#C4541A]/15 text-[#C4541A]"
+            : s === "Pending"
+              ? "bg-[#C8922A]/15 text-[#C8922A]"
+              : s === "For_Verification"
+                ? "bg-[#C8922A]/15 text-[#C8922A]"
+                : "bg-gray-100 text-gray-600";
 
   // Is event date in the past?
   const isEventPast = (eventDate: string) => {
@@ -3141,18 +3155,45 @@ function BookingsSection() {
     }
   };
 
-  const handleCancelBooking = async (paymentId: number) => {
+  const handleCancelBooking = async (payment: Payment) => {
     if (!accessToken) return;
-    if (
-      !window.confirm(
-        "Are you sure you want to cancel this booking? This will cancel all unpaid payments. This action cannot be undone.",
-      )
-    )
-      return;
-    setCancellingId(paymentId);
     try {
-      const res = await cancelBookingForOverdue(accessToken, paymentId);
+      // Enumerate exactly which payments will be cancelled before confirming
+      // (review §2.4): only unsettled Pending/Overdue rows are targets;
+      // For_Verification receipts are never swept.
+      setCancellingItems([payment.payment_id]);
+      const res = await getBookingPayments(accessToken, payment.booking_id);
+      const targets = res.payments.filter(
+        (p) =>
+          p.payment_status === "Pending" || p.payment_status === "Overdue",
+      );
+      setCancelBookingTarget({
+        paymentId: payment.payment_id,
+        bookingId: payment.booking_id,
+        bookingRef:
+          (payment as any).booking_reference ||
+          `#BK${String(payment.booking_id).padStart(4, "0")}`,
+        items: targets,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load booking payments.",
+      );
+    } finally {
+      setCancellingItems([]);
+    }
+  };
+
+  const handleConfirmCancelBooking = async () => {
+    if (!accessToken || !cancelBookingTarget) return;
+    setCancellingId(cancelBookingTarget.paymentId);
+    try {
+      const res = await cancelBookingForOverdue(
+        accessToken,
+        cancelBookingTarget.paymentId,
+      );
       toast.success(res.message || "Booking cancelled successfully.");
+      setCancelBookingTarget(null);
       fetchBookings();
       fetchOverduePayments();
     } catch (err) {
@@ -3161,6 +3202,25 @@ function BookingsSection() {
       );
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  const handleSettleCancellationCharge = async (paymentId: number) => {
+    if (!accessToken) return;
+    setSettlingId(paymentId);
+    try {
+      const res = await settleCancellationCharge(accessToken, paymentId);
+      toast.success(res.message || "Cancellation charge settled.");
+      fetchBookings();
+      fetchOverduePayments();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to settle cancellation charge.",
+      );
+    } finally {
+      setSettlingId(null);
     }
   };
 
@@ -3356,12 +3416,16 @@ function BookingsSection() {
                         : "Send Reminder"}
                     </button>
                     <button
-                      onClick={() => handleCancelBooking(payment.payment_id)}
-                      disabled={cancellingId === payment.payment_id}
+                      onClick={() => handleCancelBooking(payment)}
+                      disabled={
+                        cancellingId === payment.payment_id ||
+                        cancellingItems.includes(payment.payment_id)
+                      }
                       className="px-2.5 py-1 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
                     >
-                      {cancellingId === payment.payment_id
-                        ? "Cancelling..."
+                      {cancellingId === payment.payment_id ||
+                      cancellingItems.includes(payment.payment_id)
+                        ? "Loading..."
                         : "Cancel Booking"}
                     </button>
                   </div>
@@ -3404,16 +3468,6 @@ function BookingsSection() {
                 (booking.booking_status === "Confirmed" ||
                   booking.booking_status === "Reserved") &&
                 isEventPast(booking.event_date);
-
-              const reservation = payments.find(
-                (p) => p.payment_type === "Reservation",
-              );
-              const downPayment = payments.find(
-                (p) => p.payment_type === "DownPayment",
-              );
-              const finalPayment = payments.find(
-                (p) => p.payment_type === "FinalPayment",
-              );
 
               return (
                 <div
@@ -3518,10 +3572,11 @@ function BookingsSection() {
                           {/* Vertical line */}
                           <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-[#C8922A]/20 rounded" />
                           <div className="space-y-4">
-                            {[reservation, downPayment, finalPayment]
-                              .filter(Boolean)
-                              .map((payment) => {
-                                if (!payment) return null;
+                            {/* Render EVERY payment row (grouped by type via the
+                                backend ORDER BY), not just the first of each type,
+                                so surcharge / cancellation rows stay verifiable
+                                (review §2.2). */}
+                            {payments.map((payment) => {
                                 const isPaid =
                                   payment.payment_status === "Paid";
                                 const isPendingVerification =
@@ -3657,6 +3712,35 @@ function BookingsSection() {
                                           </button>
                                         </div>
                                       )}
+                                      {payment.payment_type ===
+                                        "CancellationCharge" &&
+                                        (payment.payment_status ===
+                                          "Pending" ||
+                                          payment.payment_status ===
+                                            "Overdue") && (
+                                          <div className="flex items-center gap-2 mt-2">
+                                            <button
+                                              onClick={() =>
+                                                window.confirm(
+                                                  `Record the cancellation charge of ${formatAmount(payment.amount)} for ${paymentTypeLabel["CancellationCharge"]} as settled in cash? This is used for in-person settlements (review §2.3).`,
+                                                ) &&
+                                                handleSettleCancellationCharge(
+                                                  payment.payment_id,
+                                                )
+                                              }
+                                              disabled={
+                                                settlingId ===
+                                                payment.payment_id
+                                              }
+                                              className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                            >
+                                              {settlingId ===
+                                              payment.payment_id
+                                                ? "Recording..."
+                                                : "Mark Settled (Cash)"}
+                                            </button>
+                                          </div>
+                                        )}
                                     </div>
                                   </div>
                                 );
@@ -3865,6 +3949,76 @@ function BookingsSection() {
                   <Loader2 size={16} className="animate-spin" />
                 )}
                 {submittingVenueSetup ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Cancellation Confirmation Modal — enumerates the exact
+          set of payments that will be cancelled (review §2.4). */}
+      {cancelBookingTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
+              <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                <XCircle className="text-[#C4541A]" size={20} />
+                Cancel Booking {cancelBookingTarget.bookingRef}?
+              </h3>
+              <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              {cancelBookingTarget.items.length === 0 ? (
+                <p className="text-sm font-['Lato'] text-[#2C1810]/60">
+                  No unsettled payments found for this booking. The booking will
+                  still be cancelled.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs font-['Lato'] text-[#2C1810]/60">
+                    The following unpaid payment(s) will be cancelled:
+                  </p>
+                  <div className="space-y-1.5">
+                    {cancelBookingTarget.items.map((item) => (
+                      <div
+                        key={item.payment_id}
+                        className="flex items-center justify-between bg-white/60 rounded-lg px-3 py-2 border border-[#C4541A]/10 text-xs font-['Lato']"
+                      >
+                        <span className="text-[#2C1810]">
+                          {paymentTypeLabel[item.payment_type] ||
+                            item.payment_type}
+                        </span>
+                        <span className="text-[#2C1810]/50">
+                          {item.payment_status} ·{" "}
+                          {formatAmount(item.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] font-['Lato'] text-[#2C1810]/40">
+                    Receipts currently under admin review are never cancelled by
+                    this action.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+              <button
+                onClick={() => setCancelBookingTarget(null)}
+                disabled={cancellingId !== null}
+                className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCancelBooking}
+                disabled={cancellingId !== null}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {cancellingId && <Loader2 size={16} className="animate-spin" />}
+                {cancellingId ? "Cancelling..." : "Confirm Cancellation"}
               </button>
             </div>
           </div>

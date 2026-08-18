@@ -83,7 +83,25 @@ async function checkPaymentReminders() {
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
        WHERE p.payment_status IN ('Pending', 'Overdue')
-         AND b.booking_status NOT IN ('Cancelled', 'Rejected')`,
+         AND b.booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')
+         AND (
+           p.payment_type != 'DownPayment'
+           OR EXISTS (
+             SELECT 1 FROM payments p_res
+             WHERE p_res.booking_id = p.booking_id
+               AND p_res.payment_type = 'Reservation'
+               AND p_res.payment_status = 'Paid'
+           )
+         )
+         AND (
+           p.payment_type != 'FinalPayment'
+           OR EXISTS (
+             SELECT 1 FROM payments p_dp
+             WHERE p_dp.booking_id = p.booking_id
+               AND p_dp.payment_type = 'DownPayment'
+               AND p_dp.payment_status = 'Paid'
+           )
+         )`,
     );
 
     for (const p of payments) {

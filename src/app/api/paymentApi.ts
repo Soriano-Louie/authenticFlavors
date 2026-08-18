@@ -1,7 +1,11 @@
 export interface Payment {
   payment_id: number;
   booking_id: number;
-  payment_type: "Reservation" | "DownPayment" | "FinalPayment";
+  payment_type:
+    | "Reservation"
+    | "DownPayment"
+    | "FinalPayment"
+    | "CancellationCharge";
   amount: number;
   due_date: string;
   paymongo_checkout_id: string | null;
@@ -152,7 +156,8 @@ export function getPaymentStatus(
     | "Paid"
     | "Failed"
     | "Cancelled"
-    | "Rejected";
+    | "Rejected"
+    | "Overdue";
   paid_at: string | null;
   payment_method: string | null;
   payment_reference: string | null;
@@ -169,7 +174,8 @@ export function getPaymentStatus(
       | "Paid"
       | "Failed"
       | "Cancelled"
-      | "Rejected";
+      | "Rejected"
+      | "Overdue";
     paid_at: string | null;
     payment_method: string | null;
     payment_reference: string | null;
@@ -306,6 +312,22 @@ export function cancelBookingForOverdue(
 ): Promise<{ message: string; booking_status: string }> {
   return request<{ message: string; booking_status: string }>(
     `/api/payments/admin/overdue/cancel/${paymentId}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+// Admin: Record a cancellation charge as settled in person (cash)
+export function settleCancellationCharge(
+  accessToken: string,
+  paymentId: number,
+): Promise<{ message: string; payment_status: string }> {
+  return request<{ message: string; payment_status: string }>(
+    `/api/payments/admin/settle/${paymentId}`,
     {
       method: "POST",
       headers: {

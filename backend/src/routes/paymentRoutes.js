@@ -14,6 +14,7 @@ import {
   getOverduePayments,
   sendPaymentReminder,
   cancelBookingForOverdue,
+  settleCancellationCharge,
 } from "../controllers/paymentController.js";
 
 const router = express.Router();
@@ -81,6 +82,14 @@ router.post(
   requireAuth,
   requireRole("Admin"),
   cancelBookingForOverdue,
+);
+
+// Admin: Record a cancellation charge as settled in person (cash)
+router.post(
+  "/admin/settle/:paymentId",
+  requireAuth,
+  requireRole("Admin"),
+  settleCancellationCharge,
 );
 
 export const paymentRouter = router;

@@ -366,8 +366,8 @@ async function buildRestaurantContext() {
       "1. Customer chooses an event package.\n" +
       "2. Fills in event details (date, guest count, menu selections, dietary needs).\n" +
       "3. Booking is submitted with a ₱5,000 reservation fee.\n" +
-      "4. Remaining balance: Down Payment (50%, due 14 days before event) and Final Payment (due on event date).\n" +
-      "5. Booking is confirmed within 24–48 hours after reservation fee is paid.\n" +
+      "4. The booking becomes Reserved once the reservation fee is verified and paid, and becomes Confirmed once the down payment (50%, due 14 days before the event) is settled.\n" +
+      "5. Final Payment (due on event date) completes the balance; the booking is marked Completed after the event.\n" +
       "6. A unique 6-digit booking reference is generated upon submission.",
   );
 
