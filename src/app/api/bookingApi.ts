@@ -65,6 +65,22 @@ const API_BASE_URL =
   (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
   "";
 
+export interface OccupiedDay {
+  event_date: string;
+  booking_count: number;
+  status?: "booked" | "blocked";
+  reason?: string | null;
+}
+
+export interface DateAvailability {
+  capacityPerDay: number;
+  occupiedDays: OccupiedDay[];
+}
+
+export function getDateAvailability(): Promise<DateAvailability> {
+  return request<DateAvailability>("/api/bookings/availability");
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string; code?: string };

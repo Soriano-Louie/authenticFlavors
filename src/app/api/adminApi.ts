@@ -312,3 +312,67 @@ export function deleteAdminMenuItem(
     },
   });
 }
+
+// ──────────────────────────────────────────
+// Blocked (unavailable) calendar dates
+// ──────────────────────────────────────────
+
+export interface BlockedDate {
+  blocked_date_id: number;
+  blocked_date: string; // YYYY-MM-DD
+  reason: string | null;
+  created_at: string;
+  blocked_by_name: string;
+}
+
+export function getAdminBlockedDates(
+  accessToken: string,
+): Promise<{ blockedDates: BlockedDate[] }> {
+  return request<{ blockedDates: BlockedDate[] }>(
+    "/api/admin/blocked-dates",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+export function createBlockedDate(
+  accessToken: string,
+  payload: { date: string; reason?: string },
+): Promise<{
+  message: string;
+  blocked_date_id: number;
+  blocked_date: string;
+  reason: string | null;
+}> {
+  return request<{
+    message: string;
+    blocked_date_id: number;
+    blocked_date: string;
+    reason: string | null;
+  }>("/api/admin/blocked-dates", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteBlockedDate(
+  accessToken: string,
+  blockedDateId: number,
+): Promise<{ message: string }> {
+  return request<{ message: string }>(
+    `/api/admin/blocked-dates/${blockedDateId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}

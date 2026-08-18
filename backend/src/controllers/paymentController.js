@@ -13,6 +13,7 @@ import {
 import { createNotification } from "../services/notificationService.js";
 import { logActivity } from "../services/activityService.js";
 import { getPhilippineDateTimeString } from "../utils/timezone.js";
+import { isDateUnavailable } from "../services/availabilityService.js";
 
 // ──────────────────────────────────────────
 // Auto-update overdue payments (run on every payment fetch)
@@ -406,7 +407,7 @@ export async function verifyReceipt(req, res) {
     // Get payment details
     const [payments] = await connection.query(
       `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status,
-              b.booking_reference, b.ai_booking_reference, u.email, u.first_name
+              b.booking_reference, b.ai_booking_reference, b.event_date, u.email, u.first_name
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        JOIN users u ON b.user_id = u.user_id
@@ -496,6 +497,31 @@ export async function verifyReceipt(req, res) {
       // If remaining balance is 0 -> Confirmed
       if (newRemaining <= 0) {
         newBookingStatus = "Confirmed";
+      }
+
+      // Only one booking per day is allowed. If this payment would promote a
+      // still-pending booking into an active (Reserved/Confirmed) booking,
+      // make sure no other booking or admin block occupies the event date.
+      if (
+        payment.booking_status === "Pending" &&
+        newBookingStatus !== "Pending"
+      ) {
+        if (
+          await isDateUnavailable(
+            connection,
+            payment.event_date,
+            payment.booking_id,
+          )
+        ) {
+          await connection.rollback();
+          return res.status(409).json({
+            error: {
+              code: "DATE_UNAVAILABLE",
+              message:
+                "This date is unavailable (already booked or blocked by the admin). Only one booking per day is allowed.",
+            },
+          });
+        }
       }
 
       const [bookingUpdate] = await connection.query(

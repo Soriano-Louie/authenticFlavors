@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   MessageCircle,
@@ -31,7 +31,7 @@ import {
   getConversations,
   getMessages,
 } from "../api/chatApi";
-import { createBooking } from "../api/bookingApi";
+import { createBooking, getDateAvailability } from "../api/bookingApi";
 import { getBookingPayments } from "../api/paymentApi";
 import {
   getPackages,
@@ -189,6 +189,13 @@ export function ChatBot() {
   const [dbVenueSetups, setDbVenueSetups] = useState<VenueSetup[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
+  // Occupied dates (dates at capacity from the shared availability source).
+  const [occupiedDays, setOccupiedDays] = useState<Record<string, number>>({});
+  // Admin-blocked dates (date -> reason) from the shared availability source.
+  const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
+    {},
+  );
+
   // Wizard state machine
   const [wizard, setWizard] = useState<WizardState>(initialWizardState);
 
@@ -242,6 +249,31 @@ export function ChatBot() {
     }
     loadDbOptions();
   }, []);
+
+  // Refresh the occupied-date set whenever the user is choosing a date, so a
+  // date freed by a cancellation is recognized immediately.
+  const refreshAvailability = useCallback(async () => {
+    try {
+      const data = await getDateAvailability();
+      const occupied: Record<string, number> = {};
+      const blocked: Record<string, string | null> = {};
+      data.occupiedDays.forEach((d) => {
+        if (d.status === "blocked") {
+          blocked[d.event_date] = d.reason ?? null;
+        } else if (d.booking_count >= data.capacityPerDay) {
+          occupied[d.event_date] = d.booking_count;
+        }
+      });
+      setOccupiedDays(occupied);
+      setBlockedDays(blocked);
+    } catch (err) {
+      console.error("[ChatBot] Failed to load availability:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (wizard.step === "DATE") refreshAvailability();
+  }, [wizard.step, refreshAvailability]);
 
   // Reset per-user chat state when the signed-in user changes so
   // conversations never leak across accounts sharing the same browser.
@@ -1178,8 +1210,8 @@ export function ChatBot() {
                     });
 
                     if (val < minStr) {
-                      alert(
-                        "Events must be booked at least 14 days (two weeks) in advance.",
+                      addBotMessage(
+                        "📅 **Date Too Early**: Events must be booked at least 14 days (two weeks) in advance. Please pick a later date!",
                       );
                       e.target.value = "";
                       return;
@@ -1187,8 +1219,25 @@ export function ChatBot() {
 
                     const dateObj = new Date(val);
                     if (dateObj.getDay() === 1) {
-                      alert(
-                        "Chef Ramos is closed on Mondays. Please select another day!",
+                      addBotMessage(
+                        "🙅‍♂️ **Closed on Mondays**: Chef Ramos is closed on Mondays. Please select another day!",
+                      );
+                      e.target.value = "";
+                      return;
+                    }
+                    if (blockedDays[val] !== undefined) {
+                      const reason = blockedDays[val];
+                      addBotMessage(
+                        reason
+                          ? `🗓️ **Date Unavailable**: ${val} is set as unavailable (Reason: **${reason}**). Please choose another date, or feel free to ask me what dates are available!`
+                          : `🗓️ **Date Unavailable**: ${val} is set as unavailable by the restaurant. Please choose another date, or feel free to ask me what dates are available!`,
+                      );
+                      e.target.value = "";
+                      return;
+                    }
+                    if (occupiedDays[val]) {
+                      addBotMessage(
+                        `⛔ **Fully Booked**: ${val} is already fully booked. Please choose another date, or ask me what dates are still available!`,
                       );
                       e.target.value = "";
                       return;

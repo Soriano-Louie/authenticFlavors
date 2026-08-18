@@ -8,6 +8,7 @@ import {
   uploadToCloudinary,
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
+import { ACTIVE_BOOKING_STATUSES } from "../services/availabilityService.js";
 
 export async function getPackages(_req, res) {
   try {
@@ -751,9 +752,10 @@ export async function getUpcomingEvents(_req, res) {
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        JOIN event_types et ON b.event_type_id = et.event_type_id
-       WHERE b.booking_status IN ('Reserved', 'Confirmed')
+       WHERE b.booking_status IN (?, ?)
        AND b.event_date >= CURDATE()
        ORDER BY b.event_date ASC, b.start_time ASC`,
+      ACTIVE_BOOKING_STATUSES,
     );
 
     res.status(200).json({ events: rows });

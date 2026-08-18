@@ -5,6 +5,11 @@ import {
   getOperatingHoursDisplay,
   getOperatingHoursMessage,
 } from "../utils/operatingHours.js";
+import {
+  ACTIVE_BOOKING_STATUSES,
+  CAPACITY_PER_DAY,
+  getDateOccupancy,
+} from "./availabilityService.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gemini Service — Centralized AI Integration Layer
@@ -465,7 +470,8 @@ async function buildRestaurantContext() {
   }
 
   // 8. Live upcoming event schedule (the "Calendar of Private Dining Schedules")
-  // Mirrors the homepage calendar: upcoming Reserved/Confirmed bookings only.
+  // Built from the same availability source as the homepage calendar and the
+  // booking flow, so chatbot answers never contradict the calendar.
   try {
     const [upcomingEvents] = await pool.query(
       `SELECT
@@ -477,11 +483,22 @@ async function buildRestaurantContext() {
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        JOIN event_types et ON b.event_type_id = et.event_type_id
-       WHERE b.booking_status IN ('Reserved', 'Confirmed')
+       WHERE b.booking_status IN (?, ?)
          AND b.event_date >= CURDATE()
        ORDER BY b.event_date ASC, b.start_time ASC
        LIMIT 30`,
+      ACTIVE_BOOKING_STATUSES,
     );
+    const { occupiedDays } = await getDateOccupancy();
+    if (occupiedDays.length > 0) {
+      const lines = [
+        `CURRENT CALENDAR AVAILABILITY (only ${CAPACITY_PER_DAY} booking per day is allowed; dates below are already assigned / FULL and are NOT available for new bookings):`,
+      ];
+      for (const day of occupiedDays) {
+        lines.push(`- ${day.event_date} (${day.booking_count} booking(s) — FULL)`);
+      }
+      sections.push(lines.join("\n"));
+    }
     if (upcomingEvents.length > 0) {
       const lines = [
         "UPCOMING EVENT SCHEDULE / PRIVATE DINING CALENDAR (from database):",

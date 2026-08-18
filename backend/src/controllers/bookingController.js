@@ -17,6 +17,11 @@ import {
   sendBookingRejectedEmail,
   sendBookingCancelledEmail,
 } from "../services/emailService.js";
+import {
+  ACTIVE_BOOKING_STATUSES,
+  getDateOccupancy,
+  isDateUnavailable,
+} from "../services/availabilityService.js";
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
@@ -118,6 +123,19 @@ export async function createBooking(req, res) {
           code: "VALIDATION_ERROR",
           message:
             "The store is closed on Mondays. Please choose another date.",
+        },
+      });
+    }
+
+    // 2c. Reject dates that are already unavailable for any reason: occupied by
+    // active bookings (single shared rule for manual and chatbot bookings) or
+    // blocked by an admin (e.g. a rest day). Cancelled bookings never block it.
+    if (await isDateUnavailable(pool, event_date)) {
+      return res.status(409).json({
+        error: {
+          code: "DATE_UNAVAILABLE",
+          message:
+            "The selected date is no longer available. Please choose another date.",
         },
       });
     }
@@ -428,14 +446,16 @@ export async function autoCompletePastBookings() {
   // Skip the UPDATE entirely (and its table scan) when nothing is due.
   const [due] = await pool.query(
     `SELECT booking_id FROM bookings
-     WHERE booking_status IN ('Confirmed', 'Reserved') AND event_date < CURDATE()
+     WHERE booking_status IN (?, ?) AND event_date < CURDATE()
      LIMIT 1`,
+    ACTIVE_BOOKING_STATUSES,
   );
   if (due.length === 0) return;
 
   await pool.query(
     `UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
-     WHERE booking_status IN ('Confirmed', 'Reserved') AND event_date < CURDATE()`,
+     WHERE booking_status IN (?, ?) AND event_date < CURDATE()`,
+    ACTIVE_BOOKING_STATUSES,
   );
 }
 
@@ -517,6 +537,23 @@ export async function autoCancelUnpaidPastBookings() {
     }).catch((err) =>
       console.error("Notification creation failed (booking_cancelled_unpaid):", err),
     );
+  }
+}
+
+// Single public source of truth for date availability (used by the manual
+// booking calendar, the chatbot, and the homepage calendar alike).
+export async function getDateAvailability(_req, res) {
+  try {
+    const availability = await getDateOccupancy();
+    res.status(200).json(availability);
+  } catch (error) {
+    console.error("Error fetching date availability:", error);
+    res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Failed to fetch availability.",
+      },
+    });
   }
 }
 
@@ -836,6 +873,20 @@ export async function verifyBooking(req, res) {
         error: {
           code: "INVALID_STATE",
           message: `Only pending bookings can be verified. Current status: ${booking.booking_status}`,
+        },
+      });
+    }
+
+    // Only one booking per day is allowed, and the date must not be blocked
+    // by an admin. Another booking (pending or active) occupying this date must
+    // be resolved (cancelled / rejected) first.
+    if (await isDateUnavailable(connection, booking.event_date, bookingId)) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "DATE_UNAVAILABLE",
+          message:
+            "This date is unavailable (already booked or blocked by the admin). Only one booking per day is allowed.",
         },
       });
     }

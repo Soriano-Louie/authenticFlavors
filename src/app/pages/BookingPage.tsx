@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router";
 import {
   Check,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
-import { createBooking } from "../api/bookingApi";
+import { createBooking, getDateAvailability } from "../api/bookingApi";
 import { BookingRules } from "../components/BookingRules";
 import {
   getPackages,
@@ -205,6 +205,13 @@ export function BookingPage() {
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("18:00");
   const [timeError, setTimeError] = useState<string | null>(null);
+  const [occupiedDays, setOccupiedDays] = useState<Record<string, number>>({});
+  const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
+    {},
+  );
+  const [availabilityError, setAvailabilityError] = useState<string | null>(
+    null,
+  );
   const [guestCount, setGuestCount] = useState(normalizedInitialPax);
   const [eventType, setEventType] = useState(preselectedEventType);
   const [customEventType, setCustomEventType] = useState("");
@@ -274,6 +281,41 @@ export function BookingPage() {
     loadData();
   }, []);
 
+  // Fetch the occupied dates from the shared availability source. Occupied =
+  // at capacity already (active booking count). Cancelled bookings never hold
+  // a date, so a cancelled date stops appearing here automatically. Blocked
+  // dates (admin-set) are tracked separately so a clear reason can be shown.
+  const refreshAvailability = useCallback(async () => {
+    try {
+      const data = await getDateAvailability();
+      const occupied: Record<string, number> = {};
+      const blocked: Record<string, string | null> = {};
+      data.occupiedDays.forEach((d) => {
+        if (d.status === "blocked") {
+          blocked[d.event_date] = d.reason ?? null;
+        } else if (d.booking_count >= data.capacityPerDay) {
+          occupied[d.event_date] = d.booking_count;
+        }
+      });
+      setOccupiedDays(occupied);
+      setBlockedDays(blocked);
+      setAvailabilityError(null);
+    } catch (err) {
+      setAvailabilityError(
+        err instanceof Error ? err.message : "Could not load availability.",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAvailability();
+  }, [refreshAvailability]);
+
+  // Re-check every time the user lands back on the event details step.
+  useEffect(() => {
+    if (step === 1) refreshAvailability();
+  }, [step, refreshAvailability]);
+
   // Autofill user details and saved dietary preferences from Auth Context
   useEffect(() => {
     if (user) {
@@ -337,6 +379,66 @@ export function BookingPage() {
       (section: any) => menuChoices[section.label],
     );
   }, [selectedPackage, menuChoices]);
+
+  // Occupied dates within the next 60 days, for the inline availability note.
+  const upcomingOccupiedDates = useMemo(() => {
+    const toKey = (d: Date) =>
+      d.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+    const todayKey = toKey(new Date());
+    const bounds = new Date();
+    bounds.setDate(bounds.getDate() + 60);
+    const boundsKey = toKey(bounds);
+    return Object.keys(occupiedDays)
+      .filter((date) => date >= todayKey && date <= boundsKey)
+      .sort()
+      .map((date) =>
+        new Date(`${date}T00:00:00`).toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+        }),
+      );
+  }, [occupiedDays]);
+
+  // Admin-blocked dates (unavailable for booking) within the next 60 days,
+  // shown together with the reason the admin provided, if any.
+  const upcomingBlockedDates = useMemo(() => {
+    const toKey = (d: Date) =>
+      d.toLocaleDateString("sv-SE", { timeZone: "Asia/Manila" });
+    const todayKey = toKey(new Date());
+    const bounds = new Date();
+    bounds.setDate(bounds.getDate() + 60);
+    const boundsKey = toKey(bounds);
+    return Object.keys(blockedDays)
+      .filter((date) => date >= todayKey && date <= boundsKey)
+      .sort()
+      .map((date) => {
+        const label = new Date(`${date}T00:00:00`).toLocaleDateString(
+          "en-PH",
+          {
+            month: "short",
+            day: "numeric",
+          },
+        );
+        const reason = blockedDays[date];
+        return reason ? `${label} (${reason})` : label;
+      });
+  }, [blockedDays]);
+
+  // User-friendly explanation for the currently selected date, shown right
+  // under the date field.
+  const dateAvailabilityMessage = useMemo(() => {
+    if (!eventDate) return null;
+    if (blockedDays[eventDate] !== undefined) {
+      const reason = blockedDays[eventDate];
+      return reason
+        ? `This day is unavailable for booking. Reason: ${reason}. Please choose another date.`
+        : "This day is unavailable for booking. Please choose another date.";
+    }
+    if (occupiedDays[eventDate]) {
+      return "This date is already fully booked. Please choose another date.";
+    }
+    return null;
+  }, [eventDate, blockedDays, occupiedDays]);
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -671,6 +773,21 @@ export function BookingPage() {
                         );
                         return;
                       }
+                      if (blockedDays[value] !== undefined) {
+                        const reason = blockedDays[value];
+                        setSubmitError(
+                          reason
+                            ? `This day is unavailable for booking. Reason: ${reason}. Please choose another date.`
+                            : "This day is unavailable for booking. Please choose another date.",
+                        );
+                        return;
+                      }
+                      if (occupiedDays[value]) {
+                        setSubmitError(
+                          "This date is already fully booked. Please choose another date.",
+                        );
+                        return;
+                      }
                       setSubmitError(null);
                       setEventDate(value);
                     }}
@@ -683,6 +800,32 @@ export function BookingPage() {
                     })()}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
+                  {availabilityError && (
+                    <p className="text-xs text-[#C4541A] font-['Lato'] mt-1">
+                      {availabilityError}
+                    </p>
+                  )}
+                  {dateAvailabilityMessage && !availabilityError && (
+                    <p className="text-xs text-[#C4541A] font-['Lato'] mt-1.5 font-medium bg-[#C4541A]/5 border border-[#C4541A]/15 rounded-lg px-3 py-2">
+                      {dateAvailabilityMessage}
+                    </p>
+                  )}
+                  {!availabilityError && upcomingBlockedDates.length > 0 && (
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">
+                      Unavailable:{" "}
+                      <span className="font-semibold text-[#C4541A]">
+                        {upcomingBlockedDates.join(", ")}
+                      </span>
+                    </p>
+                  )}
+                  {!availabilityError && upcomingOccupiedDates.length > 0 && (
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">
+                      Already fully booked:{" "}
+                      <span className="font-semibold text-[#C4541A]">
+                        {upcomingOccupiedDates.join(", ")}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm text-[#2C1810]/60 font-['Lato'] mb-1.5">

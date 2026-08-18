@@ -36,8 +36,12 @@ import {
   createAdminPackage,
   updateAdminPackage,
   deleteAdminPackage,
+  getAdminBlockedDates,
+  createBlockedDate,
+  deleteBlockedDate,
   type AdminStats,
   type AdminActivity,
+  type BlockedDate,
 } from "../api/adminApi";
 import {
   getAdminFeedbackAnalysis,
@@ -117,6 +121,7 @@ import {
   Save,
   ChevronDown,
   RotateCcw,
+  CalendarX,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -135,6 +140,7 @@ const SIDEBAR_LINKS = [
   { key: "overview", label: "Overview", icon: BarChart2 },
   { key: "feedback", label: "AI Feedback Analysis", icon: Sparkles },
   { key: "bookings", label: "Bookings", icon: Calendar },
+  { key: "calendar", label: "Calendar Availability", icon: CalendarX },
   { key: "menu-changes", label: "Menu Change Requests", icon: ChefHat },
   { key: "menu-management", label: "Menu Management", icon: BookOpen },
   { key: "packages", label: "Food Packages", icon: Package },
@@ -384,6 +390,7 @@ export function AdminDashboard() {
           )}
           {activeSection === "activity" && <ActivitySection />}
           {activeSection === "bookings" && <BookingsSection />}
+          {activeSection === "calendar" && <CalendarAvailabilitySection />}
           {activeSection === "menu-changes" && <MenuChangeRequestsSection />}
           {activeSection === "menu-management" && <MenuManagementSection />}
           {activeSection === "packages" && <PackagesSection />}
@@ -4763,6 +4770,210 @@ const emptyAnnouncementForm: AnnouncementFormData = {
   publish_date: new Date().toISOString().slice(0, 16),
   expiration_date: "",
 };
+
+// ──────────────────────────────────────────
+// Calendar Availability — admin-blocked dates (e.g. rest days after events)
+// ──────────────────────────────────────────
+function CalendarAvailabilitySection() {
+  const { accessToken } = useAuth();
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const todayKey = new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Manila",
+  });
+
+  const fetchBlockedDates = async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminBlockedDates(accessToken);
+      setBlockedDates(res.blockedDates);
+    } catch (err) {
+      console.error("Failed to fetch blocked dates:", err);
+      toast.error("Failed to load blocked dates.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBlockedDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  const formatBlockedDate = (d: string) =>
+    new Date(`${d}T00:00:00`).toLocaleDateString("en-PH", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  const handleBlock = async () => {
+    if (!accessToken) return;
+    if (!date) {
+      toast.error("Please select a date to block.");
+      return;
+    }
+    if (date < todayKey) {
+      toast.error("You can only block today or a future date.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await createBlockedDate(accessToken, { date, reason: reason.trim() || undefined });
+      toast.success("Date blocked. It is now unavailable for bookings.");
+      setDate("");
+      setReason("");
+      await fetchBlockedDates();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to block date.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRemove = async (item: BlockedDate) => {
+    if (!accessToken) return;
+    if (!window.confirm(`Unblock ${formatBlockedDate(item.blocked_date)}? The day will become bookable again.`)) {
+      return;
+    }
+    setDeletingId(item.blocked_date_id);
+    try {
+      await deleteBlockedDate(accessToken, item.blocked_date_id);
+      toast.success("Blocked date removed. The day is available again.");
+      await fetchBlockedDates();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to remove blocked date.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-['Playfair_Display'] font-semibold text-[#2C1810]">
+          Calendar Availability
+        </h2>
+        <p className="text-sm text-[#2C1810]/60 font-['Lato'] mt-1">
+          Mark a day as unavailable for your own reason (e.g. a rest day after
+          an event). Blocked dates are hidden from the booking calendar and
+          cannot be booked through the chatbot or manual form.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-[#C8922A]/20 p-5">
+        <h3 className="text-sm font-semibold text-[#2C1810] font-['Lato'] mb-4">
+          Block a Date
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-3 sm:items-end">
+          <div className="w-full">
+            <label className="block text-xs text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Date
+            </label>
+            <input
+              type="date"
+              min={todayKey}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-sm text-[#2C1810] outline-none focus:border-[#C8922A]"
+            />
+          </div>
+          <div className="w-full">
+            <label className="block text-xs text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Reason (optional)
+            </label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Rest day after an event, Maintenance"
+              maxLength={255}
+              className="w-full px-3 py-2.5 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-sm text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+            />
+          </div>
+          <button
+            onClick={handleBlock}
+            disabled={submitting}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {submitting ? <Loader2 size={15} className="animate-spin" /> : <CalendarX size={15} />}
+            Block Date
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-[#C8922A]/20">
+        <div className="px-5 py-4 border-b border-[#C8922A]/10">
+          <h3 className="text-sm font-semibold text-[#2C1810] font-['Lato']">
+            Blocked Dates
+          </h3>
+        </div>
+        {loading ? (
+          <div className="p-6 text-center text-sm text-[#2C1810]/50 font-['Lato']">
+            Loading...
+          </div>
+        ) : blockedDates.length === 0 ? (
+          <div className="p-6 text-center text-sm text-[#2C1810]/50 font-['Lato']">
+            No blocked dates. The whole calendar is available for bookings.
+          </div>
+        ) : (
+          <ul className="divide-y divide-[#C8922A]/10">
+            {blockedDates.map((item) => (
+              <li
+                key={item.blocked_date_id}
+                className="px-5 py-3.5 flex items-center justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#2C1810] font-['Lato']">
+                    {formatBlockedDate(item.blocked_date)}
+                  </p>
+                  {item.reason ? (
+                    <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-0.5">
+                      {item.reason}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[#2C1810]/40 font-['Lato'] mt-0.5">
+                      No reason provided
+                    </p>
+                  )}
+                  {item.blocked_by_name && (
+                    <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-0.5">
+                      Blocked by {item.blocked_by_name}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRemove(item)}
+                  disabled={deletingId === item.blocked_date_id}
+                  className="p-2 text-[#2C1810]/40 hover:text-[#C4541A] rounded-lg hover:bg-[#C4541A]/10 transition-colors disabled:opacity-50"
+                  title="Make this date available again"
+                >
+                  {deletingId === item.blocked_date_id ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function AnnouncementsSection() {
   const { accessToken } = useAuth();

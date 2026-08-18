@@ -10,10 +10,14 @@ import {
   rejectBooking,
   requestCancellation,
   getCancellationDetails,
+  getDateAvailability,
 } from "../controllers/bookingController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 export const bookingRouter = Router();
+
+// Public availability (single source of truth for occupied dates)
+bookingRouter.get("/availability", getDateAvailability);
 
 // Customer booking endpoints
 bookingRouter.post("/bookings", requireAuth, createBooking);

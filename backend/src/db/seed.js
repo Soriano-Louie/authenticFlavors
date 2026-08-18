@@ -441,6 +441,22 @@ export async function seedDatabaseIfEmpty() {
     `);
     console.log("[MIGRATION] notifications table ensured.");
 
+    // 0.6a Create blocked_dates table (admin-declared unavailable days such
+    // as a rest day after an event). Blocked dates count as fully occupied in
+    // the availability source of truth.
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS blocked_dates (
+        blocked_date_id INT AUTO_INCREMENT PRIMARY KEY,
+        blocked_date DATE NOT NULL UNIQUE,
+        reason VARCHAR(255) NULL,
+        blocked_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (blocked_by) REFERENCES users(user_id) ON DELETE SET NULL,
+        INDEX idx_blocked_date (blocked_date)
+      )
+    `);
+    console.log("[MIGRATION] blocked_dates table ensured.");
+
     // 0.7 Create announcements table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS announcements (

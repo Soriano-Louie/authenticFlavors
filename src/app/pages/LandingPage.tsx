@@ -20,6 +20,7 @@ import {
 import { IMAGES, TESTIMONIALS } from "../data/mockData";
 import { getHomepageStatistics, getUpcomingEvents } from "../api/packageApi";
 import type { HomepageStatistics, UpcomingEvent } from "../api/packageApi";
+import { getDateAvailability } from "../api/bookingApi";
 import {
   getPublicAnnouncements,
   type Announcement,
@@ -131,6 +132,11 @@ export function LandingPage() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
+  // Admin-set unavailable dates (date -> reason) reflected on the calendar.
+  const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
+    {},
+  );
+
   // Real feedback state
   const [realFeedbacks, setRealFeedbacks] = useState<PublicFeedback[]>([]);
   const [feedbacksLoading, setFeedbacksLoading] = useState(true);
@@ -174,6 +180,25 @@ export function LandingPage() {
 
   // Fetch upcoming events on mount
   useEffect(() => {
+    // Only auto-open the calendar month once on the very first successful
+    // fetch; subsequent focus re-syncs must not yank the user's month around.
+    let calendarInitialized = false;
+    const fetchBlockedDates = async () => {
+      try {
+        const data = await getDateAvailability();
+        const blocked: Record<string, string | null> = {};
+        data.occupiedDays.forEach((d) => {
+          if (d.status === "blocked") {
+            blocked[d.event_date] = d.reason ?? null;
+          }
+        });
+        setBlockedDays(blocked);
+      } catch (error) {
+        // Availability is best-effort here; the event calendar still works.
+        console.error("Failed to load blocked dates:", error);
+      }
+    };
+
     async function fetchUpcomingEvents() {
       try {
         setUpcomingEventsLoading(true);
@@ -184,8 +209,8 @@ export function LandingPage() {
           event_date: toLocalDateStr(ev.event_date),
         }));
         setUpcomingEvents(events);
-        // Open the calendar on the nearest relevant event month.
-        if (events.length > 0) {
+        if (!calendarInitialized && events.length > 0) {
+          calendarInitialized = true;
           const today = new Date();
           const todayKey = toLocalDateStr(today);
           const nextEvent =
@@ -193,6 +218,18 @@ export function LandingPage() {
             events[events.length - 1];
           setSelectedDate(nextEvent.event_date);
           setCalendarMonth(localDateFromStr(nextEvent.event_date));
+        } else {
+          // Keep the user's selection if it still maps to a real event.
+          const todayKey = toLocalDateStr(new Date());
+          setSelectedDate((prev) => {
+            if (prev && events.some((event) => event.event_date === prev)) {
+              return prev;
+            }
+            const nextEvent = events.find(
+              (event) => event.event_date >= todayKey,
+            );
+            return nextEvent?.event_date ?? (events[events.length - 1]?.event_date ?? prev);
+          });
         }
       } catch (error) {
         setUpcomingEventsError(
@@ -206,6 +243,17 @@ export function LandingPage() {
     }
 
     fetchUpcomingEvents();
+    fetchBlockedDates();
+
+    // Re-sync the calendar when the tab regains focus so a cancellation or an
+    // admin block/unblock made elsewhere immediately reflects without a manual
+    // refresh.
+    const onFocus = () => {
+      fetchUpcomingEvents();
+      fetchBlockedDates();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   // Fetch real feedbacks on mount
@@ -326,11 +374,14 @@ export function LandingPage() {
         day,
       ).getDay();
       const isClosed = dayOfWeek === 1;
+      const isBlocked = blockedDays[dateKey] !== undefined;
       return {
         day,
         dateKey,
         hasEvent,
         isClosed,
+        isBlocked,
+        blockedReason: blockedDays[dateKey] ?? null,
         isSelected: selectedDate === dateKey,
       };
     }),
@@ -729,31 +780,67 @@ export function LandingPage() {
                         ),
                       );
                     }}
-                    title={day?.isClosed ? "Closed on Mondays" : undefined}
+                    title={
+                      day?.isClosed
+                        ? "Closed on Mondays"
+                        : day?.isBlocked
+                          ? `Unavailable${
+                              day.blockedReason
+                                ? ` — ${day.blockedReason}`
+                                : ""
+                            }`
+                          : undefined
+                    }
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day
                         ? day.isClosed
                           ? "border-transparent bg-transparent text-[#F5F0E8]/20 cursor-not-allowed line-through"
-                          : day.hasEvent
+                          : day.isBlocked
                             ? day.isSelected
-                              ? "border-[#C8922A] bg-[#C8922A]/20 text-[#F5F0E8]"
-                              : "border-[#F5F0E8]/10 bg-[#1A0E08]/60 text-[#F5F0E8] hover:border-[#C8922A]/40"
-                            : "border-transparent bg-transparent text-[#F5F0E8]/40"
+                              ? "border-[#C4541A] bg-[#C4541A]/20 text-[#C4541A]"
+                              : "border-[#C4541A]/30 bg-[#C4541A]/10 text-[#C4541A]/80 hover:border-[#C4541A]/60 cursor-pointer"
+                            : day.hasEvent
+                              ? day.isSelected
+                                ? "border-[#C8922A] bg-[#C8922A]/20 text-[#F5F0E8]"
+                                : "border-[#F5F0E8]/10 bg-[#1A0E08]/60 text-[#F5F0E8] hover:border-[#C8922A]/40"
+                              : "border-transparent bg-transparent text-[#F5F0E8]/40"
                         : "border-transparent bg-transparent"
                     }`}
                   >
                     {day ? (
                       <>
-                        <span>{day.day}</span>
-                        {day.hasEvent && !day.isClosed && (
+                        <span className={day.isBlocked ? "line-through" : ""}>
+                          {day.day}
+                        </span>
+                        {day.hasEvent && !day.isClosed && !day.isBlocked && (
                           <span
                             className={`mt-1 h-1.5 w-1.5 rounded-full ${day.isSelected ? "bg-[#F5F0E8]" : "bg-[#C8922A]"}`}
                           />
+                        )}
+                        {day.isBlocked && (
+                          <span className="mt-0.5 text-[10px] leading-none">
+                            ✕
+                          </span>
                         )}
                       </>
                     ) : null}
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] tracking-wide text-[#F5F0E8]/50">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#C8922A]" />
+                  Reserved / Confirmed
+                </span>
+                {Object.keys(blockedDays).length > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[#C4541A]/50 text-[9px] leading-none text-[#C4541A]">
+                      ✕
+                    </span>
+                    Unavailable
+                  </span>
+                )}
               </div>
             </div>
 
@@ -775,10 +862,24 @@ export function LandingPage() {
                   </p>
                 </div>
               ) : upcomingEvents.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-[#2C1810]/60 text-sm font-['Lato']">
-                    No upcoming events scheduled.
-                  </p>
+                <div className="py-8">
+                  {selectedDate && blockedDays[selectedDate] !== undefined && (
+                    <div className="mb-4 rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3 text-center">
+                      <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
+                        ✕ This day is unavailable for booking
+                      </p>
+                      {blockedDays[selectedDate] && (
+                        <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                          Reason: {blockedDays[selectedDate]}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <p className="text-[#2C1810]/60 text-sm font-['Lato']">
+                      No upcoming events scheduled.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -797,6 +898,19 @@ export function LandingPage() {
                         })()
                       : "All Events"}
                   </h3>
+
+                  {selectedDate && blockedDays[selectedDate] !== undefined && (
+                    <div className="mt-4 rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3">
+                      <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
+                        ✕ This day is unavailable for booking
+                      </p>
+                      {blockedDays[selectedDate] && (
+                        <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                          Reason: {blockedDays[selectedDate]}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-6 space-y-3">
                     {(selectedDate
