@@ -977,12 +977,26 @@ export function CustomerDashboard() {
     }
   };
 
-  const handleToggleMenuItem = (itemName: string) => {
-    setSelectedMenuItems((prev) =>
-      prev.includes(itemName)
-        ? prev.filter((n) => n !== itemName)
-        : [...prev, itemName],
-    );
+  const handleToggleMenuItem = (itemName: string, categoryId?: number) => {
+    setSelectedMenuItems((prev) => {
+      const isAlreadySelected = prev.includes(itemName);
+      if (isAlreadySelected) {
+        // Unselect if already selected
+        return prev.filter((n) => n !== itemName);
+      }
+
+      if (categoryId !== undefined) {
+        // Find other items in the same category and replace selection
+        const otherCategoryItems = menuItems
+          .filter((i) => i.category_id === categoryId && i.item_name !== itemName)
+          .map((i) => i.item_name);
+
+        const filtered = prev.filter((n) => !otherCategoryItems.includes(n));
+        return [...filtered, itemName];
+      }
+
+      return [...prev, itemName];
+    });
   };
 
   const handleSubmitMenuChange = async () => {
@@ -3257,13 +3271,25 @@ export function CustomerDashboard() {
                             );
                             if (categoryItems.length === 0) return null;
 
+                            const selectedCategoryItem = categoryItems.find((i) =>
+                              selectedMenuItems.includes(i.item_name),
+                            );
+
                             return (
                               <div key={category.category_id} className="space-y-3">
-                                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-base font-bold border-b border-[#C8922A]/15 pb-1 flex items-center justify-between">
+                                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-base font-bold border-b border-[#C8922A]/15 pb-1.5 flex items-center justify-between flex-wrap gap-2">
                                   <span>{category.category_name}</span>
-                                  <span className="text-xs font-normal text-[#2C1810]/50 font-['Lato']">
-                                    Click items to select/unselect
-                                  </span>
+                                  <div className="text-xs font-['Lato']">
+                                    {selectedCategoryItem ? (
+                                      <span className="text-[#5C7A3E] font-medium bg-[#7A8C5C]/15 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                        <Check size={12} /> 1 Selected
+                                      </span>
+                                    ) : (
+                                      <span className="text-[#2C1810]/50 italic">
+                                        Choose 1 dish
+                                      </span>
+                                    )}
+                                  </div>
                                 </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                   {categoryItems.map((item) => {
@@ -3279,7 +3305,10 @@ export function CustomerDashboard() {
                                         key={item.menu_item_id}
                                         type="button"
                                         onClick={() =>
-                                          handleToggleMenuItem(item.item_name)
+                                          handleToggleMenuItem(
+                                            item.item_name,
+                                            category.category_id,
+                                          )
                                         }
                                         className={`p-3.5 rounded-xl border text-left text-xs font-['Lato'] transition-all flex items-center justify-between cursor-pointer ${
                                           isSelected
@@ -3350,10 +3379,13 @@ export function CustomerDashboard() {
 
                         {/* Updated Menu Review Summary */}
                         <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-3">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
                             <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] uppercase tracking-wider">
                               Updated Menu Review Summary ({selectedMenuItems.length} item{selectedMenuItems.length === 1 ? "" : "s"} selected)
                             </h5>
+                            <span className="text-[11px] text-[#2C1810]/50 font-['Lato']">
+                              Max 1 dish per category
+                            </span>
                           </div>
 
                           {selectedMenuItems.length === 0 ? (

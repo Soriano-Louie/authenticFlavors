@@ -92,6 +92,31 @@ export async function requestMenuChange(req, res, next) {
       });
     }
 
+    // Check that at most 1 item is selected per category
+    if (menu_selections.length > 0) {
+      const placeholders = menu_selections.map(() => "?").join(",");
+      const [itemsWithCategories] = await connection.query(
+        `SELECT mi.item_name, mi.category_id, mc.category_name
+         FROM menu_items mi
+         JOIN menu_categories mc ON mi.category_id = mc.category_id
+         WHERE mi.item_name IN (${placeholders})`,
+        menu_selections,
+      );
+      const seenCategories = new Map();
+      for (const item of itemsWithCategories) {
+        if (seenCategories.has(item.category_id)) {
+          await connection.rollback();
+          return res.status(400).json({
+            error: {
+              code: "VALIDATION_ERROR",
+              message: `Only 1 selection is allowed for category '${item.category_name}'.`,
+            },
+          });
+        }
+        seenCategories.set(item.category_id, item.item_name);
+      }
+    }
+
     // Check if there is already a pending request for this booking
     const [existingPending] = await connection.query(
       `SELECT request_id FROM menu_change_requests
