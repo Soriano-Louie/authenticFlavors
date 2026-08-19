@@ -3396,19 +3396,7 @@ export function CustomerDashboard() {
                           })}
                         </div>
 
-                        {/* Dietary & Allergy Notes */}
-                        <div className="space-y-2 pt-2 border-t border-[#C8922A]/15">
-                          <label className="block text-xs font-semibold text-[#2C1810] font-['Lato']">
-                            Special Dietary Requests / Allergy Notes (Optional)
-                          </label>
-                          <textarea
-                            value={menuDietaryNotes}
-                            onChange={(e) => setMenuDietaryNotes(e.target.value)}
-                            placeholder="Specify any food allergies, vegan/vegetarian preferences, or chef notes..."
-                            rows={3}
-                            className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] placeholder-[#2C1810]/30 resize-none"
-                          />
-                        </div>
+
 
                         {/* Updated Menu Review Summary */}
                         <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-3">

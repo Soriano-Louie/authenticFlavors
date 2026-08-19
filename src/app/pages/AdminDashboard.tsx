@@ -6976,17 +6976,7 @@ function MenuChangeRequestsSection() {
                     )}
                   </div>
 
-                  {/* Dietary Notes */}
-                  {req.dietary_notes && (
-                    <div className="p-3 bg-[#F5F0E8] rounded-xl border border-[#C8922A]/15">
-                      <p className="text-[10px] text-[#2C1810]/50 font-['Lato'] mb-1 uppercase tracking-wider">
-                        Dietary / Allergy Notes
-                      </p>
-                      <p className="text-xs text-[#2C1810] font-['Lato']">
-                        {req.dietary_notes}
-                      </p>
-                    </div>
-                  )}
+
 
                   {/* Rejection Reason (if rejected) */}
                   {req.status === "Rejected" && req.rejection_reason && (
