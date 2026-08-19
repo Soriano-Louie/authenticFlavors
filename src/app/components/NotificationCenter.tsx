@@ -430,11 +430,8 @@ export function NotificationCenter({
                   if (onSelectTab) {
                     onSelectTab(targetTab, selectedNotification.booking_id);
                   } else {
-                    // From homepage/navbar — navigate with state so dashboard picks it up
-                    const isAdmin = user?.role === "Admin";
-                    navigate(isAdmin ? "/admin" : "/dashboard", {
-                      state: { targetTab },
-                    });
+                    // Navigate without state to avoid blank page from ?state=... URL param
+                    navigate(isAdmin ? "/admin" : "/dashboard");
                   }
                 }}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm cursor-pointer"

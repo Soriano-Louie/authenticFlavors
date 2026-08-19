@@ -589,7 +589,7 @@ export function LandingPage() {
               <div className="relative max-w-4xl w-full">
                 <button
                   onClick={() => setSelectedAnnouncementImage(null)}
-                  className="absolute -top-10 right-0 text-white hover:text-[#C8922A] transition-colors"
+                  className="absolute top-4 right-0 text-white hover:text-[#C8922A] transition-colors"
                 >
                   <X size={32} />
                 </button>
