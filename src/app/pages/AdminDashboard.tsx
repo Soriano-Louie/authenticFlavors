@@ -4107,104 +4107,137 @@ function BookingsSection() {
       </div>
 
       {/* Venue Setup Review Modal */}
-      {reviewingVenueSetup && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
-          <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
-            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
-              <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
-                <FileText className="text-[#C8922A]" size={20} />
-                Review Venue Setup Request
-              </h3>
-              <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
-                Booking{" "}
-                {reviewingVenueSetup.booking_reference ||
-                  `#${reviewingVenueSetup.booking_id}`}
-              </p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  Customer's Venue Setup Request
-                </label>
-                <textarea
-                  readOnly
-                  value={reviewingVenueSetup.venue_setup_notes}
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] resize-none"
-                />
+      {reviewingVenueSetup && (() => {
+        const isFinalized =
+          reviewingVenueSetup.status === "Approved" ||
+          reviewingVenueSetup.status === "Declined";
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
+            <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+              <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
+                <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                  <FileText className="text-[#C8922A]" size={20} />
+                  Review Venue Setup Request
+                </h3>
+                <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
+                  Booking{" "}
+                  {reviewingVenueSetup.booking_reference ||
+                    `#${reviewingVenueSetup.booking_id}`}
+                </p>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  Admin Response{" "}
-                  <span className="text-[#2C1810]/50">
-                    (required for changes/decline)
-                  </span>
-                </label>
-                <textarea
-                  value={venueSetupResponse}
-                  onChange={(e) => setVenueSetupResponse(e.target.value)}
-                  placeholder="Provide your response to the customer..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  Action
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {(["approve", "changes", "decline"] as const).map(
-                    (action) => (
-                      <button
-                        key={action}
-                        onClick={() => setVenueSetupAction(action)}
-                        className={`px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold transition-all cursor-pointer ${
-                          venueSetupAction === action
-                            ? action === "approve"
-                              ? "bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white"
-                              : action === "changes"
-                                ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
-                                : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white"
-                            : "bg-white text-[#2C1810]/70 border border-[#2C1810]/15 hover:border-[#C8922A]"
-                        }`}
-                      >
-                        {action === "approve"
-                          ? "Approve"
-                          : action === "changes"
-                            ? "Request Changes"
-                            : "Decline"}
-                      </button>
-                    ),
-                  )}
+              <div className="p-6 space-y-4">
+                {isFinalized && (
+                  <div
+                    className={`p-3.5 rounded-xl border text-xs font-['Lato'] flex items-center gap-2 ${
+                      reviewingVenueSetup.status === "Approved"
+                        ? "bg-[#7A8C5C]/10 border-[#7A8C5C]/30 text-[#5E6E43]"
+                        : "bg-[#C4541A]/10 border-[#C4541A]/30 text-[#C4541A]"
+                    }`}
+                  >
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>
+                      This venue setup request is already{" "}
+                      <strong>{reviewingVenueSetup.status.replace("_", " ").toLowerCase()}</strong>.
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                    Customer's Venue Setup Request
+                  </label>
+                  <textarea
+                    readOnly
+                    value={reviewingVenueSetup.venue_setup_notes}
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                    Admin Response{" "}
+                    {!isFinalized && (
+                      <span className="text-[#2C1810]/50">
+                        (required for changes/decline)
+                      </span>
+                    )}
+                  </label>
+                  <textarea
+                    value={venueSetupResponse}
+                    onChange={(e) => setVenueSetupResponse(e.target.value)}
+                    disabled={isFinalized}
+                    readOnly={isFinalized}
+                    placeholder={
+                      isFinalized
+                        ? "No further response required."
+                        : "Provide your response to the customer..."
+                    }
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none disabled:bg-gray-100/80 disabled:opacity-80"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                    Action
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(["approve", "changes", "decline"] as const).map(
+                      (action) => (
+                        <button
+                          key={action}
+                          disabled={isFinalized}
+                          onClick={() => setVenueSetupAction(action)}
+                          className={`px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold transition-all ${
+                            venueSetupAction === action
+                              ? action === "approve"
+                                ? "bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white"
+                                : action === "changes"
+                                  ? "bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white"
+                                  : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white"
+                              : "bg-white text-[#2C1810]/70 border border-[#2C1810]/15 hover:border-[#C8922A] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          }`}
+                        >
+                          {action === "approve"
+                            ? "Approve"
+                            : action === "changes"
+                              ? "Request Changes"
+                              : "Decline"}
+                        </button>
+                      ),
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
-              <button
-                onClick={handleCloseVenueSetupReview}
-                disabled={submittingVenueSetup}
-                className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitVenueSetupReview}
-                disabled={
-                  submittingVenueSetup ||
-                  !venueSetupAction ||
-                  (venueSetupAction !== "approve" && !venueSetupResponse.trim())
-                }
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {submittingVenueSetup && (
-                  <Loader2 size={16} className="animate-spin" />
+              <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+                <button
+                  onClick={handleCloseVenueSetupReview}
+                  disabled={submittingVenueSetup}
+                  className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  {isFinalized ? "Close" : "Cancel"}
+                </button>
+                {!isFinalized && (
+                  <button
+                    onClick={handleSubmitVenueSetupReview}
+                    disabled={
+                      submittingVenueSetup ||
+                      !venueSetupAction ||
+                      (venueSetupAction !== "approve" &&
+                        !venueSetupResponse.trim())
+                    }
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {submittingVenueSetup && (
+                      <Loader2 size={16} className="animate-spin" />
+                    )}
+                    {submittingVenueSetup ? "Submitting..." : "Submit Review"}
+                  </button>
                 )}
-                {submittingVenueSetup ? "Submitting..." : "Submit Review"}
-              </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Overdue Cancellation Confirmation Modal — enumerates the exact
           set of payments that will be cancelled (review §2.4). */}
