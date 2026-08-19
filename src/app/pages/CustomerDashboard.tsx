@@ -275,13 +275,26 @@ export function CustomerDashboard() {
       targetTabFromState === "payments" ||
       targetTabFromState === "venue" ||
       targetTabFromState === "bookings" ||
-      targetTabFromState === "menu-changes"
+      targetTabFromState === "menu-changes" ||
+      targetTabFromState === "feedback"
     )
       return "My Events";
-    if (targetTabFromState === "feedback") return "My Events";
     return "Overview";
   })();
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // React to navigation with location state (e.g. clicking a notification from the homepage)
+  // This handles the case where the component is already mounted and receives new state
+  useEffect(() => {
+    const state = location.state as { targetTab?: string } | null;
+    if (!state?.targetTab) return;
+    // Any targetTab from a notification should open "My Events"
+    setActiveTab("My Events");
+    // Clear the state so a page refresh doesn't re-trigger this
+    navigate("/dashboard", { replace: true, state: {} });
+  }, [location.state]);
+
+
 
   // Profile photo upload state
   const [photoUploading, setPhotoUploading] = useState(false);

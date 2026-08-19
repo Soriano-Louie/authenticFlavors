@@ -359,96 +359,105 @@ export function NotificationCenter({
         </div>
       )}
 
-      {/* Notification Detail Modal */}
+      {/* Notification Detail Modal — rendered via fixed overlay so it always clears the navbar */}
       {showDetailModal && selectedNotification && (
         <div
-          className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center p-4 pt-16 sm:pt-4 overflow-y-auto"
-          onClick={() => setShowDetailModal(false)}
+          className="fixed inset-0 z-[99999] overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
         >
-          {/* Backdrop */}
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
-
-          {/* Modal Card */}
+          {/* Backdrop — separate from scroll container so it fills the whole screen */}
           <div
-            className="relative bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200 my-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="bg-[#2C1810] px-5 py-4 rounded-t-2xl flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="shrink-0 w-9 h-9 rounded-full bg-[#F5F0E8]/10 border border-[#C8922A]/30 flex items-center justify-center">
-                  {getNotificationIcon(selectedNotification.type)}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowDetailModal(false)}
+          />
+
+          {/* Scroll container: padding-top clears the navbar height on any screen */}
+          <div className="relative flex min-h-full items-start justify-center p-4 pt-24 pb-10">
+
+            {/* Modal Card */}
+            <div
+              className="relative bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-[#2C1810] px-5 py-4 rounded-t-2xl flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 w-9 h-9 rounded-full bg-[#F5F0E8]/10 border border-[#C8922A]/30 flex items-center justify-center">
+                    {getNotificationIcon(selectedNotification.type)}
+                  </div>
+                  <h3 className="font-['Playfair_Display'] text-[#F5F0E8] text-base font-medium leading-snug">
+                    {selectedNotification.title}
+                  </h3>
                 </div>
-                <h3 className="font-['Playfair_Display'] text-[#F5F0E8] text-base font-medium leading-snug">
-                  {selectedNotification.title}
-                </h3>
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="shrink-0 text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1 mt-0.5"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="shrink-0 text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1 mt-0.5"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Body */}
-            <div className="px-5 py-5 space-y-4">
-              <p className="text-sm text-[#2C1810]/80 font-['Lato'] leading-relaxed">
-                {selectedNotification.message}
-              </p>
+              {/* Body */}
+              <div className="px-5 py-5 space-y-4">
+                <p className="text-sm text-[#2C1810]/80 font-['Lato'] leading-relaxed">
+                  {selectedNotification.message}
+                </p>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-[#2C1810]/40 font-['Lato']">
-                <Clock size={11} />
-                <span>{formatTimestamp(selectedNotification.created_at)}</span>
+                <div className="flex items-center gap-1.5 text-[11px] text-[#2C1810]/40 font-['Lato']">
+                  <Clock size={11} />
+                  <span>{formatTimestamp(selectedNotification.created_at)}</span>
+                </div>
               </div>
-            </div>
 
-            {/* Footer with Redirection Action Button */}
-            <div className="px-5 pb-5 pt-2 border-t border-[#C8922A]/10 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="px-3.5 py-2 rounded-xl text-xs font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] hover:bg-[#F5F0E8] transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setShowDetailModal(false);
-                  const type = selectedNotification.type;
-                  let targetTab = "bookings";
+              {/* Footer with Redirection Action Button */}
+              <div className="px-5 pb-5 pt-2 border-t border-[#C8922A]/10 flex items-center justify-between gap-3">
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] hover:bg-[#F5F0E8] transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    const type = selectedNotification.type;
+                    // Determine which dashboard tab to open
+                    let targetTab = "bookings";
+                    if (type.includes("payment")) targetTab = "payments";
+                    else if (type.includes("venue_setup")) targetTab = "venue";
+                    else if (type.includes("menu")) targetTab = "menu-changes";
+                    else if (type.includes("feedback")) targetTab = "feedback";
 
-                  if (type.includes("payment")) {
-                    targetTab = "payments";
-                  } else if (type.includes("venue_setup")) {
-                    targetTab = "venue";
-                  } else if (type.includes("menu")) {
-                    targetTab = "menu-changes";
-                  } else if (type.includes("feedback")) {
-                    targetTab = "feedback";
-                  }
+                    const isAdmin = user?.role === "Admin";
 
-                  if (onSelectTab) {
-                    onSelectTab(targetTab, selectedNotification.booking_id);
-                  } else {
-                    // Navigate without state to avoid blank page from ?state=... URL param
-                    navigate(isAdmin ? "/admin" : "/dashboard");
-                  }
-                }}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <span>
-                  {selectedNotification.type.includes("menu")
-                    ? "View Menu Requests"
-                    : selectedNotification.type.includes("feedback")
-                      ? "View Feedback"
-                      : selectedNotification.type.includes("payment")
-                        ? "View Payment Details"
-                        : selectedNotification.type.includes("venue_setup")
-                          ? "View Venue Request"
-                          : "View Booking"}
-                </span>
-                <ArrowRight size={14} />
-              </button>
+                    if (onSelectTab) {
+                      // Already inside the dashboard — just switch tabs
+                      onSelectTab(targetTab, selectedNotification.booking_id);
+                    } else {
+                      // Coming from homepage/navbar — navigate with state so the
+                      // destination dashboard picks up the right tab on mount
+                      navigate(isAdmin ? "/admin" : "/dashboard", {
+                        state: { targetTab },
+                      });
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <span>
+                    {selectedNotification.type.includes("menu")
+                      ? "View Menu Requests"
+                      : selectedNotification.type.includes("feedback")
+                        ? "View Feedback"
+                        : selectedNotification.type.includes("payment")
+                          ? "View Payment Details"
+                          : selectedNotification.type.includes("venue_setup")
+                            ? "View Venue Request"
+                            : "View Booking"}
+                  </span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
