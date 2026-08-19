@@ -3069,6 +3069,17 @@ function BookingsSection() {
     "approve" | "changes" | "decline" | null
   >(null);
 
+  // Booking Summary & Menu Change Requests states
+  const [menuChangeRequests, setMenuChangeRequests] = useState<
+    Record<number, MenuChangeRequest>
+  >({});
+  const [selectedSummaryBooking, setSelectedSummaryBooking] = useState<Booking | null>(null);
+  const [approvingMenuChangeId, setApprovingMenuChangeId] = useState<number | null>(null);
+  const [rejectingMenuChangeReq, setRejectingMenuChangeReq] =
+    useState<MenuChangeRequest | null>(null);
+  const [menuChangeRejectReason, setMenuChangeRejectReason] = useState("");
+  const [submittingMenuChangeReject, setSubmittingMenuChangeReject] = useState(false);
+
   const fetchVenueSetupRequests = useCallback(async (bookingIds: number[]) => {
     if (!accessToken) return;
     const map: Record<number, VenueSetupRequest> = {};
@@ -3111,6 +3122,20 @@ function BookingsSection() {
       setPaymentsByBooking(paymentMap);
       // Pre-fetch venue setup requests for all bookings
       await fetchVenueSetupRequests(res.bookings.map((b) => b.booking_id));
+
+      // Pre-fetch menu change requests for all bookings
+      try {
+        const mcRes = await getAdminMenuChangeRequests(accessToken);
+        const mcMap: Record<number, MenuChangeRequest> = {};
+        for (const r of mcRes.requests) {
+          if (!mcMap[r.booking_id] || r.status === "Pending") {
+            mcMap[r.booking_id] = r;
+          }
+        }
+        setMenuChangeRequests(mcMap);
+      } catch {
+        // ignore menu change fetch error
+      }
     } catch (err) {
       console.error(err);
       toast.error("Failed to fetch admin bookings.");
@@ -3118,6 +3143,48 @@ function BookingsSection() {
       setLoading(false);
     }
   }, [accessToken, bookingStatus, debouncedSearch, fetchVenueSetupRequests]);
+
+  const handleApproveMenuChangeInline = async (requestId: number) => {
+    if (!accessToken) return;
+    setApprovingMenuChangeId(requestId);
+    try {
+      await approveMenuChangeRequest(accessToken, requestId);
+      toast.success("Menu change request approved successfully.");
+      fetchBookings();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to approve menu change.",
+      );
+    } finally {
+      setApprovingMenuChangeId(null);
+    }
+  };
+
+  const handleRejectMenuChangeInline = async () => {
+    if (!accessToken || !rejectingMenuChangeReq) return;
+    if (!menuChangeRejectReason.trim()) {
+      toast.error("Please provide a rejection reason.");
+      return;
+    }
+    setSubmittingMenuChangeReject(true);
+    try {
+      await rejectMenuChangeRequest(
+        accessToken,
+        rejectingMenuChangeReq.request_id,
+        menuChangeRejectReason.trim(),
+      );
+      toast.success("Menu change request rejected.");
+      setRejectingMenuChangeReq(null);
+      setMenuChangeRejectReason("");
+      fetchBookings();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reject menu change.",
+      );
+    } finally {
+      setSubmittingMenuChangeReject(false);
+    }
+  };
 
   const fetchOverduePayments = useCallback(async () => {
     if (!accessToken) return;
@@ -3637,6 +3704,15 @@ function BookingsSection() {
                       >
                         {booking.booking_status}
                       </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSummaryBooking(booking);
+                        }}
+                        className="px-3 py-1.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3D2217] transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye size={13} /> View Summary
+                      </button>
                       {canComplete && (
                         <button
                           onClick={(e) => {
@@ -3910,6 +3986,55 @@ function BookingsSection() {
                           </span>
                           {booking.setup_name || "—"}
                         </div>
+                      </div>
+
+                      {/* Selected Menu Items & Requirements Preview */}
+                      <div className="mt-5 pt-4 border-t border-[#C8922A]/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm font-semibold flex items-center gap-1.5">
+                            <ChefHat size={16} className="text-[#C8922A]" />
+                            Menu Selections & Requirements
+                          </h4>
+                          <button
+                            onClick={() => setSelectedSummaryBooking(booking)}
+                            className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                          >
+                            View Full Booking Summary <Eye size={12} />
+                          </button>
+                        </div>
+
+                        {booking.menu_selections && booking.menu_selections.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {booking.menu_selections.map((item, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2.5 py-1 bg-[#F5F0E8] border border-[#C8922A]/20 text-[#2C1810] rounded-lg text-xs font-['Lato'] flex items-center gap-1.5"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#C8922A]" />
+                                {item.item_name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[#2C1810]/40 font-['Lato'] italic">
+                            No menu selections recorded.
+                          </p>
+                        )}
+
+                        {(booking.dietary_notes || booking.allergy_notes) && (
+                          <div className="flex flex-wrap gap-2 pt-1 text-xs font-['Lato']">
+                            {booking.dietary_notes && (
+                              <span className="px-2.5 py-1 bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/30 rounded-lg">
+                                <span className="font-semibold">Dietary:</span> {booking.dietary_notes}
+                              </span>
+                            )}
+                            {booking.allergy_notes && (
+                              <span className="px-2.5 py-1 bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30 rounded-lg font-medium">
+                                <span className="font-semibold">Allergies:</span> {booking.allergy_notes}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Venue Setup Review */}
@@ -4233,6 +4358,446 @@ function BookingsSection() {
                   : verifyingPayment.action === "approve"
                     ? "Confirm Approval"
                     : "Confirm Rejection"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Booking Summary & Menu Review Modal */}
+      {selectedSummaryBooking && (() => {
+        const b = selectedSummaryBooking;
+        const menuSelections = b.menu_selections || [];
+        const mcReq = menuChangeRequests[b.booking_id];
+        const payments = paymentsByBooking[b.booking_id] || [];
+        const venueReq = venueSetupRequests[b.booking_id];
+
+        // Group menu items by category
+        const groupedMenu = menuSelections.reduce((acc, item) => {
+          const cat = item.category_name || "General Menu";
+          if (!acc[cat]) acc[cat] = [];
+          acc[cat].push(item.item_name);
+          return acc;
+        }, {} as Record<string, string[]>);
+
+        // Parse menu change diff if request exists
+        let requestedItems: string[] = [];
+        let currentItemsFromReq: string[] = [];
+        let addedItems: string[] = [];
+        let removedItems: string[] = [];
+
+        if (mcReq) {
+          requestedItems =
+            typeof mcReq.requested_menu_selections === "string"
+              ? JSON.parse(mcReq.requested_menu_selections)
+              : Array.isArray(mcReq.requested_menu_selections)
+                ? mcReq.requested_menu_selections
+                : [];
+
+          currentItemsFromReq =
+            typeof mcReq.current_menu_selections === "string"
+              ? JSON.parse(mcReq.current_menu_selections)
+              : Array.isArray(mcReq.current_menu_selections)
+                ? mcReq.current_menu_selections
+                : [];
+
+          addedItems = requestedItems.filter(
+            (i) => !currentItemsFromReq.includes(i),
+          );
+          removedItems = currentItemsFromReq.filter(
+            (i) => !requestedItems.includes(i),
+          );
+        }
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-[#F5F0E8] rounded-3xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20 flex flex-col">
+              {/* Modal Header */}
+              <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between sticky top-0 z-20 shadow-md">
+                <div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8]">
+                      Booking Summary: {getBookingReference(b)}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(b.booking_status)}`}
+                    >
+                      {b.booking_status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#C8922A]/80 font-['Lato'] mt-1">
+                    Booked on {formatDate(b.created_at)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedSummaryBooking(null)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 space-y-6 flex-1">
+                {/* Customer & Event Quick Overview Card */}
+                <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-['Lato'] shadow-xs">
+                  <div>
+                    <p className="text-[#2C1810]/50 uppercase tracking-wider text-[10px] font-bold mb-1">
+                      Customer
+                    </p>
+                    <p className="font-bold text-[#2C1810] text-sm">
+                      {b.first_name} {b.last_name}
+                    </p>
+                    <p className="text-[#2C1810]/70">{b.contact_email}</p>
+                    <p className="text-[#2C1810]/70">
+                      {b.contact_phone || b.contact_name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[#2C1810]/50 uppercase tracking-wider text-[10px] font-bold mb-1">
+                      Event Logistics
+                    </p>
+                    <p className="font-semibold text-[#2C1810]">
+                      {b.type_name === "Other" && b.custom_event_type
+                        ? b.custom_event_type
+                        : b.type_name || "Catering Event"}
+                    </p>
+                    <p className="text-[#2C1810]/80">
+                      Date: <span className="font-bold">{formatDate(b.event_date)}</span>
+                    </p>
+                    <p className="text-[#2C1810]/80">
+                      Time: <span className="font-bold">{b.start_time || "TBD"}</span>
+                    </p>
+                    <p className="text-[#2C1810]/80">
+                      Guests: <span className="font-bold">{b.number_of_pax} pax</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[#2C1810]/50 uppercase tracking-wider text-[10px] font-bold mb-1">
+                      Package & Setup
+                    </p>
+                    <p className="font-bold text-[#C8922A] text-sm">
+                      {b.package_name || "Standard Package"}
+                    </p>
+                    <p className="text-[#2C1810]/80">
+                      Setup: <span className="font-semibold">{b.setup_name || "Standard"}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Menu Change Request Status & Highlights (if present) */}
+                {mcReq && (
+                  <div
+                    className={`rounded-2xl p-4 border space-y-3 shadow-xs ${
+                      mcReq.status === "Pending"
+                        ? "bg-[#C8922A]/10 border-[#C8922A]/30"
+                        : mcReq.status === "Approved"
+                          ? "bg-[#7A8C5C]/10 border-[#7A8C5C]/30"
+                          : "bg-[#C4541A]/10 border-[#C4541A]/30"
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles
+                          size={18}
+                          className={
+                            mcReq.status === "Pending"
+                              ? "text-[#C8922A]"
+                              : mcReq.status === "Approved"
+                                ? "text-[#7A8C5C]"
+                                : "text-[#C4541A]"
+                          }
+                        />
+                        <span className="font-['Playfair_Display'] font-bold text-sm text-[#2C1810]">
+                          Menu Change Request ({mcReq.status})
+                        </span>
+                      </div>
+                      <span className="text-xs text-[#2C1810]/60 font-['Lato']">
+                        Submitted: {formatDate(mcReq.created_at)}
+                      </span>
+                    </div>
+
+                    {/* Diff view of modified items */}
+                    {(addedItems.length > 0 || removedItems.length > 0) && (
+                      <div className="bg-white/80 rounded-xl p-3 space-y-2 border border-[#2C1810]/10 text-xs font-['Lato']">
+                        <p className="font-semibold text-[#2C1810] text-[11px] uppercase tracking-wider">
+                          Requested Changes Diff:
+                        </p>
+                        {addedItems.map((added, idx) => {
+                          const removed = removedItems[idx] || null;
+                          return (
+                            <div
+                              key={added}
+                              className="flex items-center gap-2 flex-wrap text-[#2C1810]"
+                            >
+                              {removed ? (
+                                <>
+                                  <span>Replacing:</span>
+                                  <span className="line-through text-red-600 px-2 py-0.5 bg-red-50 rounded border border-red-200 font-medium">
+                                    {removed}
+                                  </span>
+                                  <span>➔</span>
+                                  <span className="font-bold text-[#7A8C5C] px-2 py-0.5 bg-[#7A8C5C]/20 rounded border border-[#7A8C5C]/30">
+                                    {added}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>Adding:</span>
+                                  <span className="font-bold text-[#7A8C5C] px-2 py-0.5 bg-[#7A8C5C]/20 rounded border border-[#7A8C5C]/30">
+                                    {added}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {removedItems.slice(addedItems.length).map((rem) => (
+                          <div key={rem} className="flex items-center gap-2 text-xs font-['Lato']">
+                            <span>Removing:</span>
+                            <span className="line-through text-red-600 px-2 py-0.5 bg-red-50 rounded border border-red-200 font-medium">
+                              {rem}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {mcReq.dietary_notes && (
+                      <p className="text-xs font-['Lato'] text-[#2C1810]/80">
+                        <span className="font-semibold">Updated Dietary Notes:</span>{" "}
+                        {mcReq.dietary_notes}
+                      </p>
+                    )}
+
+                    {mcReq.status === "Rejected" && mcReq.rejection_reason && (
+                      <p className="text-xs font-['Lato'] text-[#C4541A]">
+                        <span className="font-semibold">Rejection Reason:</span>{" "}
+                        {mcReq.rejection_reason}
+                      </p>
+                    )}
+
+                    {/* Inline Actions for Pending Menu Change Request */}
+                    {mcReq.status === "Pending" && (
+                      <div className="flex items-center gap-3 pt-1">
+                        <button
+                          onClick={() => handleApproveMenuChangeInline(mcReq.request_id)}
+                          disabled={approvingMenuChangeId === mcReq.request_id}
+                          className="px-4 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer shadow-xs"
+                        >
+                          {approvingMenuChangeId === mcReq.request_id
+                            ? "Approving..."
+                            : "Approve Menu Change"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRejectingMenuChangeReq(mcReq);
+                            setMenuChangeRejectReason("");
+                          }}
+                          className="px-4 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                        >
+                          Reject Request
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Selected Menu Items (Grouped by Category) */}
+                <div className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 space-y-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-[#2C1810]/10 pb-3">
+                    <h4 className="font-['Playfair_Display'] font-bold text-base text-[#2C1810] flex items-center gap-2">
+                      <ChefHat className="text-[#C8922A]" size={20} />
+                      Selected Menu Items ({menuSelections.length} items)
+                    </h4>
+                    <span className="text-xs font-['Lato'] text-[#2C1810]/50 font-medium">
+                      Package: {b.package_name || "Catering Package"}
+                    </span>
+                  </div>
+
+                  {menuSelections.length === 0 ? (
+                    <p className="text-xs text-[#2C1810]/50 italic font-['Lato'] py-2">
+                      No specific menu selections recorded for this booking.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {Object.entries(groupedMenu).map(([category, items]) => (
+                        <div key={category} className="space-y-2">
+                          <p className="text-xs font-bold font-['Lato'] text-[#C8922A] uppercase tracking-wider flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#C8922A]" />
+                            {category} ({items.length})
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {items.map((itemName) => (
+                              <div
+                                key={itemName}
+                                className="flex items-center gap-2 p-2.5 bg-[#F5F0E8]/50 rounded-xl border border-[#C8922A]/10 text-xs font-['Lato'] text-[#2C1810]"
+                              >
+                                <CheckCircle size={14} className="text-[#7A8C5C] shrink-0" />
+                                <span className="font-medium">{itemName}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Dietary & Allergy Notes Callout Section */}
+                {(b.dietary_notes || b.allergy_notes) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {b.dietary_notes && (
+                      <div className="bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl p-4 space-y-1 shadow-xs">
+                        <p className="text-[11px] font-bold text-[#C8922A] uppercase tracking-wider flex items-center gap-1.5 font-['Lato']">
+                          <Info size={14} /> Dietary Preferences
+                        </p>
+                        <p className="text-xs text-[#2C1810] font-['Lato'] leading-relaxed">
+                          {b.dietary_notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {b.allergy_notes && (
+                      <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-2xl p-4 space-y-1 shadow-xs">
+                        <p className="text-[11px] font-bold text-[#C4541A] uppercase tracking-wider flex items-center gap-1.5 font-['Lato']">
+                          <AlertTriangle size={14} /> Critical Allergy Warning
+                        </p>
+                        <p className="text-xs text-[#2C1810] font-['Lato'] leading-relaxed font-semibold">
+                          {b.allergy_notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Venue Setup Review Section (if available) */}
+                {venueReq && (
+                  <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/10 space-y-2 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-[#2C1810] font-['Lato'] uppercase tracking-wider">
+                        Venue Setup Request ({venueReq.status.replace("_", " ")})
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSelectedSummaryBooking(null);
+                          handleOpenVenueSetupReview(venueReq);
+                        }}
+                        className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                      >
+                        Review Venue Setup
+                      </button>
+                    </div>
+                    <p className="text-xs text-[#2C1810]/80 font-['Lato'] leading-relaxed bg-[#F5F0E8] p-3 rounded-xl">
+                      {venueReq.venue_setup_notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Financial Summary & Payment Breakdown */}
+                <div className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 space-y-4 shadow-xs">
+                  <h4 className="font-['Playfair_Display'] font-bold text-base text-[#2C1810] flex items-center gap-2 border-b border-[#2C1810]/10 pb-3">
+                    <DollarSign className="text-[#C8922A]" size={20} />
+                    Financial & Payment Summary
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#F5F0E8] rounded-xl p-4 text-xs font-['Lato']">
+                    <div>
+                      <p className="text-[#2C1810]/50 font-medium">Total Package Price</p>
+                      <p className="text-base font-bold text-[#2C1810]">{formatAmount(b.total_price)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#2C1810]/50 font-medium">Amount Paid</p>
+                      <p className="text-base font-bold text-[#7A8C5C]">{formatAmount(b.amount_paid || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#2C1810]/50 font-medium">Remaining Balance</p>
+                      <p className="text-base font-bold text-[#C4541A]">{formatAmount(b.remaining_balance ?? b.total_price)}</p>
+                    </div>
+                  </div>
+
+                  {payments.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      <p className="text-xs font-semibold text-[#2C1810] font-['Lato']">Payment Schedule:</p>
+                      <div className="space-y-2">
+                        {payments.map((p) => (
+                          <div
+                            key={p.payment_id}
+                            className="flex items-center justify-between p-2.5 bg-[#F5F0E8]/40 rounded-xl text-xs font-['Lato'] border border-[#C8922A]/10"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-[#2C1810]">
+                                {paymentTypeLabel[p.payment_type] || p.payment_type}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] ${paymentStatusStyle(p.payment_status)}`}>
+                                {p.payment_status}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-bold text-[#2C1810]">{formatAmount(p.amount)}</span>
+                              <span className="text-[#2C1810]/50 text-[10px] ml-2">Due: {formatDate(p.due_date)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-white p-4 border-t border-[#C8922A]/10 rounded-b-3xl flex justify-end">
+                <button
+                  onClick={() => setSelectedSummaryBooking(null)}
+                  className="px-6 py-2.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3D2217] transition-colors cursor-pointer"
+                >
+                  Close Summary
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Reject Menu Change Confirmation Modal */}
+      {rejectingMenuChangeReq && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#C8922A]/20 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-['Playfair_Display'] font-bold text-lg text-[#2C1810]">
+                Reject Menu Change Request
+              </h3>
+              <button
+                onClick={() => setRejectingMenuChangeReq(null)}
+                className="text-[#2C1810]/50 hover:text-[#2C1810] cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-1.5">
+                Rejection Reason <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={menuChangeRejectReason}
+                onChange={(e) => setMenuChangeRejectReason(e.target.value)}
+                placeholder="Please explain why the requested menu changes cannot be accommodated..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] text-xs font-['Lato'] outline-none focus:border-[#C8922A] resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setRejectingMenuChangeReq(null)}
+                className="px-4 py-2 bg-white text-[#2C1810] border border-[#2C1810]/15 rounded-full text-xs font-['Lato'] hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectMenuChangeInline}
+                disabled={submittingMenuChangeReject || !menuChangeRejectReason.trim()}
+                className="px-4 py-2 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              >
+                {submittingMenuChangeReject ? "Rejecting..." : "Confirm Rejection"}
               </button>
             </div>
           </div>
