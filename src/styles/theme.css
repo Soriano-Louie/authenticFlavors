@@ -238,6 +238,47 @@
   --radius: 0.7rem;
 }
 
+/* ─── Main Site Auto-Hiding Theme Scrollbar ───────────────────── */
+:root {
+  --af-scrollbar-thumb: transparent;
+}
+
+html.af-scrolling,
+body.af-scrolling {
+  --af-scrollbar-thumb: #C8922A; /* Authentic Flavors Signature Warm Gold */
+}
+
+/* Standards / Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--af-scrollbar-thumb) transparent;
+}
+
+/* Webkit (Chrome, Safari, Edge, Opera) */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--af-scrollbar-thumb);
+  border-radius: 9999px;
+  transition: background-color 0.35s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover,
+html:hover ::-webkit-scrollbar-thumb {
+  background-color: #C8922A;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: #C4541A;
+}
+
 /* Custom scrollbar for modals */
 .af-modal-scroll::-webkit-scrollbar {
   width: 8px;
