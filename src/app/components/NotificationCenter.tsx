@@ -402,33 +402,6 @@ export function NotificationCenter({
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-5 pb-5 flex items-center justify-end gap-3">
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-[#2C1810]/70 text-sm font-['Lato'] hover:bg-[#F5F0E8] transition-colors"
-              >
-                Dismiss
-              </button>
-              {onSelectTab && selectedNotification.booking_id && (
-                <button
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    const type = selectedNotification.type;
-                    if (type.includes("payment")) {
-                      onSelectTab("payments", selectedNotification.booking_id);
-                    } else if (type.includes("venue_setup")) {
-                      onSelectTab("venue", selectedNotification.booking_id);
-                    } else {
-                      onSelectTab("bookings", selectedNotification.booking_id);
-                    }
-                  }}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity"
-                >
-                  View Details
-                </button>
-              )}
-            </div>
           </div>
         </div>
       )}

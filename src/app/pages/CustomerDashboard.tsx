@@ -2494,6 +2494,25 @@ export function CustomerDashboard() {
                 </div>
 
                 <div className="p-5 space-y-3">
+                  {/* Stage-specific intro text */}
+                  <div className="bg-[#F5F0E8] rounded-xl p-4 border border-[#C8922A]/15">
+                    <p className="text-xs text-[#2C1810]/80 font-['Lato'] leading-relaxed">
+                      {paymentType === "Reservation" ? (
+                        <>
+                          To secure your reservation and confirm your booking, please send the reservation fee via GCash or bank transfer. Upload your payment receipt below for verification.
+                        </>
+                      ) : paymentType === "DownPayment" ? (
+                        <>
+                          Please send the down payment via GCash or bank transfer. Upload your payment receipt below for verification.
+                        </>
+                      ) : (
+                        <>
+                          Please settle the remaining balance via GCash or bank transfer at the day of your event. Upload your payment receipt below for verification.
+                        </>
+                      )}
+                    </p>
+                  </div>
+
                   {instructionsToShow.map((instruction) => (
                     <div
                       key={
