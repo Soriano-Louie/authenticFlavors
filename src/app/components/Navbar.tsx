@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { Menu, X, User, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +24,28 @@ export function Navbar() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const loggedIn = Boolean(user);
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // Close mobile menu when clicking outside of the navbar
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setMobileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [mobileOpen]);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const handleConfirmLogout = async () => {
     setLoggingOut(true);
@@ -53,7 +75,14 @@ export function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#2C1810]/95 backdrop-blur-sm border-b border-[#C8922A]/20">
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 top-16 bg-black/50 backdrop-blur-[2px] z-40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <nav ref={navRef} className="fixed top-0 left-0 right-0 z-50 bg-[#2C1810]/95 backdrop-blur-sm border-b border-[#C8922A]/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
