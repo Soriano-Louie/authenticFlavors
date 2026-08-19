@@ -31,10 +31,22 @@ import type {
   PackagePricing,
 } from "../api/packageApi";
 import { useAuth } from "../auth/AuthContext";
+import { getPromotion, type Promotion } from "../api/bookingApi";
 
 // Function to get package label from package name
 function getPackageLabel(packageName: string): string {
   return packageName;
+}
+
+// Discount amount (₱) a live promotion removes from a displayed price. Kept
+// in sync with applyPromotion()/getActiveDiscount() resolution on the backend.
+function getPromoAmount(price: number, promo: Promotion | null): number {
+  if (!promo?.has_discount || !promo.value || promo.value <= 0) return 0;
+  const amount =
+    promo.type === "percentage"
+      ? Math.round(price * promo.value) / 100
+      : promo.value;
+  return Math.max(0, Math.min(amount, price));
 }
 
 // Normalize package images to a consistent 16:9 crop so cards render
@@ -173,6 +185,58 @@ export function PackageSelectionPage() {
 
     fetchData();
   }, []);
+
+  // Live promotion per package card, resolved at each package's starting
+  // (lowest) tier so the displayed "starting price" reflects any discount.
+  const [cardPromos, setCardPromos] = useState<Record<string, Promotion | null>>(
+    {},
+  );
+  useEffect(() => {
+    if (packages.length === 0) return;
+    let cancelled = false;
+    setCardPromos({});
+    packages.forEach((pkg) => {
+      const startingPax = pkg.pricing?.[0]?.pax_count;
+      getPromotion(pkg.package_id, startingPax)
+        .then((promo) => {
+          if (!cancelled) {
+            setCardPromos((prev) => ({
+              ...prev,
+              [String(pkg.package_id)]: promo,
+            }));
+          }
+        })
+        .catch(() => {
+          // Promo lookup failure must never break the package list.
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [packages]);
+
+  // Live promotion for the selected package at the currently selected pax,
+  // used by the detail panel price and the estimated total.
+  const [detailPromo, setDetailPromo] = useState<Promotion | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setDetailPromo(null);
+    const pkg = packages.find(
+      (p) => String(p.package_id) === String(selectedPackageId),
+    );
+    if (pkg) {
+      getPromotion(pkg.package_id, selectedPax)
+        .then((promo) => {
+          if (!cancelled) setDetailPromo(promo);
+        })
+        .catch(() => {
+          // Promo lookup failure must never break the booking flow.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPackageId, selectedPax, packages]);
 
   const transformedPackages = useMemo(() => {
     return packages.map((pkg) => transformPackage(pkg, categories, items));
@@ -506,7 +570,28 @@ export function PackageSelectionPage() {
                     </p>
                     <div className="mt-4 flex items-center justify-between text-sm font-['Lato'] text-[#2C1810]/60">
                       <span>{pkg.serving}</span>
-                      <span>{pkg.priceLabel}</span>
+                      {(() => {
+                        const raw = Number(pkg.pricing?.[0]?.price ?? 0);
+                        const amount = getPromoAmount(raw, cardPromos[pkg.id]);
+                        if (!amount) {
+                          return <span>{pkg.priceLabel}</span>;
+                        }
+                        return (
+                          <div className="flex flex-col items-end leading-tight">
+                            {!pkg.priceLabel.includes("—") && (
+                              <span className="text-xs text-[#C4541A] line-through">
+                                {pkg.priceLabel}
+                              </span>
+                            )}
+                            <span className="font-semibold text-[#C4541A]">
+                              ₱{(raw - amount).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider text-[#C4541A]">
+                              Promo
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </button>
@@ -586,12 +671,32 @@ export function PackageSelectionPage() {
               </div>
               <div className="text-left sm:text-right">
                 <p className="text-sm text-[#2C1810]/60">Starting Price</p>
-                <p className="text-3xl font-semibold text-[#C8922A]">
-                  ₱
-                  {Number(
+                {(() => {
+                  const raw = Number(
                     getPackagePriceForPax(selectedPackage.pricing, selectedPax),
-                  ).toLocaleString()}
-                </p>
+                  );
+                  const amount = getPromoAmount(raw, detailPromo);
+                  if (!amount) {
+                    return (
+                      <p className="text-3xl font-semibold text-[#C8922A]">
+                        ₱{raw.toLocaleString()}
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="flex flex-wrap items-baseline justify-end gap-2">
+                      <span className="text-sm text-[#C4541A] line-through">
+                        ₱{raw.toLocaleString()}
+                      </span>
+                      <p className="text-3xl font-semibold text-[#C4541A]">
+                        ₱{(raw - amount).toLocaleString()}
+                      </p>
+                      <span className="text-[10px] uppercase tracking-wider text-[#C4541A] bg-[#C4541A]/10 px-2 py-0.5 rounded-full font-bold">
+                        Promo −₱{amount.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -675,12 +780,27 @@ export function PackageSelectionPage() {
               </select>
               <p className="mt-3 text-sm text-[#F5F0E8]/70 font-['Lato']">
                 Estimated total:{" "}
-                <span className="font-semibold text-[#C8922A]">
-                  ₱
-                  {Number(
+                {(() => {
+                  const raw = Number(
                     getPackagePriceForPax(selectedPackage.pricing, selectedPax),
-                  ).toLocaleString()}
-                </span>
+                  );
+                  const amount = getPromoAmount(raw, detailPromo);
+                  if (!amount) {
+                    return (
+                      <span className="font-semibold text-[#C8922A]">
+                        ₱{raw.toLocaleString()}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="font-semibold text-[#C4541A]">
+                      ₱{(raw - amount).toLocaleString()}
+                      <span className="ml-1 text-xs text-[#F5F0E8]/50 line-through">
+                        ₱{raw.toLocaleString()}
+                      </span>
+                    </span>
+                  );
+                })()}
               </p>
             </div>
             <button
