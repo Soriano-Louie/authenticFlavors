@@ -2204,33 +2204,56 @@ export function CustomerDashboard() {
                       : "No past bookings yet."}
                   </p>
                 ) : (
-                  filteredPastBookings.map((ev) => (
-                    <div
-                      key={ev.booking_id}
-                      onClick={() => openBookingDetails(ev.booking_id)}
-                      className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3 cursor-pointer hover:bg-[#F5F0E8]/60 transition-colors"
-                    >
-                      <div>
-                        <p className="font-['Playfair_Display'] text-[#2C1810]">
-                          {ev.package_name || `Booking #${ev.booking_id}`}
-                        </p>
-                        <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                          {formatDate(ev.event_date)} · {ev.number_of_pax} guests
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span
-                        className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
-                      >
-                        {ev.booking_status}
-                      </span>
-                      <span className="text-xs text-[#C8922A] font-['Lato'] hover:underline">
-                        View Details
-                      </span>
-                    </div>
+                  <div className="space-y-3">
+                    {filteredPastBookings.map((ev) => {
+                      const isCompleted = ev.booking_status === "Completed";
+                      const isCancelled = ev.booking_status === "Cancelled";
+
+                      const accentClass = isCompleted
+                        ? "border-l-4 border-l-[#7A8C5C]"
+                        : isCancelled
+                          ? "border-l-4 border-l-[#C4541A]"
+                          : "border-l-4 border-l-gray-400";
+
+                      return (
+                        <div
+                          key={ev.booking_id}
+                          onClick={() => openBookingDetails(ev.booking_id)}
+                          className={`rounded-2xl border border-[#C8922A]/15 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-wrap justify-between items-center gap-3 ${accentClass}`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
+                                {getBookingReference(ev)}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
+                                {getDisplayEventType(ev)}
+                              </span>
+                            </div>
+                            <p className="font-['Playfair_Display'] text-[#2C1810] text-base sm:text-lg font-bold">
+                              {ev.package_name || "Custom Package"}
+                            </p>
+                            <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
+                              <span>📅 {formatDate(ev.event_date)}</span>
+                              <span>•</span>
+                              <span>👥 {ev.number_of_pax} guests</span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(ev.booking_status)}`}
+                            >
+                              {ev.booking_status}
+                            </span>
+                            <span className="text-xs font-['Lato'] font-semibold text-[#C8922A] hover:underline flex items-center gap-1">
+                              View Details →
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
-              )}
+                )}
               </div>
             </div>
           );
