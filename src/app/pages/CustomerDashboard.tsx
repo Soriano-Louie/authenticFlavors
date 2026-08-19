@@ -268,19 +268,30 @@ export function CustomerDashboard() {
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const mapTargetTabToCustomerTab = (tab: string): string => {
+    if (
+      tab === "payments" ||
+      tab === "venue" ||
+      tab === "bookings" ||
+      tab === "menu-changes" ||
+      tab === "My Events"
+    ) {
+      return "My Events";
+    }
+    if (tab === "feedback" || tab === "Feedback") {
+      return "Feedback";
+    }
+    if (tab === "Dietary Profile") return "Dietary Profile";
+    if (tab === "Settings") return "Settings";
+    return "Overview";
+  };
+
   const locationState = location.state as { targetTab?: string } | null;
   const targetTabFromState = locationState?.targetTab;
-  const initialTab = (() => {
-    if (
-      targetTabFromState === "payments" ||
-      targetTabFromState === "venue" ||
-      targetTabFromState === "bookings" ||
-      targetTabFromState === "menu-changes" ||
-      targetTabFromState === "feedback"
-    )
-      return "My Events";
-    return "Overview";
-  })();
+
+  const initialTab = mapTargetTabToCustomerTab(
+    targetTabFromState || "Overview"
+  );
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // React to navigation with location state (e.g. clicking a notification from the homepage)
@@ -288,8 +299,7 @@ export function CustomerDashboard() {
   useEffect(() => {
     const state = location.state as { targetTab?: string } | null;
     if (!state?.targetTab) return;
-    // Any targetTab from a notification should open "My Events"
-    setActiveTab("My Events");
+    setActiveTab(mapTargetTabToCustomerTab(state.targetTab));
     // Clear the state so a page refresh doesn't re-trigger this
     navigate("/dashboard", { replace: true, state: {} });
   }, [location.state]);
@@ -1770,7 +1780,11 @@ export function CustomerDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <NotificationCenter onSelectTab={(tab) => setActiveTab(tab)} />
+            <NotificationCenter
+              onSelectTab={(tab) =>
+                setActiveTab(mapTargetTabToCustomerTab(tab))
+              }
+            />
             <Link
               to="/package-selection"
               className="flex-1 sm:flex-none justify-center px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] flex items-center gap-1.5 hover:opacity-90"

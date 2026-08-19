@@ -363,15 +363,15 @@ export function NotificationCenter({
       {/* Notification Detail Modal — rendered via portal so it escapes the Navbar's stacking context */}
       {showDetailModal && selectedNotification && createPortal(
         <div
-          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 py-20"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setShowDetailModal(false)}
         >
           {/* Full-screen backdrop */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity" />
 
           {/* Modal Card */}
           <div
-            className="relative z-10 bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
+            className="relative z-10 bg-white rounded-2xl shadow-2xl border border-[#C8922A]/30 w-full max-w-md my-auto animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
