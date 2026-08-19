@@ -2,12 +2,15 @@ import { pool } from "../db/pool.js";
 import { logActivity } from "../services/activityService.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
 
-// Admin: list all blocked dates (for management).
+// Admin: list all blocked dates (for management). History is kept, but each
+// row is marked past/upcoming so the UI can de-emphasise dates already passed.
 export async function getBlockedDates(_req, res) {
   try {
+    const todayStr = getPhilippineDateString();
     const [rows] = await pool.query(
       `SELECT bd.blocked_date_id,
               DATE_FORMAT(bd.blocked_date, '%Y-%m-%d') AS blocked_date,
+              bd.blocked_date < ? AS is_past,
               bd.reason,
               bd.created_at,
               u.first_name,
@@ -15,12 +18,15 @@ export async function getBlockedDates(_req, res) {
        FROM blocked_dates bd
        LEFT JOIN users u ON bd.blocked_by = u.user_id
        ORDER BY bd.blocked_date DESC`,
+      [todayStr],
     );
 
     res.status(200).json({
       blockedDates: rows.map((r) => ({
         blocked_date_id: r.blocked_date_id,
         blocked_date: r.blocked_date,
+        // MySQL booleans come back as 0/1 — normalise to real booleans.
+        is_past: r.is_past === 1 || r.is_past === true,
         reason: r.reason,
         created_at: r.created_at,
         blocked_by_name: `${r.first_name || ""} ${r.last_name || ""}`.trim(),
@@ -66,6 +72,30 @@ export async function createBlockedDate(req, res) {
       typeof req.body?.reason === "string" && req.body.reason.trim()
         ? req.body.reason.trim().slice(0, 255)
         : null;
+
+    // Refuse to silently block a day that still has active (non-cancelled,
+    // non-completed) bookings unless the admin explicitly confirms (force).
+    const [existingBookings] = await pool.query(
+      `SELECT booking_id, booking_reference, booking_status
+       FROM bookings
+       WHERE event_date = ? AND booking_status NOT IN ('Cancelled', 'Completed')
+       ORDER BY booking_id`,
+      [blockDate],
+    );
+
+    if (existingBookings.length > 0 && !req.body?.force) {
+      return res.status(409).json({
+        error: {
+          code: "DATE_HAS_BOOKINGS",
+          message: `${existingBookings.length} active booking(s) already exist on ${blockDate}. Blocking the date will NOT cancel them — confirm to continue.`,
+        },
+        bookings: existingBookings.map((b) => ({
+          booking_id: b.booking_id,
+          booking_reference: b.booking_reference || null,
+          booking_status: b.booking_status,
+        })),
+      });
+    }
 
     const [result] = await pool.query(
       "INSERT INTO blocked_dates (blocked_date, reason, blocked_by) VALUES (?, ?, ?)",

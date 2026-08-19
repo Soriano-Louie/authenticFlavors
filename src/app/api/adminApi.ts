@@ -27,6 +27,21 @@ const API_BASE_URL =
   (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
   "";
 
+// Error subclass that also carries the server's error code and the raw
+// payload so callers can react to specific codes (e.g. DATE_HAS_BOOKINGS)
+// and read extra fields such as the list of affected bookings.
+export class AdminApiError extends Error {
+  code?: string;
+  payload?: any;
+
+  constructor(message: string, code?: string, payload?: any) {
+    super(message);
+    this.name = "AdminApiError";
+    this.code = code;
+    this.payload = payload;
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string; code?: string };
@@ -34,7 +49,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const message = payload.error?.message ?? "Request failed.";
-    throw new Error(message);
+    throw new AdminApiError(message, payload.error?.code, payload);
   }
 
   return payload;
@@ -330,6 +345,7 @@ export function deleteAdminMenuItem(
 export interface BlockedDate {
   blocked_date_id: number;
   blocked_date: string; // YYYY-MM-DD
+  is_past: boolean;
   reason: string | null;
   created_at: string;
   blocked_by_name: string;
@@ -351,7 +367,7 @@ export function getAdminBlockedDates(
 
 export function createBlockedDate(
   accessToken: string,
-  payload: { date: string; reason?: string },
+  payload: { date: string; reason?: string; force?: boolean },
 ): Promise<{
   message: string;
   blocked_date_id: number;

@@ -36,12 +36,21 @@ export async function getPublicAnnouncements(req, res, next) {
  */
 export async function getAdminAnnouncements(req, res, next) {
   try {
-    const [announcements] = await pool.query(
+    const nowPH = getPhilippineDateTimeString();
+    const [rows] = await pool.query(
       `SELECT id, title, content, status, publish_date, expiration_date,
-              image_url, image_public_id, created_at, updated_at
+              image_url, image_public_id, created_at, updated_at,
+              (status = 'published' AND expiration_date IS NOT NULL AND expiration_date < ?) AS is_expired
        FROM announcements
        ORDER BY created_at DESC`,
+      [nowPH],
     );
+
+    // MySQL booleans arrive as 0/1 — normalise to real booleans for the UI.
+    const announcements = rows.map((a) => ({
+      ...a,
+      is_expired: a.is_expired === 1 || a.is_expired === true,
+    }));
 
     res.json({ announcements });
   } catch (error) {
@@ -79,6 +88,8 @@ export async function createAnnouncement(req, res, next) {
 
     // Validate expiration_date is after publish_date
     if (expiration_date) {
+      // publish_date is required above, so it is safe to build this Date.
+      const publishDateTime = new Date(publish_date);
       const expirationDateTime = new Date(expiration_date);
       if (expirationDateTime <= publishDateTime) {
         return res
@@ -172,16 +183,24 @@ export async function updateAnnouncement(req, res, next) {
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
     }
 
-    // Validate expiration_date is after publish_date
-    if (expiration_date && publish_date) {
-      const expirationDateTime = new Date(expiration_date);
-      const publishDateTime = new Date(publish_date);
-      if (expirationDateTime <= publishDateTime) {
-        return res
-          .status(400)
-          .json({
-            error: { message: "Expiration date must be after publish date." },
-          });
+    // Validate expiration_date is after publish_date on EVERY update — even
+    // when only one of the two dates is being changed. The effective publish
+    // date is either the submitted one or the currently stored one, so a
+    // request that only extends/clears an expiration still can't save an
+    // expiry that precedes the (possibly unchanged) publish date.
+    const effectiveExpirationDate =
+      expiration_date !== undefined
+        ? expiration_date || null
+        : current.expiration_date;
+
+    if (effectiveExpirationDate) {
+      const effectivePublishDate = publish_date || current.publish_date;
+      if (
+        new Date(effectiveExpirationDate) <= new Date(effectivePublishDate)
+      ) {
+        return res.status(400).json({
+          error: { message: "Expiration date must be after publish date." },
+        });
       }
     }
 

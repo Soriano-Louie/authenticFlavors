@@ -797,7 +797,7 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 
 ## 7. Announcements / Blocked dates domain
 
-### 7.1 [HIGH][verified] Creating an announcement with an expiry date crashes
+### 7.1 [HIGH][verified][resolved] Creating an announcement with an expiry date crashes
 - **Location:** `announcementController.js:82-84` uses undeclared `publishDateTime`
 - **What's the problem?** The "create announcement" function compares the publish date
   with a variable that was never defined, so any announcement that includes an
@@ -805,8 +805,10 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Compute the publish date at the top of the function
   (`const publishDateTime = new Date(publish_date);` — the same way the update function
   already does), then compare.
+- **Status: RESOLVED 2026-08-19.** `publishDateTime` is now computed from the
+  required `publish_date` before the comparison. See FIXES.md #49.
 
-### 7.2 [MEDIUM][agent-verified] Announcement updates only check the expiry when both dates are supplied
+### 7.2 [MEDIUM][agent-verified][resolved] Announcement updates only check the expiry when both dates are supplied
 - **Location:** `announcementController.js:176-186`
 - **What's the problem?** The update validation checks "expiry is after publish" only
   when both fields are being changed at once; otherwise it can save an announcement
@@ -814,15 +816,23 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** On every update, validate `expiration_date > stored
   publish_date` regardless of whether the publish date is being changed, and require a
   `publish_date` on update too.
+- **Status: RESOLVED 2026-08-19.** Every update now validates the effective
+  expiration (submitted value, or stored one when unchanged) against the
+  effective publish date (submitted or stored), so an expiry can never precede
+  the publish date even when only one field changes. See FIXES.md #50.
 
-### 7.3 [LOW][agent-verified] Past blocked dates are never cleaned up
+### 7.3 [LOW][agent-verified][resolved] Past blocked dates are never cleaned up
 - **Location:** `blockedDateController.js:8-18`
 - **What's the problem?** Once a blocked (unavailable) date has passed, it stays in the
   admin list forever.
 - **Fix (in plain English):** Filter the admin list to `blocked_date >= CURDATE()` (or
   add a cleanup query) — or keep the history but clearly mark past rows.
+- **Status: RESOLVED 2026-08-19.** Chose "keep history but mark past rows":
+  `getBlockedDates` now returns `is_past` per row and the admin list sorts
+  upcoming/today first and renders past rows muted with a "Past" badge. See
+  FIXES.md #51.
 
-### 7.4 [LOW][agent-verified] Admins can block a date that already has bookings
+### 7.4 [LOW][agent-verified][resolved] Admins can block a date that already has bookings
 - **Location:** `blockedDateController.js:43-73`
 - **What's the problem?** The "block this date" action doesn't check for existing
   bookings on that date, so an admin could mark a date unavailable even though customers
@@ -830,6 +840,11 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Before blocking, check for non-cancelled bookings on that
   date and either reject with the list of affected bookings or require explicit admin
   confirmation.
+- **Status: RESOLVED 2026-08-19.** `createBlockedDate` now rejects with
+  `409 DATE_HAS_BOOKINGS` (listing the affected bookings) when non-cancelled,
+  non-completed bookings exist on that date, unless the admin explicitly
+  confirms by sending `force: true` — the admin UI shows a confirm dialog that
+  enumerates the bookings before re-sending. See FIXES.md #52.
 
 ---
 

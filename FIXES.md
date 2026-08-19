@@ -329,6 +329,35 @@ Generated: 2026-08-18
 
 ---
 
+## §7 Announcements & blocked dates fixes (review 7.1-7.4, addressed 2026-08-19)
+
+### 49. Creating an announcement with an expiration date no longer crashes
+- [x] File: `backend/src/controllers/announcementController.js`
+- Fix: The create-validation compared against an undeclared `publishDateTime`, so any announcement with an `expiration_date` threw a 500. `publishDateTime` is now computed from the required `publish_date` before the comparison.
+- Status: FIXED 2026-08-19.
+
+### 50. Announcement updates can no longer save an expiry that precedes the publish date
+- [x] File: `backend/src/controllers/announcementController.js`
+- Fix: The update only validated "expiry > publish" when both dates were being changed. It now validates the *effective* expiration (submitted value, or the stored one when unchanged) against the *effective* publish date (submitted or stored) on every update.
+- Status: FIXED 2026-08-19.
+
+### 51. Past blocked dates are kept but clearly marked
+- [x] Files: `backend/src/controllers/blockedDateController.js`, `src/app/pages/AdminDashboard.tsx`, `src/app/api/adminApi.ts`
+- Fix: `getBlockedDates` returns `is_past` per row (vs Philippine today). The admin list sorts upcoming/today first and renders past rows muted with a "Past" badge instead of cluttering the top.
+- Status: FIXED 2026-08-19.
+
+### 52. Admins are warned before blocking a date that already has bookings
+- [x] Files: `backend/src/controllers/blockedDateController.js`, `src/app/api/adminApi.ts`, `src/app/pages/AdminDashboard.tsx`
+- Fix: `createBlockedDate` rejects with `409 DATE_HAS_BOOKINGS` (listing affected booking references) when non-cancelled, non-completed bookings exist on the date, unless `force: true` is sent. The admin UI surfaces the bookings in a confirm dialog and re-submits with `force` only if the admin confirms. A new `AdminApiError` in `adminApi.ts` carries the server `code` + raw payload so the UI can branch on it.
+- Status: FIXED 2026-08-19.
+
+### 53. Admin announcements now have an Expired category, search, and date filtering
+- [x] Files: `backend/src/controllers/announcementController.js`, `src/app/api/announcementApi.ts`, `src/app/pages/AdminDashboard.tsx`
+- Fix: `getAdminAnnouncements` computes `is_expired` (published + expiry before now, Philippine clock). The admin UI adds an **Expired** filter tab (plus counts), a title/content **search bar**, **publish-date range** inputs, a "Clear filters" action, and an empty-state that reflects active filters. Toolbar and list remain responsive (grid/flex wrap down to one column).
+- Status: FIXED 2026-08-19.
+
+---
+
 ## What is already solid (do not touch unless asked)
 - Auth: bcrypt, email-verification with hashed codes, token-version single-session enforcement, DB-role re-read, rate limiting on auth/upload/chat, magic-byte image validation, CORS fail-closed.
 - getBookingPayments explicit column projection.

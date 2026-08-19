@@ -9,6 +9,7 @@ export interface Announcement {
   expiration_date: string | null;
   image_url: string | null;
   image_public_id?: string | null;
+  is_expired?: boolean;
   created_at: string;
   updated_at?: string;
 }

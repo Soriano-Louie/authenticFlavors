@@ -43,6 +43,7 @@ import {
   type AdminStats,
   type AdminActivity,
   type BlockedDate,
+  AdminApiError,
 } from "../api/adminApi";
 import {
   getAdminFeedbackAnalysis,
@@ -4968,7 +4969,7 @@ function CalendarAvailabilitySection() {
       year: "numeric",
     });
 
-  const handleBlock = async () => {
+  const handleBlock = async (force = false) => {
     if (!accessToken) return;
     if (!date) {
       toast.error("Please select a date to block.");
@@ -4980,15 +4981,43 @@ function CalendarAvailabilitySection() {
     }
     setSubmitting(true);
     try {
-      await createBlockedDate(accessToken, { date, reason: reason.trim() || undefined });
+      await createBlockedDate(accessToken, {
+        date,
+        reason: reason.trim() || undefined,
+        force,
+      });
       toast.success("Date blocked. It is now unavailable for bookings.");
       setDate("");
       setReason("");
       await fetchBlockedDates();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to block date.",
-      );
+      // The backend refuses to block a day that still has active bookings
+      // unless the admin explicitly confirms (force = true).
+      if (
+        err instanceof AdminApiError &&
+        err.code === "DATE_HAS_BOOKINGS"
+      ) {
+        const bookings = Array.isArray(err.payload?.bookings)
+          ? err.payload.bookings
+          : [];
+        const list = bookings
+          .map(
+            (b: { booking_reference?: string | null; booking_id: number; booking_status: string }) =>
+              `\u2022 #${b.booking_reference ?? b.booking_id} (${b.booking_status})`,
+          )
+          .join("\n");
+        const ok = window.confirm(
+          `${err.message}\n\nAffected bookings:\n${list}\n\nBlock this date anyway? Existing bookings will not be cancelled.`,
+        );
+        if (ok) {
+          await handleBlock(true);
+          return;
+        }
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to block date.",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -5057,7 +5086,7 @@ function CalendarAvailabilitySection() {
             />
           </div>
           <button
-            onClick={handleBlock}
+            onClick={() => handleBlock()}
             disabled={submitting}
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
@@ -5083,15 +5112,30 @@ function CalendarAvailabilitySection() {
           </div>
         ) : (
           <ul className="divide-y divide-[#C8922A]/10">
-            {blockedDates.map((item) => (
+            {[...blockedDates]
+              .sort(
+                (a, b) =>
+                  Number(a.is_past) - Number(b.is_past) ||
+                  b.blocked_date.localeCompare(a.blocked_date),
+              )
+              .map((item) => (
               <li
                 key={item.blocked_date_id}
-                className="px-5 py-3.5 flex items-center justify-between gap-4"
+                className={`px-5 py-3.5 flex items-center justify-between gap-4 ${
+                  item.is_past ? "opacity-55" : ""
+                }`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#2C1810] font-['Lato']">
-                    {formatBlockedDate(item.blocked_date)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-[#2C1810] font-['Lato']">
+                      {formatBlockedDate(item.blocked_date)}
+                    </p>
+                    {item.is_past && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#C4541A]/10 text-[#C4541A] font-['Lato'] font-semibold uppercase tracking-wider flex-shrink-0">
+                        Past
+                      </span>
+                    )}
+                  </div>
                   {item.reason ? (
                     <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-0.5">
                       {item.reason}
@@ -5143,8 +5187,11 @@ function AnnouncementsSection() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<
-    "all" | "published" | "draft"
+    "all" | "published" | "draft" | "expired"
   >("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const fetchAnnouncements = async () => {
     if (!accessToken) return;
@@ -5332,15 +5379,57 @@ function AnnouncementsSection() {
     }
   };
 
-  const filteredAnnouncements =
-    filterStatus === "all"
-      ? announcements
-      : announcements.filter((a) => a.status === filterStatus);
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || dateFrom !== "" || dateTo !== "";
 
+  const expiredCount = announcements.filter((a) => a.is_expired).length;
   const publishedCount = announcements.filter(
-    (a) => a.status === "published",
+    (a) => a.status === "published" && !a.is_expired,
   ).length;
   const draftCount = announcements.filter((a) => a.status === "draft").length;
+
+  const getTabCount = (f: (typeof filterStatus) | "all") => {
+    switch (f) {
+      case "published":
+        return publishedCount;
+      case "draft":
+        return draftCount;
+      case "expired":
+        return expiredCount;
+      default:
+        return announcements.length;
+    }
+  };
+
+  const searchLower = searchQuery.trim().toLowerCase();
+
+  const filteredAnnouncements = announcements.filter((a) => {
+    // Status category
+    if (filterStatus === "published" && !(a.status === "published" && !a.is_expired))
+      return false;
+    if (filterStatus === "draft" && a.status !== "draft") return false;
+    if (filterStatus === "expired" && !a.is_expired) return false;
+
+    // Free-text search (title + content)
+    if (
+      searchLower &&
+      !`${a.title} ${a.content}`.toLowerCase().includes(searchLower)
+    )
+      return false;
+
+    // Publish-date range filter (compare YYYY-MM-DD)
+    const publishDay = a.publish_date.slice(0, 10);
+    if (dateFrom && publishDay < dateFrom) return false;
+    if (dateTo && publishDay > dateTo) return false;
+
+    return true;
+  });
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+  };
 
   return (
     <div className="space-y-6">
@@ -5350,12 +5439,15 @@ function AnnouncementsSection() {
           <p className="text-sm text-[#2C1810]/60 font-['Lato']">
             Manage announcements displayed on the landing page.
           </p>
-          <div className="flex items-center gap-4 mt-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2">
             <span className="text-xs font-['Lato'] px-2 py-1 rounded-full bg-[#7A8C5C]/15 text-[#7A8C5C]">
               {publishedCount} Published
             </span>
             <span className="text-xs font-['Lato'] px-2 py-1 rounded-full bg-[#C8922A]/15 text-[#C8922A]">
               {draftCount} Draft
+            </span>
+            <span className="text-xs font-['Lato'] px-2 py-1 rounded-full bg-[#C4541A]/10 text-[#C4541A]">
+              {expiredCount} Expired
             </span>
           </div>
         </div>
@@ -5370,7 +5462,7 @@ function AnnouncementsSection() {
 
       {/* Filter tabs */}
       <div className="flex flex-wrap gap-2">
-        {(["all", "published", "draft"] as const).map((f) => (
+        {(["all", "published", "draft", "expired"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilterStatus(f)}
@@ -5380,15 +5472,72 @@ function AnnouncementsSection() {
                 : "bg-white text-[#2C1810]/60 hover:bg-[#2C1810]/5 border border-[#2C1810]/10"
             }`}
           >
-            {f} (
-            {f === "all"
-              ? announcements.length
-              : f === "published"
-                ? publishedCount
-                : draftCount}
-            )
+            {f} ({getTabCount(f)})
           </button>
         ))}
+      </div>
+
+      {/* Search + date-range toolbar */}
+      <div className="bg-white rounded-2xl border border-[#2C1810]/10 p-4 space-y-3">
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#2C1810]/40"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search announcements by title or content..."
+            className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-[#2C1810]/10 bg-[#F5F0E8] text-sm text-[#2C1810] font-['Lato'] outline-none focus:border-[#C8922A] focus:ring-2 focus:ring-[#C8922A]/20 placeholder-[#2C1810]/30"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-[#2C1810]/40 hover:text-[#C4541A] transition-colors"
+              title="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Published from
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-[#2C1810]/10 bg-[#F5F0E8] text-sm text-[#2C1810] font-['Lato'] outline-none focus:border-[#C8922A]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[#2C1810]/60 font-['Lato'] mb-1.5">
+              Published up to
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-[#2C1810]/10 bg-[#F5F0E8] text-sm text-[#2C1810] font-['Lato'] outline-none focus:border-[#C8922A]"
+            />
+          </div>
+        </div>
+
+        {hasActiveFilters && (
+          <div className="flex justify-end">
+            <button
+              onClick={clearFilters}
+              className="text-xs font-['Lato'] text-[#C4541A] hover:underline flex items-center gap-1"
+            >
+              <X size={12} />
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* List */}
@@ -5400,7 +5549,7 @@ function AnnouncementsSection() {
         <div className="text-center py-16 bg-white rounded-2xl border border-[#2C1810]/5">
           <Megaphone size={40} className="text-[#2C1810]/20 mx-auto mb-3" />
           <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
-            No announcements found.
+            No announcements match your filters.
           </p>
         </div>
       ) : (
@@ -5467,9 +5616,6 @@ function AnnouncementsSection() {
                   {(() => {
                     const now = new Date();
                     const publishDate = new Date(ann.publish_date);
-                    const expirationDate = ann.expiration_date
-                      ? new Date(ann.expiration_date)
-                      : null;
 
                     if (ann.status === "draft") {
                       return (
@@ -5483,7 +5629,7 @@ function AnnouncementsSection() {
                           Scheduled
                         </span>
                       );
-                    } else if (expirationDate && expirationDate < now) {
+                    } else if (ann.is_expired) {
                       return (
                         <span className="px-2 py-0.5 rounded-full bg-[#C4541A]/15 text-[#C4541A] font-semibold">
                           Expired
