@@ -252,7 +252,14 @@ export async function getBookingMenuChangeRequests(req, res, next) {
     }
 
     const [requests] = await pool.query(
-      `SELECT * FROM menu_change_requests
+      `SELECT mcr.*,
+              (
+                SELECT JSON_ARRAYAGG(mi.item_name)
+                FROM booking_menu_selections bms
+                JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+                WHERE bms.booking_id = mcr.booking_id
+              ) AS current_menu_selections
+       FROM menu_change_requests mcr
        WHERE booking_id = ?
        ORDER BY created_at DESC`,
       [bookingId],
@@ -272,7 +279,13 @@ export async function getAdminMenuChangeRequests(req, res, next) {
   try {
     const [requests] = await pool.query(
       `SELECT mcr.*, b.booking_reference, b.event_date, b.booking_status,
-              p.package_name, u.first_name, u.last_name, u.email
+              p.package_name, u.first_name, u.last_name, u.email,
+              (
+                SELECT JSON_ARRAYAGG(mi.item_name)
+                FROM booking_menu_selections bms
+                JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+                WHERE bms.booking_id = b.booking_id
+              ) AS current_menu_selections
        FROM menu_change_requests mcr
        JOIN bookings b ON mcr.booking_id = b.booking_id
        JOIN packages p ON b.package_id = p.package_id

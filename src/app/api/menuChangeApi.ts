@@ -5,6 +5,7 @@ export interface MenuChangeRequest {
   booking_id: number;
   user_id: number;
   requested_menu_selections: string[];
+  current_menu_selections?: string[] | string;
   dietary_notes: string | null;
   status: "Pending" | "Approved" | "Rejected";
   rejection_reason: string | null;

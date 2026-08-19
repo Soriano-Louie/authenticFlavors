@@ -982,7 +982,7 @@ export function CustomerDashboard() {
       ? booking.menu_selections.map((s) => s.item_name)
       : [];
     setSelectedMenuItems(initialItems);
-    setMenuDietaryNotes(booking.dietary_notes || "");
+    setMenuDietaryNotes("");
     setLoadingMenuData(true);
     try {
       const [categoriesRes, itemsRes] = await Promise.all([

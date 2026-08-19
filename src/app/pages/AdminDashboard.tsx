@@ -6854,6 +6854,16 @@ function MenuChangeRequestsSection() {
                   ? req.requested_menu_selections
                   : [];
 
+            const currentItems: string[] =
+              typeof req.current_menu_selections === "string"
+                ? JSON.parse(req.current_menu_selections)
+                : Array.isArray(req.current_menu_selections)
+                  ? req.current_menu_selections
+                  : [];
+
+            const addedItems = menuItems.filter((i) => !currentItems.includes(i));
+            const removedItems = currentItems.filter((i) => !menuItems.includes(i));
+
             return (
               <div
                 key={req.request_id}
@@ -6901,22 +6911,63 @@ function MenuChangeRequestsSection() {
                     </div>
                   )}
 
+                  {/* Highlights of Modified Items */}
+                  {(addedItems.length > 0 || removedItems.length > 0) && (
+                    <div className="p-3 bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-2xl space-y-1.5">
+                      <p className="text-[11px] font-bold text-[#5E6E43] font-['Lato'] uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles size={13} /> Modified Item Selection ({addedItems.length})
+                      </p>
+                      {addedItems.map((added, idx) => {
+                        const removed = removedItems[idx] || null;
+                        return (
+                          <div key={added} className="text-xs font-['Lato'] text-[#2C1810] flex items-center gap-1.5 flex-wrap">
+                            {removed ? (
+                              <>
+                                <span>Replaced:</span>
+                                <span className="line-through text-red-600/80 px-2 py-0.5 bg-red-50 rounded border border-red-200">{removed}</span>
+                                <span>➔</span>
+                                <span className="font-bold text-[#7A8C5C] px-2 py-0.5 bg-[#7A8C5C]/20 rounded border border-[#7A8C5C]/30">{added}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>Added:</span>
+                                <span className="font-bold text-[#7A8C5C] px-2 py-0.5 bg-[#7A8C5C]/20 rounded border border-[#7A8C5C]/30">{added}</span>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Requested Menu Items */}
                   <div>
                     <p className="text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2 flex items-center gap-1.5">
                       <ChefHat size={13} className="text-[#C8922A]" />
-                      Requested Menu Items ({menuItems.length})
+                      Full Requested Menu ({menuItems.length} items)
                     </p>
                     {menuItems.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
-                        {menuItems.map((item) => (
-                          <span
-                            key={item}
-                            className="px-2.5 py-1 bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/20 rounded-lg text-xs font-['Lato'] font-medium"
-                          >
-                            {item}
-                          </span>
-                        ))}
+                        {menuItems.map((item) => {
+                          const isNew = addedItems.includes(item);
+                          return (
+                            <span
+                              key={item}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-['Lato'] flex items-center gap-1 ${
+                                isNew
+                                  ? "bg-[#7A8C5C]/20 text-[#5E6E43] border border-[#7A8C5C]/40 font-bold shadow-xs"
+                                  : "bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/20 font-medium"
+                              }`}
+                            >
+                              {item}
+                              {isNew && (
+                                <span className="text-[9px] px-1.5 py-0.2 bg-[#7A8C5C] text-white font-bold rounded-full uppercase">
+                                  New Selection
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-xs text-[#2C1810]/40 font-['Lato'] italic">
