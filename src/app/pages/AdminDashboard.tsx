@@ -4108,7 +4108,7 @@ function BookingsSection() {
 
       {/* Venue Setup Review Modal */}
       {reviewingVenueSetup && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
           <div className="bg-[#F5F0E8] rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
             <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
               <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
@@ -4680,7 +4680,6 @@ function BookingsSection() {
                       </p>
                       <button
                         onClick={() => {
-                          setSelectedSummaryBooking(null);
                           handleOpenVenueSetupReview(venueReq);
                         }}
                         className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
@@ -4760,7 +4759,7 @@ function BookingsSection() {
 
       {/* Reject Menu Change Confirmation Modal */}
       {rejectingMenuChangeReq && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
           <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#C8922A]/20 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-['Playfair_Display'] font-bold text-lg text-[#2C1810]">
