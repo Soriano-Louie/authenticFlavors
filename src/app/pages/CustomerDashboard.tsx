@@ -61,6 +61,8 @@ import {
   Search,
   Filter,
   RotateCcw,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const TABS = [
@@ -777,6 +779,10 @@ export function CustomerDashboard() {
   const [eventsStartDate, setEventsStartDate] = useState("");
   const [eventsEndDate, setEventsEndDate] = useState("");
   const [eventsStatusFilter, setEventsStatusFilter] = useState("all");
+
+  // My Events & Overview expandable booking cards state
+  const [expandedOverviewBookingId, setExpandedOverviewBookingId] = useState<number | null>(null);
+  const [expandedEventsBookingId, setExpandedEventsBookingId] = useState<number | null>(null);
 
   // Lock background scrolling while any modal is open
   useEffect(() => {
@@ -1867,11 +1873,16 @@ export function CustomerDashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {upcomingBookings.map((ev) => {
-                    const isPending = ev.booking_status === "Pending";
-                    const isReserved = ev.booking_status === "Reserved";
+                <div className="space-y-3">
+                  {upcomingBookings.map((ev, index) => {
                     const isConfirmed = ev.booking_status === "Confirmed";
+                    const isReserved = ev.booking_status === "Reserved";
+
+                    // Default to expanded for the very first event if nothing explicitly chosen
+                    const isExpanded =
+                      expandedOverviewBookingId === null
+                        ? index === 0
+                        : expandedOverviewBookingId === ev.booking_id;
 
                     const accentClass = isConfirmed
                       ? "border-l-4 border-l-[#7A8C5C]"
@@ -1882,9 +1893,17 @@ export function CustomerDashboard() {
                     return (
                       <div
                         key={ev.booking_id}
-                        className={`flex flex-col gap-3 rounded-2xl border border-[#C8922A]/15 bg-white p-5 shadow-sm hover:shadow-md transition-shadow ${accentClass}`}
+                        className={`rounded-2xl border border-[#C8922A]/15 bg-white overflow-hidden shadow-xs hover:shadow-md transition-shadow ${accentClass}`}
                       >
-                        <div className="flex flex-wrap justify-between items-start gap-2">
+                        {/* Clickable Header Row */}
+                        <div
+                          onClick={() =>
+                            setExpandedOverviewBookingId(
+                              isExpanded ? -1 : ev.booking_id,
+                            )
+                          }
+                          className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 bg-[#F5F0E8]/40 hover:bg-[#F5F0E8]/70 transition-colors cursor-pointer"
+                        >
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
@@ -1894,7 +1913,7 @@ export function CustomerDashboard() {
                                 {getDisplayEventType(ev)}
                               </span>
                             </div>
-                            <p className="font-['Playfair_Display'] text-[#2C1810] text-xl font-bold pt-1">
+                            <p className="font-['Playfair_Display'] text-[#2C1810] text-base sm:text-lg font-bold">
                               {ev.package_name || "Custom Package"}
                             </p>
                             <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
@@ -1903,13 +1922,32 @@ export function CustomerDashboard() {
                               <span>👥 {ev.number_of_pax} guests</span>
                             </p>
                           </div>
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold shadow-xs ${getStatusStyle(ev.booking_status)}`}
-                          >
-                            {ev.booking_status}
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(ev.booking_status)}`}
+                            >
+                              {ev.booking_status}
+                            </span>
+                            <button
+                              type="button"
+                              className="p-1 rounded-full text-[#2C1810]/50 hover:bg-[#2C1810]/5 transition-colors"
+                              aria-label={isExpanded ? "Minimize event details" : "Expand event details"}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp size={18} />
+                              ) : (
+                                <ChevronDown size={18} />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        {renderPaymentSchedule(ev)}
+
+                        {/* Collapsible Body */}
+                        {isExpanded && (
+                          <div className="p-4 sm:p-5 pt-0 border-t border-[#C8922A]/10">
+                            {renderPaymentSchedule(ev)}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2069,10 +2107,15 @@ export function CustomerDashboard() {
                       : "No active bookings."}
                   </p>
                 ) : (
-                  <div className="space-y-4">
-                    {filteredActiveBookings.map((ev) => {
+                  <div className="space-y-3">
+                    {filteredActiveBookings.map((ev, index) => {
                       const isConfirmed = ev.booking_status === "Confirmed";
                       const isReserved = ev.booking_status === "Reserved";
+
+                      const isExpanded =
+                        expandedEventsBookingId === null
+                          ? index === 0
+                          : expandedEventsBookingId === ev.booking_id;
 
                       const accentClass = isConfirmed
                         ? "border-l-4 border-l-[#7A8C5C]"
@@ -2083,36 +2126,61 @@ export function CustomerDashboard() {
                       return (
                         <div
                           key={ev.booking_id}
-                          className={`p-5 border border-[#C8922A]/15 rounded-2xl bg-white shadow-xs hover:shadow-md transition-shadow ${accentClass}`}
+                          className={`border border-[#C8922A]/15 rounded-2xl bg-white overflow-hidden shadow-xs hover:shadow-md transition-shadow ${accentClass}`}
                         >
-                          <div className="flex flex-col gap-3">
-                            <div className="flex flex-wrap justify-between items-start gap-2">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
-                                    {getBookingReference(ev)}
-                                  </span>
-                                  <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
-                                    {getDisplayEventType(ev)}
-                                  </span>
-                                </div>
-                                <p className="font-['Playfair_Display'] text-[#2C1810] text-xl font-bold pt-1">
-                                  {ev.package_name || "Custom Package"}
-                                </p>
-                                <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
-                                  <span>📅 {formatDate(ev.event_date)} at {formatTime(ev.start_time)}</span>
-                                  <span>•</span>
-                                  <span>👥 {ev.number_of_pax} guests</span>
-                                </p>
+                          {/* Clickable Header Row */}
+                          <div
+                            onClick={() =>
+                              setExpandedEventsBookingId(
+                                isExpanded ? -1 : ev.booking_id,
+                              )
+                            }
+                            className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 bg-[#F5F0E8]/40 hover:bg-[#F5F0E8]/70 transition-colors cursor-pointer"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
+                                  {getBookingReference(ev)}
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
+                                  {getDisplayEventType(ev)}
+                                </span>
                               </div>
+                              <p className="font-['Playfair_Display'] text-[#2C1810] text-base sm:text-lg font-bold">
+                                {ev.package_name || "Custom Package"}
+                              </p>
+                              <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
+                                <span>📅 {formatDate(ev.event_date)} at {formatTime(ev.start_time)}</span>
+                                <span>•</span>
+                                <span>👥 {ev.number_of_pax} guests</span>
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3">
                               <span
                                 className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(ev.booking_status)}`}
                               >
                                 {ev.booking_status}
                               </span>
+                              <button
+                                type="button"
+                                className="p-1 rounded-full text-[#2C1810]/50 hover:bg-[#2C1810]/5 transition-colors"
+                                aria-label={isExpanded ? "Minimize event details" : "Expand event details"}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp size={18} />
+                                ) : (
+                                  <ChevronDown size={18} />
+                                )}
+                              </button>
                             </div>
-                            {renderPaymentSchedule(ev)}
                           </div>
+
+                          {/* Collapsible Body */}
+                          {isExpanded && (
+                            <div className="p-4 sm:p-5 pt-0 border-t border-[#C8922A]/10">
+                              {renderPaymentSchedule(ev)}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
