@@ -299,9 +299,8 @@ export function BookingPage() {
       setBlockedDays(blocked);
       setAvailabilityError(null);
     } catch (err) {
-      setAvailabilityError(
-        err instanceof Error ? err.message : "Could not load availability.",
-      );
+      console.warn("Could not fetch date availability dynamically:", err);
+      setAvailabilityError(null);
     }
   }, []);
 
@@ -629,7 +628,12 @@ export function BookingPage() {
   const startTime = eventTime;
 
   const canProceed = () => {
-    if (step === 1) return eventDate && contactName && contactEmail;
+    if (step === 1) {
+      if (!eventDate || !contactName || !contactEmail || !eventTime) return false;
+      if (submitError || availabilityError || timeError) return false;
+      if (dateAvailabilityMessage) return false;
+      return true;
+    }
     if (step === 2) return !!selectedPackageId && hasAllMenuChoices;
     return true;
   };
@@ -838,6 +842,11 @@ export function BookingPage() {
                     value={eventDate}
                     onChange={(e) => {
                       const value = e.target.value;
+                      setEventDate(value);
+                      if (!value) {
+                        setSubmitError(null);
+                        return;
+                      }
                       const minStr = effectiveMinEventDate;
                       if (value < minStr) {
                         setSubmitError(
@@ -868,7 +877,6 @@ export function BookingPage() {
                         return;
                       }
                       setSubmitError(null);
-                      setEventDate(value);
                     }}
                     min={effectiveMinEventDate}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"

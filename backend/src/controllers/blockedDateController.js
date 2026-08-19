@@ -68,6 +68,17 @@ export async function createBlockedDate(req, res) {
       });
     }
 
+    // Prevent blocking Mondays (Mondays are already restaurant rest days by default)
+    const dayOfWeek = new Date(`${blockDate}T00:00:00Z`).getUTCDay();
+    if (dayOfWeek === 1) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Mondays are automatically closed for restaurant rest days and do not need to be manually blocked.",
+        },
+      });
+    }
+
     const reasonText =
       typeof req.body?.reason === "string" && req.body.reason.trim()
         ? req.body.reason.trim().slice(0, 255)

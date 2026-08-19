@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
@@ -8,6 +9,11 @@ const NO_CHROME_PATHS = ["/auth", "/dashboard", "/admin"];
 
 export function Root() {
   const location = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname, location.search]);
+
   const hideChrome = NO_CHROME_PATHS.some((p) =>
     location.pathname.startsWith(p),
   );

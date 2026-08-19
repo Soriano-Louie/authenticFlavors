@@ -33,9 +33,9 @@ import type {
 import { useAuth } from "../auth/AuthContext";
 import { getPromotion, type Promotion } from "../api/bookingApi";
 
-// Function to get package label from package name
+// Function to get package category label for card header
 function getPackageLabel(packageName: string): string {
-  return packageName;
+  return "Curated Package";
 }
 
 // Discount amount (₱) a live promotion removes from a displayed price. Kept

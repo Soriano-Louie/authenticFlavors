@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import {
   MessageCircle,
   X,
@@ -19,6 +20,7 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
+  PlusCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -93,6 +95,38 @@ function validateTimeAgainstOperatingHours(time12: string): string | null {
     return `Start time must be between ${openLabel} and ${closeLabel} (Tuesday to Sunday).`;
   }
   return null;
+}
+
+function formatMessageTime(raw?: string | Date): string {
+  if (!raw) {
+    return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  let d: Date;
+  if (typeof raw === "string") {
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T") + (raw.endsWith("Z") ? "" : "Z");
+    d = new Date(normalized);
+    if (isNaN(d.getTime())) d = new Date(raw);
+  } else {
+    d = raw;
+  }
+  if (isNaN(d.getTime())) {
+    return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const now = new Date();
+  const isToday =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // Convert 12-hour display time to MySQL-compatible 24-hour HH:MM:SS format
@@ -323,10 +357,7 @@ export function ChatBot() {
             id: m.message_id,
             sender: m.sender === "AI" ? ("bot" as const) : ("user" as const),
             text: m.message_text,
-            time: new Date(m.sent_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
+            time: formatMessageTime(m.sent_at),
           }));
         if (restored.length > 0) {
           setMessages(restored);
@@ -340,6 +371,16 @@ export function ChatBot() {
       cancelled = true;
     };
   }, [activeUserId, accessToken]);
+
+  const handleStartNewChat = () => {
+    cancelActiveBookingSession();
+    setMessages(initialMessages);
+    setConversationId(null);
+    setBookingSessionId(null);
+    setCreatedBookingInfo(null);
+    setWizard(initialWizardState);
+    toast.success("Started a new conversation.");
+  };
 
   // Pre-fill user profile info when available
   useEffect(() => {
@@ -941,6 +982,14 @@ export function ChatBot() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleStartNewChat}
+                title="Start New Chat"
+                className="text-[#F5F0E8]/70 hover:text-[#C8922A] transition-colors p-1.5 rounded-lg hover:bg-white/5 flex items-center gap-1 text-xs font-['Lato']"
+              >
+                <PlusCircle size={15} />
+                <span className="hidden sm:inline">New Chat</span>
+              </button>
               {wizard.step !== "IDLE" && (
                 <button
                   onClick={() => {

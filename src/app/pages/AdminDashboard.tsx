@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -1323,6 +1323,11 @@ function MenuManagementSection() {
   const [items, setItems] = useState<AdminMenuItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Search & Filter state
+  const [itemSearchQuery, setItemSearchQuery] = useState("");
+  const [itemCategoryFilter, setItemCategoryFilter] = useState("ALL");
+  const [categorySearchQuery, setCategorySearchQuery] = useState("");
+
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] =
     useState<AdminMenuCategory | null>(null);
@@ -1341,35 +1346,64 @@ function MenuManagementSection() {
   const fetchCategories = async () => {
     if (!accessToken) return;
     try {
-      setLoading(true);
       const res = await getAdminMenuCategories(accessToken);
       setCategories(res.categories);
     } catch (err) {
       console.error("Failed to fetch categories:", err);
       toast.error("Failed to load menu categories.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const fetchItems = async () => {
     if (!accessToken) return;
     try {
-      setLoading(true);
       const res = await getAdminMenuItems(accessToken);
       setItems(res.items);
     } catch (err) {
       console.error("Failed to fetch menu items:", err);
       toast.error("Failed to load menu items.");
+    }
+  };
+
+  const fetchAllMenuData = async () => {
+    if (!accessToken) return;
+    setLoading(true);
+    try {
+      await Promise.all([fetchCategories(), fetchItems()]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === "categories") fetchCategories();
-    else fetchItems();
-  }, [activeTab, accessToken]);
+    fetchAllMenuData();
+  }, [accessToken]);
+
+  // Filtered lists
+  const filteredCategories = useMemo(() => {
+    const q = categorySearchQuery.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter(
+      (cat: AdminMenuCategory) =>
+        cat.category_name.toLowerCase().includes(q) ||
+        (cat.description && cat.description.toLowerCase().includes(q)),
+    );
+  }, [categories, categorySearchQuery]);
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item: AdminMenuItem) => {
+      const matchesCategory =
+        itemCategoryFilter === "ALL" ||
+        String(item.category_id) === String(itemCategoryFilter);
+      const q = itemSearchQuery.trim().toLowerCase();
+      const matchesQuery =
+        !q ||
+        item.item_name.toLowerCase().includes(q) ||
+        (item.description && item.description.toLowerCase().includes(q)) ||
+        (item.category_name && item.category_name.toLowerCase().includes(q));
+      return matchesCategory && matchesQuery;
+    });
+  }, [items, itemCategoryFilter, itemSearchQuery]);
 
   // Category handlers
   const handleAddCategory = () => {
@@ -1578,10 +1612,28 @@ function MenuManagementSection() {
         {/* Categories Tab */}
         {activeTab === "categories" && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40" size={18} />
+                <input
+                  type="text"
+                  value={categorySearchQuery}
+                  onChange={(e) => setCategorySearchQuery(e.target.value)}
+                  placeholder="Search category name or description..."
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+                {categorySearchQuery && (
+                  <button
+                    onClick={() => setCategorySearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810]"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
               <button
                 onClick={handleAddCategory}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shrink-0"
               >
                 <Plus size={18} />
                 Add Category
@@ -1591,10 +1643,10 @@ function MenuManagementSection() {
               <div className="flex justify-center py-10">
                 <Loader2 className="animate-spin text-[#C8922A]" size={32} />
               </div>
-            ) : categories.length === 0 ? (
+            ) : filteredCategories.length === 0 ? (
               <div className="text-center py-10">
                 <p className="text-sm font-['Lato'] text-[#2C1810]/50">
-                  No categories found.
+                  {categories.length === 0 ? "No categories found." : "No matching categories found."}
                 </p>
               </div>
             ) : (
@@ -1620,7 +1672,7 @@ function MenuManagementSection() {
                     </tr>
                   </thead>
                   <tbody>
-                    {categories.map((cat) => (
+                    {filteredCategories.map((cat) => (
                       <tr
                         key={cat.category_id}
                         className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
@@ -1675,10 +1727,48 @@ function MenuManagementSection() {
         {/* Items Tab */}
         {activeTab === "items" && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40" size={18} />
+                  <input
+                    type="text"
+                    value={itemSearchQuery}
+                    onChange={(e) => setItemSearchQuery(e.target.value)}
+                    placeholder="Search menu item name or description..."
+                    className="w-full pl-9 pr-8 py-2 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  {itemSearchQuery && (
+                    <button
+                      onClick={() => setItemSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810]"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter Dropdown */}
+                <div className="w-full sm:w-52">
+                  <select
+                    value={itemCategoryFilter}
+                    onChange={(e) => setItemCategoryFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  >
+                    <option value="ALL">All Categories</option>
+                    {categories.map((cat) => (
+                      <option key={cat.category_id} value={cat.category_id}>
+                        {cat.category_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <button
                 onClick={handleAddItem}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shrink-0"
               >
                 <Plus size={18} />
                 Add Menu Item
@@ -1688,10 +1778,10 @@ function MenuManagementSection() {
               <div className="flex justify-center py-10">
                 <Loader2 className="animate-spin text-[#C8922A]" size={32} />
               </div>
-            ) : items.length === 0 ? (
+            ) : filteredItems.length === 0 ? (
               <div className="text-center py-10">
                 <p className="text-sm font-['Lato'] text-[#2C1810]/50">
-                  No menu items found.
+                  {items.length === 0 ? "No menu items found." : "No matching menu items found."}
                 </p>
               </div>
             ) : (
@@ -1717,7 +1807,7 @@ function MenuManagementSection() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => (
+                    {filteredItems.map((item) => (
                       <tr
                         key={item.menu_item_id}
                         className="border-b border-[#C8922A]/5 hover:bg-[#F5F0E8]/50 transition-colors"
@@ -4990,6 +5080,11 @@ function CalendarAvailabilitySection() {
     }
     if (date < todayKey) {
       toast.error("You can only block today or a future date.");
+      return;
+    }
+    const selectedDay = new Date(`${date}T00:00:00`).getDay();
+    if (selectedDay === 1) {
+      toast.error("Mondays are already automatically closed for restaurant rest days.");
       return;
     }
     setSubmitting(true);

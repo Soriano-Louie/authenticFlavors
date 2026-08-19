@@ -776,17 +776,10 @@ export function LandingPage() {
                   <button
                     key={day ? day.dateKey : `empty-${index}`}
                     type="button"
-                    disabled={!day || day.isClosed}
+                    disabled={!day}
                     onClick={() => {
-                      if (!day || day.isClosed) return;
+                      if (!day) return;
                       setSelectedDate(day.dateKey);
-                      setCalendarMonth(
-                        new Date(
-                          calendarAnchorDate.getFullYear(),
-                          calendarAnchorDate.getMonth(),
-                          1,
-                        ),
-                      );
                     }}
                     title={
                       day?.isClosed
@@ -797,21 +790,21 @@ export function LandingPage() {
                                 ? ` — ${day.blockedReason}`
                                 : ""
                             }`
-                          : undefined
+                          : day?.hasEvent
+                            ? "Private Event Scheduled"
+                            : "Available for Booking"
                     }
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day
-                        ? day.isClosed
-                          ? "border-transparent bg-transparent text-[#F5F0E8]/20 cursor-not-allowed line-through"
-                          : day.isBlocked
-                            ? day.isSelected
-                              ? "border-[#C4541A] bg-[#C4541A]/20 text-[#C4541A]"
-                              : "border-[#C4541A]/30 bg-[#C4541A]/10 text-[#C4541A]/80 hover:border-[#C4541A]/60 cursor-pointer"
-                            : day.hasEvent
-                              ? day.isSelected
-                                ? "border-[#C8922A] bg-[#C8922A]/20 text-[#F5F0E8]"
-                                : "border-[#F5F0E8]/10 bg-[#1A0E08]/60 text-[#F5F0E8] hover:border-[#C8922A]/40"
-                              : "border-transparent bg-transparent text-[#F5F0E8]/40"
+                        ? day.isSelected
+                          ? "border-2 border-[#C8922A] bg-[#C8922A]/30 text-[#F5F0E8] ring-2 ring-[#C8922A] font-bold shadow-lg scale-105 z-10"
+                          : day.isClosed
+                            ? "border-transparent bg-white/5 text-[#F5F0E8]/30 hover:border-[#C8922A]/40 cursor-pointer"
+                            : day.isBlocked
+                              ? "border-[#C4541A]/40 bg-[#C4541A]/15 text-[#C4541A] hover:border-[#C4541A] cursor-pointer"
+                              : day.hasEvent
+                                ? "border-[#C8922A]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#C8922A]"
+                                : "border-transparent bg-white/5 text-[#F5F0E8]/70 hover:border-[#C8922A]/40 cursor-pointer"
                         : "border-transparent bg-transparent"
                     }`}
                   >
@@ -846,9 +839,13 @@ export function LandingPage() {
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[#C4541A]/50 text-[9px] leading-none text-[#C4541A]">
                       ✕
                     </span>
-                    Unavailable
+                    Unavailable / Blocked
                   </span>
                 )}
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#F5F0E8]/20" />
+                  Closed Mondays
+                </span>
               </div>
             </div>
 
@@ -870,19 +867,40 @@ export function LandingPage() {
                   </p>
                 </div>
               ) : upcomingEvents.length === 0 ? (
-                <div className="py-8">
-                  {selectedDate && blockedDays[selectedDate] !== undefined && (
-                    <div className="mb-4 rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3 text-center">
-                      <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
-                        ✕ This day is unavailable for booking
-                      </p>
-                      {blockedDays[selectedDate] && (
-                        <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
-                          Reason: {blockedDays[selectedDate]}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                <div className="py-8 space-y-4">
+                  {selectedDate && (() => {
+                    const dObj = localDateFromStr(selectedDate);
+                    const isMonday = dObj.getDay() === 1;
+                    const isBlocked = blockedDays[selectedDate] !== undefined;
+
+                    if (isMonday) {
+                      return (
+                        <div className="rounded-2xl border border-[#2C1810]/20 bg-[#2C1810]/5 px-4 py-3 text-center">
+                          <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                            📍 Closed on Mondays
+                          </p>
+                          <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                            Chef Ramos is closed every Monday for rest and preparation.
+                          </p>
+                        </div>
+                      );
+                    }
+                    if (isBlocked) {
+                      return (
+                        <div className="rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3 text-center">
+                          <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
+                            ✕ This day is unavailable for booking
+                          </p>
+                          {blockedDays[selectedDate] && (
+                            <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                              Reason: {blockedDays[selectedDate]}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="text-center">
                     <p className="text-[#2C1810]/60 text-sm font-['Lato']">
                       No upcoming events scheduled.
@@ -907,18 +925,39 @@ export function LandingPage() {
                       : "All Events"}
                   </h3>
 
-                  {selectedDate && blockedDays[selectedDate] !== undefined && (
-                    <div className="mt-4 rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3">
-                      <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
-                        ✕ This day is unavailable for booking
-                      </p>
-                      {blockedDays[selectedDate] && (
-                        <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
-                          Reason: {blockedDays[selectedDate]}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {selectedDate && (() => {
+                    const dObj = localDateFromStr(selectedDate);
+                    const isMonday = dObj.getDay() === 1;
+                    const isBlocked = blockedDays[selectedDate] !== undefined;
+
+                    if (isMonday) {
+                      return (
+                        <div className="mt-4 rounded-2xl border border-[#2C1810]/20 bg-[#2C1810]/5 px-4 py-3">
+                          <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                            📍 Closed on Mondays
+                          </p>
+                          <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                            Chef Ramos is closed every Monday for rest and preparation.
+                          </p>
+                        </div>
+                      );
+                    }
+                    if (isBlocked) {
+                      return (
+                        <div className="mt-4 rounded-2xl border border-[#C4541A]/30 bg-[#C4541A]/5 px-4 py-3">
+                          <p className="text-sm font-['Lato'] font-semibold text-[#C4541A]">
+                            ✕ This day is unavailable for booking
+                          </p>
+                          {blockedDays[selectedDate] && (
+                            <p className="mt-1 text-xs font-['Lato'] text-[#2C1810]/70">
+                              Reason: {blockedDays[selectedDate]}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   <div className="mt-6 space-y-3">
                     {(selectedDate
