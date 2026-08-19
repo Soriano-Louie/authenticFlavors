@@ -1103,10 +1103,19 @@ export async function seedDatabaseIfEmpty() {
           OR (question = 'Can I split the bill?' AND answer LIKE '%allow bill splitting for groups%')`,
     );
 
-    await connection.query(
-      `DELETE kb FROM knowledge_base kb
+    // Collapse duplicate questions: keep the newest (highest kb_id), drop the
+    // rest. Do this in two steps because MySQL rejects alias references in
+    // the ON clause of a multi-table DELETE.
+    const [duplicateRows] = await connection.query(
+      `SELECT kb.kb_id
+       FROM knowledge_base kb
        JOIN knowledge_base kb2 ON kb.question = kb2.question AND kb.kb_id < kb2.kb_id`,
     );
+    if (duplicateRows.length > 0) {
+      await connection.query("DELETE FROM knowledge_base WHERE kb_id IN (?)", [
+        duplicateRows.map((r) => r.kb_id),
+      ]);
+    }
 
     // Idempotently correct FAQ answers that previously contradicted the
     // implemented business rules, so databases seeded before the rules existed
