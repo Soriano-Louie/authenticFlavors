@@ -4,7 +4,6 @@ import {
   getFeedback,
   checkFeedback,
   getPublicFeedbacks,
-  getFeedbackForBooking,
   getAdminFeedbackAnalysis,
   reanalyzeFeedback,
   reanalyzeAllFeedbacks,

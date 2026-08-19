@@ -300,12 +300,6 @@ export function PublicFeedbackPage() {
                         <Calendar size={10} />
                         <span className="truncate">{fb.package_name}</span>
                       </div>
-                      {fb.booking_status === "Cancelled" &&
-                        fb.cancellation_requested_at != null && (
-                          <p className="text-[#C4541A] text-[10px] font-['Lato'] font-medium mt-0.5">
-                            Booking Cancelled
-                          </p>
-                        )}
                     </div>
                   </div>
 

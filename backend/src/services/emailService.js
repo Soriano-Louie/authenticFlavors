@@ -1049,4 +1049,87 @@ export async function sendVenueSetupDeclinedCustomerEmail(email, firstName, deta
   return sendBrevoEmail(email, `Venue Setup Update: Request Declined (${booking_reference || "Authentic Flavors"})`, html);
 }
 
+export async function sendNewBookingAdminEmail(adminEmail, details) {
+  const { booking_reference, customer_name, event_date, guest_count, total_price } = details;
+  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">Admin Portal</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">New Booking Received</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Customer <strong>${escapeHtml(customer_name)}</strong> submitted a new booking request
+          <strong>${escapeHtml(booking_reference || "")}</strong> that is awaiting your review.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <table style="width: 100%; font-size: 14px; color: #2C1810;">
+            <tr><td style="padding: 4px 0;">Booking Ref:</td><td style="font-weight: bold; text-align: right;">${escapeHtml(booking_reference || "")}</td></tr>
+            <tr><td style="padding: 4px 0;">Event Date:</td><td style="font-weight: bold; text-align: right;">${formattedDate}</td></tr>
+            <tr><td style="padding: 4px 0;">Guests:</td><td style="font-weight: bold; text-align: right;">${guest_count}</td></tr>
+            <tr><td style="padding: 4px 0;">Price:</td><td style="font-weight: bold; text-align: right;">&#8369;${Number(total_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          </table>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          Please log into the Admin Dashboard to review and approve or reject this booking.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/admin" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Review Booking in Admin Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(adminEmail, `New Booking Request: ${booking_reference || "Authentic Flavors"}`, html);
+}
+
+export async function sendNewFeedbackAdminEmail(adminEmail, details) {
+  const { booking_reference, customer_name, rating, package_name } = details;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">Admin Portal</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">New Customer Feedback</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Customer <strong>${escapeHtml(customer_name)}</strong> rated their
+          <strong>${escapeHtml(package_name || "catering event")}</strong> experience
+          (booking ${escapeHtml(booking_reference || "")}) with ${Number(rating)} out of 5 stars.
+        </p>
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
+          <span style="font-size: 28px; font-weight: bold; color: #C4541A;">${Number(rating)}/5</span>
+        </div>
+        <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
+          View the full feedback and AI analysis in the Admin Dashboard.
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/admin" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            Open Admin Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(adminEmail, `New Feedback Received: ${Number(rating)} Stars (${booking_reference || "Authentic Flavors"})`, html);
+}
+
 

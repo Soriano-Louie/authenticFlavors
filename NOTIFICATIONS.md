@@ -32,6 +32,8 @@ Every notification and email sent by the backend, who receives it, and when it i
 
 | Notification type | Title | Trigger |
 |---|---|---|
+| `booking_submitted` | New Booking Received | Customer submits a booking — sent to all admins |
+| `feedback_submitted` | New Feedback Submitted | Customer submits feedback — sent to all admins |
 | `menu_change_requested` | New Menu Change Request | Customer requests a menu change — sent to all admins |
 | `venue_setup_requested` | New Venue Setup Request | Customer submits venue setup notes — sent to all admins |
 
@@ -55,6 +57,8 @@ Every notification and email sent by the backend, who receives it, and when it i
 | `sendMenuChangeRequestedAdminEmail` | Menu Change Request Pending | Admin | Customer requests a menu change |
 | `sendMenuChangeApprovedCustomerEmail` | Menu Change Approved | Customer | Admin approves menu change |
 | `sendMenuChangeRejectedCustomerEmail` | Menu Change Update: Request Declined | Customer | Admin rejects menu change (reason included) |
+| `sendNewBookingAdminEmail` | New Booking Request | Admin | Customer submits a booking |
+| `sendNewFeedbackAdminEmail` | New Feedback Received | Admin | Customer submits feedback |
 | `sendVenueSetupApprovedCustomerEmail` | Venue Setup Approved | Customer | Admin approves venue setup |
 | `sendVenueSetupChangesRequestedCustomerEmail` | Venue Setup Update: Changes Requested | Customer | Admin requests changes |
 | `sendVenueSetupDeclinedCustomerEmail` | Venue Setup Update: Request Declined | Customer | Admin declines venue setup (reason included) |
@@ -67,8 +71,9 @@ Every notification and email sent by the backend, who receives it, and when it i
   `reservation`, `downpayment`, or `finalpayment` (e.g. `payment_rejected_reservation`).
 - Email sends from notifications are fire-and-forget (`.catch` logs failures).
   Menu-change and venue-setup emails are awaited inside `try/catch`.
-- There is currently **no** in-app notification or email to admins for new bookings
-  or receipt uploads — only for menu-change and venue-setup requests.
+- Admins **are** notified (in-app + email) about new bookings and new feedback, in
+  addition to menu-change and venue-setup requests. Receipt uploads remain
+  activity-log-only.
 
 ## Source
 

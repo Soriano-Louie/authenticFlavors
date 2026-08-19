@@ -5,8 +5,6 @@ export interface PublicFeedback {
   submitted_at: string;
   customer_name: string;
   package_name: string;
-  booking_status: string;
-  cancellation_requested_at: string | null;
 }
 
 const API_BASE_URL =

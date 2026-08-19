@@ -374,16 +374,12 @@ export function CustomerDashboard() {
   useEffect(() => {
     if (!accessToken || bookings.length === 0) return;
 
-    const todayStr = new Date().toLocaleDateString("en-CA");
     const eligibleBookings = bookings.filter((b) => {
-      const isUserCancelled =
-        b.booking_status === "Cancelled" && b.cancellation_requested_at != null;
-      // User-cancelled bookings are always eligible regardless of event date
-      if (isUserCancelled) return true;
-      if (b.booking_status !== "Confirmed" && b.booking_status !== "Completed")
-        return false;
-      const eventDate = b.event_date.split("T")[0];
-      return eventDate <= todayStr;
+      // Feedback is only offered for events that already concluded:
+      // 'Completed' (the event happened) or 'Cancelled' (it never did).
+      return (
+        b.booking_status === "Completed" || b.booking_status === "Cancelled"
+      );
     });
 
     if (eligibleBookings.length === 0) return;
@@ -2121,20 +2117,13 @@ export function CustomerDashboard() {
             </p>
 
             {(() => {
-              // Show bookings whose status allows feedback (Confirmed, Completed, or user-cancelled)
-              // User-cancelled bookings are always eligible regardless of event date
+              // Show bookings whose status allows feedback: 'Completed'
+              // (the event happened) or 'Cancelled' (it never did).
               const feedbackEligibleBookings = bookings.filter((b) => {
-                const isUserCancelled =
-                  b.booking_status === "Cancelled" &&
-                  b.cancellation_requested_at != null;
-                if (isUserCancelled) return true;
-                if (
-                  b.booking_status !== "Confirmed" &&
-                  b.booking_status !== "Completed"
-                )
-                  return false;
-                const eventDate = b.event_date.split("T")[0];
-                return eventDate <= todayStr;
+                return (
+                  b.booking_status === "Completed" ||
+                  b.booking_status === "Cancelled"
+                );
               });
 
               if (feedbackEligibleBookings.length === 0) {
@@ -2145,10 +2134,11 @@ export function CustomerDashboard() {
                       className="text-[#2C1810]/20 mx-auto mb-3"
                     />
                     <p className="text-[#2C1810]/40 font-['Lato'] text-sm">
-                      You don't have any completed events yet.
+                      You don't have any completed or cancelled events yet.
                     </p>
                     <p className="text-[#2C1810]/30 font-['Lato'] text-xs mt-1">
-                      Feedback can be submitted once your event date arrives.
+                      Feedback can be submitted once your event is completed or
+                      cancelled.
                     </p>
                   </div>
                 );
@@ -2159,9 +2149,7 @@ export function CustomerDashboard() {
                   {feedbackEligibleBookings.map((ev) => {
                     const alreadyRated =
                       feedbackAlreadySubmitted[ev.booking_id] === true;
-                    const isUserCancelled =
-                      ev.booking_status === "Cancelled" &&
-                      ev.cancellation_requested_at != null;
+                    const isCancelled = ev.booking_status === "Cancelled";
                     return (
                       <div
                         key={ev.booking_id}
@@ -2175,7 +2163,7 @@ export function CustomerDashboard() {
                             {formatDate(ev.event_date)} · {ev.number_of_pax}{" "}
                             guests
                           </p>
-                          {alreadyRated && isUserCancelled && (
+                          {alreadyRated && isCancelled && (
                             <p className="text-[#C4541A] text-xs font-['Lato'] mt-0.5 font-medium">
                               Booking Cancelled
                             </p>
@@ -2196,7 +2184,7 @@ export function CustomerDashboard() {
                         >
                           <Star size={12} />
                           {alreadyRated
-                            ? isUserCancelled
+                            ? isCancelled
                               ? "Rated (Cancelled)"
                               : "Rated"
                             : "Rate Event"}

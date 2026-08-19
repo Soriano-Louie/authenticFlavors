@@ -744,24 +744,31 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 
 ## 6. Feedback / Notifications domain
 
-### 6.1 [HIGH][verified] The public feedback page shows everything, including unapproved and internal details
+### 6.1 [HIGH][verified][resolved] The public feedback page shows everything, including unapproved and internal details
 - **Location:** `feedbackController.js:247-283`
 - **What's the problem?** The public "what customers say" page shows **all** feedback —
   there's no approval step — and its payload includes internal context fields
   (`booking_status`, `cancellation_requested_at`) that customers shouldn't see.
-- **Fix (in plain English):** Add an `approved` flag to the feedback table with an admin
-  toggle; the public page only shows approved entries and removes the internal fields
-  from the response. (Alternative: only show feedback for `Completed` bookings.)
+- **Decision & status: RESOLVED 2026-08-19.** Per the owner's call, we did **not**
+  add an `approved` flag. Instead: (1) the public page shows **all** feedback whose
+  booking is `Completed` or `Cancelled` only, and (2) a customer may only submit
+  feedback for their own booking when its status is `Completed` or `Cancelled`
+  (the previous "past-dated Confirmed" and "user-cancelled-only" rules are gone).
+  The `booking_status` / `cancellation_requested_at` fields were removed from the
+  public response (see FIXES.md #45).
 
-### 6.2 [MEDIUM][verified] Double-clicking "submit feedback" crashes instead of saying "already submitted"
+### 6.2 [MEDIUM][verified][resolved] Double-clicking "submit feedback" crashes instead of saying "already submitted"
 - **Location:** `feedbackController.js:99-111, 142-159, 181-186`
 - **What's the problem?** The database blocks duplicate feedback (good), but the code
   doesn't catch that specific error, so a second submit surfaces as a confusing 500
   server error instead of a clean "you already submitted feedback" message.
 - **Fix (in plain English):** Catch the duplicate-key error (`ER_DUP_ENTRY`)
   specifically and return 409 `ALREADY_SUBMITTED`.
+- **Status: RESOLVED 2026-08-19.** The `INSERT` is wrapped in a dedicated
+  `try/catch` that maps `ER_DUP_ENTRY` to `409 ALREADY_SUBMITTED`; the pre-check
+  now returns the same code. See FIXES.md #46.
 
-### 6.3 [MEDIUM][agent-verified] Admins aren't notified about new feedback or new bookings
+### 6.3 [MEDIUM][agent-verified][resolved] Admins aren't notified about new feedback or new bookings
 - **Location:** `feedbackController.js:167-175` (activity log only)
 - **What's the problem?** New feedback and new booking submissions are only written to
   the activity log; no in-app notification or email reaches the admin (other features
@@ -769,14 +776,22 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Fire a notification to admins on new feedback and new
   booking submission (mirror the pattern already used in the menu-change and payment
   controllers).
+- **Status: RESOLVED 2026-08-19.** `createFeedback` now creates an in-app
+  notification for every admin and emails each one via new
+  `sendNewFeedbackAdminEmail`; `createBooking` does the same via new
+  `sendNewBookingAdminEmail` (both best-effort/non-fatal). See FIXES.md #47.
 
-### 6.4 [LOW][agent-verified] A dead admin endpoint is imported but never wired up
+### 6.4 [LOW][agent-verified][resolved] A dead admin endpoint is imported but never wired up
 - **Location:** `feedbackRoutes.js:7` + `feedbackController.js:285`
 - **What's the problem?** An admin feedback endpoint is imported in the routes file but
   never actually routed. It's dormant code — and if someone wires it up later without a
   guard, it could be an access-control hole (IDOR).
 - **Fix (in plain English):** Remove the unused import, or wire the route with a proper
   ownership/role guard so the latent hole can't be activated later.
+- **Status: RESOLVED 2026-08-19.** The dead `getFeedbackForBooking` controller
+  (which had **no** ownership check) was deleted and its unused import removed from
+  `feedbackRoutes.js`; the owner-gated `getFeedback` route is the only per-booking
+  lookup. See FIXES.md #48.
 
 ---
 
@@ -893,7 +908,9 @@ completions.
   overdue when the due date has *actually* passed (`paymentController.js:29`).
 - **One-booking-per-day** is enforced with a database gap-lock
   (`availabilityService.js:92-156`) plus the `idx_bookings_event_date` index.
-- **Feedback eligibility** matches the documented rule (`feedbackController.js:74-96`).
+- **Feedback eligibility** — now only `Completed` or `Cancelled` bookings are
+  reviewable, matching the owner-confirmed rule (6.1; `feedbackController.js`,
+  `CustomerDashboard.tsx`).
 - **Statistics counting** uses the correct statuses; nothing double-counted.
 - **Blocked dates** correctly block booking through the shared availability source.
 - **`getBookingPayments`** never leaks Cloudinary public ids / file paths.
@@ -909,6 +926,6 @@ completions.
 2. **2.3** CancellationCharge dead-end, **2.1 + 2.2** surcharge duplicate + admin verify
    gap, **2.4** overdue-cancel scope.
 3. **7.1** announcement 500, **3.1** venue-setup resubmit dead end.
-4. **4.1** self-reactivation, **6.1** public feedback gate, **1.3** money-less
+4. **4.1** self-reactivation, **1.3** money-less
    promotion.
 5. **§10** timezone consolidation, then **5.1** stale KB seed, **2.11** overdue sweeps.

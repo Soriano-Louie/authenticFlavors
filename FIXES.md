@@ -305,6 +305,30 @@ Generated: 2026-08-18
 
 ---
 
+## §6 Feedback fixes (review 6.1-6.4, addressed 2026-08-19)
+
+### 45. Feedback is now only for Completed or Cancelled bookings — and the public page only shows those (no `approved` flag)
+- [x] Files: `backend/src/controllers/feedbackController.js`, `src/app/pages/CustomerDashboard.tsx`, `src/app/pages/PublicFeedbackPage.tsx`, `src/app/api/publicFeedbackApi.ts`
+- Fix: Per the owner's decision, we dropped the review's suggested `approved` flag. Feedback can only be **submitted** for a booking whose status is `Completed` or `Cancelled` (the "past-dated Confirmed" and "user-cancelled only" rules are removed on both backend `createFeedback` and the two `CustomerDashboard.tsx` eligibility filters). The public endpoint `GET /api/feedbacks/public` now filters `WHERE b.booking_status IN ('Completed','Cancelled')` and strips the internal `booking_status` / `cancellation_requested_at` fields from its payload (interface updated in `publicFeedbackApi.ts`; the "Booking Cancelled" chip removed from `PublicFeedbackPage.tsx`).
+- Status: FIXED 2026-08-19.
+
+### 46. Double-clicking "submit feedback" now says "already submitted" instead of crashing
+- [x] File: `backend/src/controllers/feedbackController.js`
+- Fix: The feedback `INSERT` is wrapped in a dedicated `try/catch` that catches `ER_DUP_ENTRY` (the `uq_feedback_booking` unique key) and returns `409 ALREADY_SUBMITTED` instead of letting it surface as a 500. The pre-check was renamed to the same `ALREADY_SUBMITTED` code for consistency.
+- Status: FIXED 2026-08-19.
+
+### 47. Admins are now notified (in-app + email) about new feedback and new bookings
+- [x] Files: `backend/src/controllers/feedbackController.js`, `backend/src/controllers/bookingController.js`, `backend/src/services/emailService.js`
+- Fix: `createFeedback` now loops all `role = 'Admin'` users and creates an in-app notification (`type: feedback_submitted`, links to `/admin`) plus a `sendNewFeedbackAdminEmail` for each. `createBooking` mirrors this with `type: booking_submitted` and a new `sendNewBookingAdminEmail` (booking ref, customer, event date, guests, price). All best-effort/non-fatal (`.catch`), matching the menu-change pattern.
+- Status: FIXED 2026-08-19.
+
+### 48. Removed the dormant, unguarded `getFeedbackForBooking` endpoint (latent IDOR)
+- [x] Files: `backend/src/controllers/feedbackController.js`, `backend/src/routes/feedbackRoutes.js`
+- Fix: The exported but never-routed `getFeedbackForBooking` had no ownership check — if someone wired it later it would leak any booking's feedback. The function was deleted and its unused import removed from `feedbackRoutes.js`. The owner-gated `getFeedback` route remains the only per-booking lookup.
+- Status: FIXED 2026-08-19.
+
+---
+
 ## What is already solid (do not touch unless asked)
 - Auth: bcrypt, email-verification with hashed codes, token-version single-session enforcement, DB-role re-read, rate limiting on auth/upload/chat, magic-byte image validation, CORS fail-closed.
 - getBookingPayments explicit column projection.

@@ -1,13 +1,11 @@
 import { pool } from "../db/pool.js";
 import {
-  toPhilippineDateString,
-  getPhilippineDateString,
-} from "../utils/timezone.js";
-import {
   analyzeFeedback,
   generateOverallFeedbackAnalysis,
 } from "../services/geminiService.js";
 import { logActivity } from "../services/activityService.js";
+import { createNotification } from "../services/notificationService.js";
+import { sendNewFeedbackAdminEmail } from "../services/emailService.js";
 
 export async function createFeedback(req, res) {
   try {
@@ -61,7 +59,7 @@ export async function createFeedback(req, res) {
 
     const booking = bookings[0];
 
-    // Re-fetch with event_date to check date for Confirmed bookings
+    // Fetch package name for the AI analysis
     const [fullBooking] = await pool.query(
       `SELECT b.event_date, p.package_name 
        FROM bookings b 
@@ -71,26 +69,20 @@ export async function createFeedback(req, res) {
     );
 
     const packageName = fullBooking[0]?.package_name || "Catering Event";
-    const isConfirmedWithPastDate =
-      booking.booking_status === "Confirmed" &&
-      fullBooking.length > 0 &&
-      toPhilippineDateString(fullBooking[0].event_date) <
-        getPhilippineDateString();
-    // A booking cancelled by the user (not admin-rejected) is also reviewable
-    const isUserCancelled =
-      booking.booking_status === "Cancelled" &&
-      booking.cancellation_requested_at != null;
 
+    // Feedback is only allowed for events that already concluded: a booking
+    // that reached 'Completed' (the event happened) or 'Cancelled' (the event
+    // never happened). Pending / Reserved / Confirmed bookings are not
+    // reviewable, and we don't guess at "event date has passed".
     if (
       booking.booking_status !== "Completed" &&
-      !isConfirmedWithPastDate &&
-      !isUserCancelled
+      booking.booking_status !== "Cancelled"
     ) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
           message:
-            "Feedback can only be submitted for completed or user-cancelled bookings.",
+            "Feedback can only be submitted after your event has been completed or cancelled.",
         },
       });
     }
@@ -104,7 +96,7 @@ export async function createFeedback(req, res) {
     if (existingFeedback.length > 0) {
       return res.status(409).json({
         error: {
-          code: "DUPLICATE_FEEDBACK",
+          code: "ALREADY_SUBMITTED",
           message: "Feedback has already been submitted for this booking.",
         },
       });
@@ -139,29 +131,46 @@ export async function createFeedback(req, res) {
     }
 
     // Insert feedback with AI fields populated directly
-    const [result] = await pool.query(
-      `INSERT INTO feedback (
-        booking_id, user_id, rating, comment,
-        sentiment_status, sentiment_score, sentiment_summary, key_topics, actionable_insights,
-        is_analyzed, analyzed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW())`,
-      [
-        booking_id,
-        userId,
-        parsedRating,
-        trimmedComment,
-        aiResult.sentiment,
-        aiResult.sentiment_score,
-        aiResult.summary,
-        JSON.stringify(aiResult.key_topics),
-        JSON.stringify(aiResult.actionable_insights),
-      ],
-    );
+    let insertId;
+    try {
+      const [result] = await pool.query(
+        `INSERT INTO feedback (
+          booking_id, user_id, rating, comment,
+          sentiment_status, sentiment_score, sentiment_summary, key_topics, actionable_insights,
+          is_analyzed, analyzed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, NOW())`,
+        [
+          booking_id,
+          userId,
+          parsedRating,
+          trimmedComment,
+          aiResult.sentiment,
+          aiResult.sentiment_score,
+          aiResult.summary,
+          JSON.stringify(aiResult.key_topics),
+          JSON.stringify(aiResult.actionable_insights),
+        ],
+      );
+      insertId = result.insertId;
+    } catch (err) {
+      // The `uq_feedback_booking` unique key blocks a duplicate submission that
+      // slipped past the pre-check (e.g. a double-click) — surface it as a clean
+      // 409 instead of a confusing 500 server error.
+      if (err && err.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          error: {
+            code: "ALREADY_SUBMITTED",
+            message: "Feedback has already been submitted for this booking.",
+          },
+        });
+      }
+      throw err;
+    }
 
     // Fetch the created feedback
     const [created] = await pool.query(
       "SELECT * FROM feedback WHERE feedback_id = ?",
-      [result.insertId],
+      [insertId],
     );
 
     logActivity({
@@ -173,6 +182,45 @@ export async function createFeedback(req, res) {
     }).catch((err) =>
       console.error("Activity logging failed (feedback_submitted):", err),
     );
+
+    // Notify all admins via in-app notification & email
+    const [admins] = await pool.query(
+      "SELECT user_id, email FROM users WHERE role = 'Admin'",
+    );
+
+    if (admins.length > 0) {
+      const [customerRows] = await pool.query(
+        "SELECT first_name, last_name FROM users WHERE user_id = ? LIMIT 1",
+        [userId],
+      );
+      const customerName =
+        `${customerRows[0]?.first_name || ""} ${customerRows[0]?.last_name || ""}`.trim() ||
+        "Customer";
+      const refStr = booking.booking_reference || `#${booking_id}`;
+
+      for (const admin of admins) {
+        createNotification({
+          userId: admin.user_id,
+          bookingId: Number(booking_id),
+          type: "feedback_submitted",
+          title: "New Feedback Submitted",
+          message: `Customer ${customerName} submitted ${parsedRating}-star feedback for booking ${refStr}.`,
+          link: `/admin`,
+          sendEmailFn: () =>
+            sendNewFeedbackAdminEmail(admin.email, {
+              booking_reference: refStr,
+              customer_name: customerName,
+              rating: parsedRating,
+              package_name: packageName,
+            }),
+        }).catch((err) =>
+          console.error(
+            "Admin notification failed (feedback_submitted):",
+            err,
+          ),
+        );
+      }
+    }
 
     res.status(201).json({
       message: "Feedback submitted successfully.",
@@ -250,12 +298,12 @@ export async function getPublicFeedbacks(req, res) {
       `SELECT f.feedback_id, f.rating, f.comment, f.submitted_at,
               f.is_analyzed, f.sentiment_status, f.sentiment_score, f.sentiment_summary,
               u.first_name, u.last_name,
-              p.package_name,
-              b.booking_status, b.cancellation_requested_at
+              p.package_name
        FROM feedback f
        JOIN users u ON f.user_id = u.user_id
        JOIN bookings b ON f.booking_id = b.booking_id
        JOIN packages p ON b.package_id = p.package_id
+       WHERE b.booking_status IN ('Completed', 'Cancelled')
        ORDER BY f.submitted_at DESC`,
     );
 
@@ -266,8 +314,6 @@ export async function getPublicFeedbacks(req, res) {
       submitted_at: row.submitted_at,
       customer_name: `${row.first_name} ${row.last_name}`.trim(),
       package_name: row.package_name,
-      booking_status: row.booking_status,
-      cancellation_requested_at: row.cancellation_requested_at,
     }));
 
     res.status(200).json({ feedbacks });
@@ -277,46 +323,6 @@ export async function getPublicFeedbacks(req, res) {
       error: {
         code: "SERVER_ERROR",
         message: "Failed to retrieve feedbacks.",
-      },
-    });
-  }
-}
-
-export async function getFeedbackForBooking(req, res) {
-  try {
-    const { bookingId } = req.params;
-    const parsedBookingId = Number(bookingId);
-
-    if (!parsedBookingId) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Booking ID is required." },
-      });
-    }
-
-    // Fetch feedback along with booking details for display
-    const [feedbackRows] = await pool.query(
-      `SELECT f.*, b.package_id, b.event_date, b.start_time, b.number_of_pax,
-              p.package_name
-       FROM feedback f
-       JOIN bookings b ON f.booking_id = b.booking_id
-       JOIN packages p ON b.package_id = p.package_id
-       WHERE f.booking_id = ?`,
-      [parsedBookingId],
-    );
-
-    if (feedbackRows.length === 0) {
-      return res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Feedback not found." },
-      });
-    }
-
-    res.status(200).json({ feedback: feedbackRows[0] });
-  } catch (error) {
-    console.error("Get feedback for booking failed:", error);
-    res.status(500).json({
-      error: {
-        code: "DATABASE_ERROR",
-        message: "Failed to retrieve feedback.",
       },
     });
   }

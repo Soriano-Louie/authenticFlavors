@@ -18,6 +18,7 @@ import {
   sendBookingConfirmedEmail,
   sendBookingRejectedEmail,
   sendBookingCancelledEmail,
+  sendNewBookingAdminEmail,
 } from "../services/emailService.js";
 import {
   ACTIVE_BOOKING_STATUSES,
@@ -535,6 +536,34 @@ export async function createBooking(req, res) {
           guest_count: number_of_pax,
         }),
     }).catch((err) => console.error("Notification creation failed:", err));
+
+    // Notify all admins via in-app notification & email
+    const [admins] = await pool.query(
+      "SELECT user_id, email FROM users WHERE role = 'Admin'",
+    );
+
+    if (admins.length > 0) {
+      for (const admin of admins) {
+        createNotification({
+          userId: admin.user_id,
+          bookingId: booking_id,
+          type: "booking_submitted",
+          title: "New Booking Received",
+          message: `${contact_name} submitted booking ${refStr} (${event_date}, ${number_of_pax} guests) — awaiting review.`,
+          link: `/admin`,
+          sendEmailFn: () =>
+            sendNewBookingAdminEmail(admin.email, {
+              booking_reference: refStr,
+              customer_name: contact_name,
+              event_date,
+              guest_count: number_of_pax,
+              total_price: calculatedTotal,
+            }),
+        }).catch((err) =>
+          console.error("Admin notification failed (booking_submitted):", err),
+        );
+      }
+    }
 
     res.status(201).json({
       message: "Booking submitted successfully.",
