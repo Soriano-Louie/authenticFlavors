@@ -81,19 +81,15 @@ function validateDiscountFields(hasDiscount, body) {
     if (!pkgId || !Number.isInteger(pkgId) || pkgId <= 0) {
       return "Please choose a package for this discount.";
     }
-    const pax = body.discount_pax_count;
-    if (pax !== undefined && pax !== null && pax !== "") {
-      const paxCount = Number(pax);
-      if (!Number.isInteger(paxCount) || paxCount <= 0) {
-        return "Guest count tier must be a positive integer.";
-      }
+  }
+  // Both "package" and "all" scopes support an optional pax-count filter.
+  // When present it narrows the promotion to that specific guest-count tier.
+  const pax = body.discount_pax_count;
+  if (pax !== undefined && pax !== null && pax !== "") {
+    const paxCount = Number(pax);
+    if (!Number.isInteger(paxCount) || paxCount <= 0) {
+      return "Guest count tier must be a positive integer.";
     }
-  } else if (
-    body.discount_pax_count !== undefined &&
-    body.discount_pax_count !== null &&
-    body.discount_pax_count !== ""
-  ) {
-    return "A guest count tier can only be set for a package-specific discount.";
   }
   return null;
 }
@@ -288,7 +284,9 @@ export async function createAnnouncement(req, res, next) {
         hasDiscount && String(discount_scope).trim() === "package"
           ? Number(discount_package_id)
           : null,
-        isPackageScoped ? selectedPax : null,
+        // Persist pax_count for both "package" and "all" scopes — a pax filter
+        // on "all" means "apply to every package that has this guest-count tier".
+        hasDiscount && selectedPax ? selectedPax : null,
       ],
     );
 
@@ -408,19 +406,20 @@ export async function updateAnnouncement(req, res, next) {
         hasDiscount && String(discount_scope ?? "").trim() === "package"
           ? Number(discount_package_id)
           : null;
-      const scopedToPackage =
-        hasDiscount && String(discount_scope ?? "").trim() === "package";
+      // Persist pax_count for both "package" and "all" scopes.
       effectiveDiscountPaxCount =
-        scopedToPackage &&
+        hasDiscount &&
         discount_pax_count !== undefined &&
         discount_pax_count !== null &&
         discount_pax_count !== ""
           ? Number(discount_pax_count)
           : null;
 
-      // When a guest-count tier is attached, verify it exists in the target
-      // package's price list before saving.
-      if (effectiveDiscountPaxCount != null) {
+      // When scope is "package" and a tier is attached, verify the tier
+      // exists in the target package's price list before saving.
+      const scopedToPackage =
+        hasDiscount && String(discount_scope ?? "").trim() === "package";
+      if (scopedToPackage && effectiveDiscountPaxCount != null) {
         const [tierRows] = await pool.query(
           "SELECT pax_count FROM package_pricing WHERE package_id = ? AND pax_count = ?",
           [effectiveDiscountPackageId, effectiveDiscountPaxCount],

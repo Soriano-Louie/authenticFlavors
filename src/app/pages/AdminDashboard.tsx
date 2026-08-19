@@ -5366,6 +5366,17 @@ function AnnouncementsSection() {
           return false;
         }
       }
+      // Validate pax_count for "all" scope too (if provided)
+      if (
+        formData.discount_scope === "all" &&
+        formData.discount_pax_count
+      ) {
+        const chosenPax = Number(formData.discount_pax_count);
+        if (!Number.isFinite(chosenPax) || !Number.isInteger(chosenPax) || chosenPax <= 0) {
+          toast.error("Guest count must be a positive whole number.");
+          return false;
+        }
+      }
     }
     return true;
   };
@@ -5414,11 +5425,13 @@ function AnnouncementsSection() {
             "discount_package_id",
             formData.discount_package_id,
           );
-          payload.append(
-            "discount_pax_count",
-            formData.discount_pax_count || "",
-          );
         }
+        // Send discount_pax_count for both "package" and "all" scopes — an
+        // "all"-scope discount may optionally target one guest-count tier.
+        payload.append(
+          "discount_pax_count",
+          formData.discount_pax_count || "",
+        );
       } else if (editingAnn) {
         // Explicitly clear any existing promotion when the toggle is off.
         payload.append("discount_type", "");
@@ -6099,6 +6112,7 @@ function AnnouncementsSection() {
                               ...prev,
                               discount_scope: "all",
                               discount_package_id: "",
+                              discount_pax_count: "",
                             }))
                           }
                           className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
@@ -6115,6 +6129,7 @@ function AnnouncementsSection() {
                             setFormData((prev) => ({
                               ...prev,
                               discount_scope: "package",
+                              discount_pax_count: "",
                             }))
                           }
                           className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
@@ -6127,11 +6142,53 @@ function AnnouncementsSection() {
                         </button>
                       </div>
                       {formData.discount_scope === "all" && (
-                        <p className="mt-2 text-xs text-[#C4541A] font-['Lato'] bg-[#C4541A]/10 px-3 py-2 rounded-lg">
-                          This discount applies to <strong>every package and
-                          every guest-count tier</strong> in the price lists —
-                          all packages, all pax counts.
-                        </p>
+                        <div className="space-y-3 mt-3">
+                          {/* Prominent warning */}
+                          <div className="rounded-xl border-2 border-[#C4541A]/40 bg-[#C4541A]/10 px-4 py-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-[#C4541A] flex items-center justify-center">
+                                <span className="text-white text-[10px] font-bold">!</span>
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-[#C4541A] font-['Lato']">
+                                  Applies to ALL packages
+                                </p>
+                                <p className="text-xs text-[#2C1810]/70 font-['Lato'] mt-0.5 leading-relaxed">
+                                  This discount will be applied to{" "}
+                                  <strong>every package across every guest-count tier</strong>{" "}
+                                  unless you specify a guest count below. This may significantly
+                                  reduce revenue — use with caution.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Optional pax filter for "all" scope */}
+                          <div>
+                            <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                              Limit to Guest Count Tier (Optional)
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={formData.discount_pax_count}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  discount_pax_count: e.target.value,
+                                }))
+                              }
+                              placeholder="e.g. 50"
+                              className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                            />
+                            <p className="mt-1.5 text-xs text-[#2C1810]/50 font-['Lato']">
+                              Leave blank to apply to every guest-count tier across all packages.
+                              If a value is entered, only packages that have this exact guest count in
+                              their price list will receive the discount.
+                            </p>
+                          </div>
+                        </div>
                       )}
                     </div>
 
