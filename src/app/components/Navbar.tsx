@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Menu, X, User, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
@@ -18,6 +18,7 @@ const NAV_LINKS = [
 ];
 
 export function Navbar() {
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
