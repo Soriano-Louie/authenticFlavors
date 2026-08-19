@@ -1186,18 +1186,29 @@ export async function seedDatabaseIfEmpty() {
           OR (question = 'Can I split the bill?' AND answer LIKE '%allow bill splitting for groups%')`,
     );
 
-    // Collapse duplicate questions: keep the newest (highest kb_id), drop the
-    // rest. Do this in two steps because MySQL rejects alias references in
-    // the ON clause of a multi-table DELETE.
+    // Collapse duplicate questions: keep the newest row (highest PK value),
+    // drop the rest. We first discover the actual PK column name because
+    // databases created before the kb_id rename migration may still use 'id'.
+    const [[pkRow]] = await connection.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'knowledge_base'
+         AND COLUMN_KEY = 'PRI'
+       LIMIT 1`,
+    );
+    const pkCol = pkRow?.COLUMN_NAME ?? "kb_id";
     const [duplicateRows] = await connection.query(
-      `SELECT kb.kb_id
+      `SELECT kb.${pkCol} AS pk_id
        FROM knowledge_base kb
-       JOIN knowledge_base kb2 ON kb.question = kb2.question AND kb.kb_id < kb2.kb_id`,
+       JOIN knowledge_base kb2
+         ON kb.question = kb2.question AND kb.${pkCol} < kb2.${pkCol}`,
     );
     if (duplicateRows.length > 0) {
-      await connection.query("DELETE FROM knowledge_base WHERE kb_id IN (?)", [
-        duplicateRows.map((r) => r.kb_id),
-      ]);
+      await connection.query(
+        `DELETE FROM knowledge_base WHERE ${pkCol} IN (?)`,
+        [duplicateRows.map((r) => r.pk_id)],
+      );
     }
 
     // Idempotently correct FAQ answers that previously contradicted the
