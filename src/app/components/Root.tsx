@@ -11,7 +11,14 @@ export function Root() {
   const location = useLocation();
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    };
+    scrollToTop();
+    const timer = setTimeout(scrollToTop, 10);
+    return () => clearTimeout(timer);
   }, [location.pathname, location.search]);
 
   const hideChrome = NO_CHROME_PATHS.some((p) =>
