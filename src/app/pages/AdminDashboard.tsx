@@ -361,9 +361,15 @@ export function AdminDashboard() {
                 <NotificationCenter
                   isLightHeader={true}
                   onSelectTab={(tab) => {
-                    if (tab === "bookings") setActiveSection("bookings");
-                    else if (tab === "payments") setActiveSection("bookings");
-                    else if (tab === "venue") setActiveSection("bookings");
+                    if (tab === "bookings" || tab === "payments" || tab === "venue") {
+                      setActiveSection("bookings");
+                    } else if (tab === "menu-changes") {
+                      setActiveSection("menu-changes");
+                    } else if (tab === "feedback") {
+                      setActiveSection("feedback");
+                    } else {
+                      setActiveSection("overview");
+                    }
                   }}
                 />
                 <div className="flex items-center gap-2.5">

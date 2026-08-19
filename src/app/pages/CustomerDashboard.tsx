@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ChangeEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
 import {
@@ -265,7 +265,15 @@ export function CustomerDashboard() {
     verifyEmailChange,
   } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("Overview");
+  const location = useLocation();
+  const locationState = location.state as { targetTab?: string } | null;
+  const initialTab =
+    locationState?.targetTab === "payments" ||
+    locationState?.targetTab === "venue" ||
+    locationState?.targetTab === "bookings"
+      ? "My Events"
+      : "Overview";
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Profile photo upload state
   const [photoUploading, setPhotoUploading] = useState(false);

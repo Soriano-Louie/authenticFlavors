@@ -123,7 +123,15 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-3">
             {loggedIn ? (
               <>
-                <NotificationCenter />
+                <NotificationCenter
+                  onSelectTab={(tab) => {
+                    if (user?.role === "Admin") {
+                      navigate("/admin");
+                    } else {
+                      navigate("/dashboard", { state: { targetTab: tab } });
+                    }
+                  }}
+                />
                 <Link
                   to={user?.role === "Admin" ? "/admin" : "/dashboard"}
                   className="flex items-center gap-1.5 text-[#F5F0E8]/80 hover:text-[#C8922A] transition-colors text-base font-['Lato']"

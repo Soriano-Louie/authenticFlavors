@@ -19,6 +19,7 @@ import {
   X,
   Loader2,
   FileText,
+  ArrowRight,
 } from "lucide-react";
 
 interface NotificationCenterProps {
@@ -402,6 +403,50 @@ export function NotificationCenter({
               </div>
             </div>
 
+            {/* Footer with Redirection Action Button */}
+            <div className="px-5 pb-5 pt-2 border-t border-[#C8922A]/10 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] hover:bg-[#F5F0E8] transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  const type = selectedNotification.type;
+                  let targetTab = "bookings";
+
+                  if (type.includes("payment")) {
+                    targetTab = "payments";
+                  } else if (type.includes("venue_setup")) {
+                    targetTab = "venue";
+                  } else if (type.includes("menu")) {
+                    targetTab = "menu-changes";
+                  } else if (type.includes("feedback")) {
+                    targetTab = "feedback";
+                  }
+
+                  if (onSelectTab) {
+                    onSelectTab(targetTab, selectedNotification.booking_id);
+                  } else {
+                    navigate(user?.role === "Admin" ? "/admin" : "/dashboard");
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <span>
+                  {selectedNotification.type.includes("menu")
+                    ? "View Menu Requests"
+                    : selectedNotification.type.includes("feedback")
+                      ? "View Feedback"
+                      : selectedNotification.type.includes("payment")
+                        ? "View Payment Details"
+                        : "View Booking"}
+                </span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
       )}
