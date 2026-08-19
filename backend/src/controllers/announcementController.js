@@ -4,6 +4,72 @@ import {
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
 import { getPhilippineDateTimeString } from "../utils/timezone.js";
+import { getActiveDiscount } from "../services/promotionService.js";
+
+/**
+ * GET /api/announcements/promotion?package_id=X
+ * Returns the live promotion (if any) that applies to a package, so the
+ * booking page can preview the discounted price. Public, read-only.
+ */
+export async function getActivePromotion(req, res, next) {
+  try {
+    const packageId = Number(req.query.package_id);
+    if (!packageId || !Number.isInteger(packageId) || packageId <= 0) {
+      return res.status(400).json({
+        error: { message: "A valid package_id is required." },
+      });
+    }
+
+    const discount = await getActiveDiscount(packageId);
+    if (!discount) {
+      return res.json({ has_discount: false });
+    }
+
+    res.json({
+      has_discount: true,
+      type: discount.type,
+      value: discount.value,
+      scope: discount.scope,
+      package_id: discount.package_id,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Validates the discount fields submitted for an announcement. Throws nothing;
+ * returns an error message string, or null when valid.
+ */
+function validateDiscountFields(hasDiscount, body) {
+  if (!hasDiscount) return null;
+  if (
+    body.discount_type !== "percentage" &&
+    body.discount_type !== "fixed"
+  ) {
+    return "Discount type must be 'percentage' or 'fixed'.";
+  }
+  const value = Number(body.discount_value);
+  if (!Number.isFinite(value) || value <= 0) {
+    return "Discount value must be a positive number.";
+  }
+  if (body.discount_type === "percentage" && value > 100) {
+    return "Percentage discount cannot exceed 100%.";
+  }
+  if (
+    body.discount_scope !== "all" &&
+    body.discount_scope !== "package"
+  ) {
+    return "Discount scope must be 'all' or 'package'.";
+  }
+  if (body.discount_scope === "package") {
+    const pkgId = Number(body.discount_package_id);
+    if (!pkgId || !Number.isInteger(pkgId) || pkgId <= 0) {
+      return "Please choose a package for this discount.";
+    }
+  }
+  return null;
+}
 
 /**
  * GET /api/announcements/public
@@ -15,7 +81,8 @@ export async function getPublicAnnouncements(req, res, next) {
     // server's own timezone (publish_date is stored as PH wall-clock time).
     const nowPH = getPhilippineDateTimeString();
     const [announcements] = await pool.query(
-      `SELECT id, title, content, publish_date, expiration_date, image_url, created_at
+      `SELECT id, title, content, publish_date, expiration_date, image_url, created_at,
+              discount_type, discount_value, discount_scope, discount_package_id
        FROM announcements
        WHERE status = 'published'
          AND publish_date <= ?
@@ -40,6 +107,7 @@ export async function getAdminAnnouncements(req, res, next) {
     const [rows] = await pool.query(
       `SELECT id, title, content, status, publish_date, expiration_date,
               image_url, image_public_id, created_at, updated_at,
+              discount_type, discount_value, discount_scope, discount_package_id,
               (status = 'published' AND expiration_date IS NOT NULL AND expiration_date < ?) AS is_expired
        FROM announcements
        ORDER BY created_at DESC`,
@@ -64,7 +132,17 @@ export async function getAdminAnnouncements(req, res, next) {
  */
 export async function createAnnouncement(req, res, next) {
   try {
-    const { title, content, status, publish_date, expiration_date } = req.body;
+    const {
+      title,
+      content,
+      status,
+      publish_date,
+      expiration_date,
+      discount_type,
+      discount_value,
+      discount_scope,
+      discount_package_id,
+    } = req.body;
 
     // Validation
     if (!title || !title.trim()) {
@@ -84,6 +162,19 @@ export async function createAnnouncement(req, res, next) {
       return res
         .status(400)
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
+    }
+
+    // A promotion is any announcement that carries discount fields. All four
+    // fields must be consistent (type, value, scope and, when scoped to a
+    // package, a valid package id); a fully-empty discount is a plain post.
+    const hasDiscount =
+      discount_type ||
+      discount_value ||
+      discount_scope ||
+      discount_package_id;
+    const discountError = validateDiscountFields(hasDiscount, req.body);
+    if (discountError) {
+      return res.status(400).json({ error: { message: discountError } });
     }
 
     // Validate expiration_date is after publish_date
@@ -111,8 +202,12 @@ export async function createAnnouncement(req, res, next) {
     }
 
     const [result] = await pool.query(
-      `INSERT INTO announcements (title, content, status, publish_date, expiration_date, image_url, image_public_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO announcements (
+         title, content, status, publish_date, expiration_date,
+         image_url, image_public_id,
+         discount_type, discount_value, discount_scope, discount_package_id
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title.trim(),
         content.trim(),
@@ -121,6 +216,14 @@ export async function createAnnouncement(req, res, next) {
         expiration_date || null,
         imageUrl,
         imagePublicId,
+        hasDiscount ? String(discount_type).trim() || null : null,
+        hasDiscount
+          ? String(discount_value).trim() || null
+          : null,
+        hasDiscount ? String(discount_scope).trim() || null : null,
+        hasDiscount && String(discount_scope).trim() === "package"
+          ? Number(discount_package_id)
+          : null,
       ],
     );
 
@@ -152,6 +255,10 @@ export async function updateAnnouncement(req, res, next) {
       publish_date,
       expiration_date,
       remove_image,
+      discount_type,
+      discount_value,
+      discount_scope,
+      discount_package_id,
     } = req.body;
 
     // Check if announcement exists
@@ -183,6 +290,55 @@ export async function updateAnnouncement(req, res, next) {
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
     }
 
+    // Discount fields are optional on update. When any discount field is
+    // present they are replaced as a group (all four must be consistent, and
+    // an empty group clears the promotion); when none is present the existing
+    // discount (if any) is preserved, so simple edits/status toggles are safe.
+    const current = existing[0];
+    const discountFieldsPresent = [
+      discount_type,
+      discount_value,
+      discount_scope,
+      discount_package_id,
+    ].some((v) => v !== undefined);
+
+    let effectiveDiscountType = current.discount_type;
+    let effectiveDiscountValue = current.discount_value;
+    let effectiveDiscountScope = current.discount_scope;
+    let effectiveDiscountPackageId = current.discount_package_id;
+
+    if (discountFieldsPresent) {
+      const hasDiscount =
+        discount_type ||
+        discount_value ||
+        discount_scope ||
+        discount_package_id;
+      const discountError = validateDiscountFields(hasDiscount, {
+        ...req.body,
+        discount_type: discount_type ?? null,
+        discount_value: discount_value ?? null,
+        discount_scope: discount_scope ?? null,
+        discount_package_id: discount_package_id ?? null,
+      });
+      if (discountError) {
+        return res.status(400).json({ error: { message: discountError } });
+      }
+
+      effectiveDiscountType = hasDiscount
+        ? String(discount_type ?? "").trim() || null
+        : null;
+      effectiveDiscountValue = hasDiscount
+        ? String(discount_value ?? "").trim() || null
+        : null;
+      effectiveDiscountScope = hasDiscount
+        ? String(discount_scope ?? "").trim() || null
+        : null;
+      effectiveDiscountPackageId =
+        hasDiscount && String(discount_scope ?? "").trim() === "package"
+          ? Number(discount_package_id)
+          : null;
+    }
+
     // Validate expiration_date is after publish_date on EVERY update — even
     // when only one of the two dates is being changed. The effective publish
     // date is either the submitted one or the currently stored one, so a
@@ -204,7 +360,6 @@ export async function updateAnnouncement(req, res, next) {
       }
     }
 
-    const current = existing[0];
     let imageUrl = current.image_url;
     let imagePublicId = current.image_public_id;
 
@@ -231,7 +386,9 @@ export async function updateAnnouncement(req, res, next) {
     await pool.query(
       `UPDATE announcements
        SET title = ?, content = ?, status = ?, publish_date = ?,
-           expiration_date = ?, image_url = ?, image_public_id = ?
+           expiration_date = ?, image_url = ?, image_public_id = ?,
+           discount_type = ?, discount_value = ?, discount_scope = ?,
+           discount_package_id = ?
        WHERE id = ?`,
       [
         (title || current.title).trim(),
@@ -243,6 +400,10 @@ export async function updateAnnouncement(req, res, next) {
           : current.expiration_date,
         imageUrl,
         imagePublicId,
+        effectiveDiscountType,
+        effectiveDiscountValue,
+        effectiveDiscountScope,
+        effectiveDiscountPackageId,
         id,
       ],
     );

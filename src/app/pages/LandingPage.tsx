@@ -549,6 +549,14 @@ export function LandingPage() {
                       <span className="rounded-full border border-[#C8922A]/20 bg-[#C8922A]/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-[#C8922A] font-['Lato']">
                         Announcement
                       </span>
+                      {Number(ann.discount_value) > 0 && (
+                        <span className="rounded-full border border-[#C4541A]/30 bg-[#C4541A]/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-[#C4541A] font-['Lato']">
+                          Promo:{" "}
+                          {ann.discount_type === "percentage"
+                            ? `${ann.discount_value}% OFF`
+                            : `₱${Number(ann.discount_value).toLocaleString()} OFF`}
+                        </span>
+                      )}
                     </div>
                     <p
                       className="mt-2 text-sm leading-relaxed text-[#F5F0E8]/72 font-['Lato']"

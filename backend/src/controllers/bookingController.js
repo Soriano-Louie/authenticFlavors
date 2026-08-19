@@ -26,6 +26,11 @@ import {
   isDateUnavailable,
   isDateUnavailableForUpdate,
 } from "../services/availabilityService.js";
+import {
+  getActiveDiscount,
+  applyDiscount,
+  discountAmount,
+} from "../services/promotionService.js";
 
 // Booking lead-time window (in Philippine days) required before an event.
 const MIN_EVENT_LEAD_DAYS = 14;
@@ -362,17 +367,24 @@ export async function createBooking(req, res) {
       additionalPriceSum += parseFloat(itemRows[0].additional_price || 0);
     }
 
-    // 7. Verify price matching. The total is always recomputed from the DB and
-    // the client value is never trusted for pricing; when one is supplied it
-    // must match, so the check cannot be bypassed with falsy/empty input.
+    // 7. Apply any live promotion and verify price matching. The pre-discount
+    // total is always recomputed from the DB and the client value is never
+    // trusted for pricing; the active announcement discount is also resolved
+    // server-side (never read from the body), so the client cannot fake one.
+    // When the client supplies a total_price it must match the discounted
+    // total, so the check cannot be bypassed with falsy/empty input.
     const calculatedTotal = basePrice + additionalPriceSum;
+    const activeDiscount = await getActiveDiscount(package_id);
+    const discountedTotal = applyDiscount(calculatedTotal, activeDiscount);
+    const discountApplied = discountAmount(calculatedTotal, activeDiscount);
+
     const hasSubmittedPrice =
       req.body.total_price !== undefined &&
       req.body.total_price !== null &&
       req.body.total_price !== "";
     if (
       hasSubmittedPrice &&
-      Math.abs(calculatedTotal - parseFloat(req.body.total_price)) > 0.01
+      Math.abs(discountedTotal - parseFloat(req.body.total_price)) > 0.01
     ) {
       await connection.rollback();
       return res.status(400).json({
@@ -418,9 +430,12 @@ export async function createBooking(req, res) {
       allergy_notes || null,
       dietary_notes || null,
       summaryData,
-      calculatedTotal,
+      discountedTotal,
       ai_booking_reference,
       booking_reference,
+      discountedTotal,
+      activeDiscount?.announcement_id ?? null,
+      discountApplied,
       calculatedTotal,
     ];
     let bookingResult;
@@ -431,8 +446,9 @@ export async function createBooking(req, res) {
             user_id, package_id, event_type_id, custom_event_type, venue_setup_id, number_of_pax,
             contact_name, contact_email, contact_phone, event_date, start_time,
             allergy_notes, dietary_notes, booking_status, booking_summary, total_price,
-            ai_booking_reference, booking_reference, amount_paid, remaining_balance
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?)`,
+            ai_booking_reference, booking_reference, amount_paid, remaining_balance,
+            discount_announcement_id, discount_amount, original_total
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, 0.00, ?, ?, ?, ?)`,
           bookingParams(),
         );
         break;
@@ -480,7 +496,10 @@ export async function createBooking(req, res) {
     const downPaymentDueDate = downPaymentDateObj.toISOString().split("T")[0];
 
     const reservationFee = 5000.0;
-    const remainingVal = Math.max(calculatedTotal - reservationFee, 0);
+    // The reservation fee never exceeds the discounted total (a heavy discount
+    // or cheap package can't produce a reservation larger than the booking).
+    const reservationVal = Math.min(reservationFee, discountedTotal);
+    const remainingVal = Math.max(discountedTotal - reservationVal, 0);
     const downPaymentVal = Math.max(0, remainingVal * 0.5);
     const finalPaymentVal = Math.max(0, remainingVal - downPaymentVal);
 
@@ -488,7 +507,7 @@ export async function createBooking(req, res) {
     await connection.query(
       `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
        VALUES (?, 'Reservation', ?, ?, 'Pending')`,
-      [booking_id, reservationFee, reservationDueDate],
+      [booking_id, reservationVal, reservationDueDate],
     );
 
     // Insert Down Payment
@@ -557,7 +576,7 @@ export async function createBooking(req, res) {
               customer_name: contact_name,
               event_date,
               guest_count: number_of_pax,
-              total_price: calculatedTotal,
+              total_price: discountedTotal,
             }),
         }).catch((err) =>
           console.error("Admin notification failed (booking_submitted):", err),
@@ -568,7 +587,13 @@ export async function createBooking(req, res) {
     res.status(201).json({
       message: "Booking submitted successfully.",
       booking_id,
-      total_price: calculatedTotal,
+      total_price: discountedTotal,
+      ...(activeDiscount
+        ? {
+            discount_amount: discountApplied,
+            original_total: calculatedTotal,
+          }
+        : {}),
       ...(ai_booking_reference ? { ai_booking_reference } : {}),
       ...(booking_reference ? { booking_reference } : {}),
     });

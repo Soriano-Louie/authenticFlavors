@@ -9,6 +9,10 @@ export interface Announcement {
   expiration_date: string | null;
   image_url: string | null;
   image_public_id?: string | null;
+  discount_type?: "percentage" | "fixed" | null;
+  discount_value?: number | string | null;
+  discount_scope?: "all" | "package" | null;
+  discount_package_id?: number | null;
   is_expired?: boolean;
   created_at: string;
   updated_at?: string;

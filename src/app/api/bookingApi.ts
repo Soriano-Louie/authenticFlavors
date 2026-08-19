@@ -98,6 +98,29 @@ export function getBookingConfig(): Promise<BookingConfig> {
   return request<BookingConfig>("/api/bookings/config");
 }
 
+export interface Promotion {
+  has_discount: boolean;
+  type?: "percentage" | "fixed";
+  value?: number;
+  scope?: "all" | "package";
+  package_id?: number | null;
+}
+
+export function getPromotion(packageId: number | string): Promise<Promotion> {
+  return request<Promotion>(
+    `/api/announcements/promotion?package_id=${encodeURIComponent(packageId)}`,
+  );
+}
+
+export function applyPromotion(total: number, promo: Promotion | null): number {
+  if (!promo?.has_discount || !promo.value || promo.value <= 0) return total;
+  const amount =
+    promo.type === "percentage"
+      ? Math.round(total * (promo.value / 100) * 100) / 100
+      : Math.min(promo.value, total);
+  return Math.max(0, total - amount);
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string; code?: string };

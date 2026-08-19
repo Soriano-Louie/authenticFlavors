@@ -31,7 +31,7 @@ import {
   getConversations,
   getMessages,
 } from "../api/chatApi";
-import { createBooking, getDateAvailability } from "../api/bookingApi";
+import { createBooking, getDateAvailability, getPromotion, applyPromotion } from "../api/bookingApi";
 import { getBookingPayments } from "../api/paymentApi";
 import {
   getPackages,
@@ -532,13 +532,26 @@ export function ChatBot() {
       estimatedPrice = match ? match.price : pkg.pricing[0].price;
     }
 
-    setWizard((prev) => ({
-      ...prev,
-      packageId: pkg.package_id,
-      packageName: pkg.package_name,
-      totalPrice: estimatedPrice,
-      step: "DATE",
-    }));
+    // Estimate any live promotion so the shown price (and the total_price
+    // submitted later) agrees with the backend's authoritative calc.
+    getPromotion(pkg.package_id)
+      .then((promo) => {
+        if (promo?.has_discount) {
+          estimatedPrice = applyPromotion(estimatedPrice, promo);
+        }
+      })
+      .catch(() => {
+        // Promo lookup must never block the flow; backend re-checks anyway.
+      })
+      .finally(() => {
+        setWizard((prev) => ({
+          ...prev,
+          packageId: pkg.package_id,
+          packageName: pkg.package_name,
+          totalPrice: estimatedPrice,
+          step: "DATE",
+        }));
+      });
 
     addBotMessage(
       `Excellent choice! **${pkg.package_name}** selected. 📅 Please pick your **Event Date**:`,

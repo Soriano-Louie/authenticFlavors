@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getPublicAnnouncements,
+  getActivePromotion,
   getAdminAnnouncements,
   createAnnouncement,
   updateAnnouncement,
@@ -13,6 +14,9 @@ export const announcementRouter = Router();
 
 // Public route — fetches published announcements for landing page
 announcementRouter.get("/announcements/public", getPublicAnnouncements);
+
+// Public route — live discount currently applying to a package
+announcementRouter.get("/announcements/promotion", getActivePromotion);
 
 // Admin routes (protected)
 announcementRouter.get(

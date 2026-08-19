@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
-import { createBooking, getBookingConfig, getDateAvailability } from "../api/bookingApi";
+import { createBooking, getBookingConfig, getDateAvailability, getPromotion, applyPromotion } from "../api/bookingApi";
 import { BookingRules } from "../components/BookingRules";
 import {
   getPackages,
@@ -413,6 +413,40 @@ export function BookingPage() {
     }, base);
   }, [selectedPackage, guestCount, menuChoices]);
 
+  // Live promotion currently applying to the selected package. Refetched on
+  // every package change (and on mount), matching the server's authoritative
+  // resolveActiveDiscount() so the estimated and submitted totals agree.
+  const [activePromo, setActivePromo] = useState<import("../api/bookingApi").Promotion | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    setActivePromo(null);
+    if (selectedPackage?.id) {
+      getPromotion(selectedPackage.id)
+        .then((promo) => {
+          if (!cancelled) setActivePromo(promo);
+        })
+        .catch(() => {
+          // Promotion lookup failure must never block booking — the backend
+          // independently re-checks and recalculates on submit.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPackage?.id]);
+
+  const discountAmount = useMemo(() => {
+    if (!activePromo?.has_discount) return 0;
+    return Math.max(0, totalEstimate - applyPromotion(totalEstimate, activePromo));
+  }, [activePromo, totalEstimate]);
+
+  const discountedTotal = useMemo(
+    () => applyPromotion(totalEstimate, activePromo),
+    [totalEstimate, activePromo],
+  );
+
   const menuSurcharge = useMemo(() => {
     if (!selectedPackage?.menuItemPrices) return 0;
     return Object.values(menuChoices).reduce((sum, itemName) => {
@@ -574,7 +608,7 @@ export function BookingPage() {
         allergy_notes: fullAllergyNotes || undefined,
         dietary_notes: specialRequests || undefined,
         menu_selections: menuSelectionNames,
-        total_price: totalEstimate,
+        total_price: discountedTotal,
       });
 
       toast.success("Booking submitted successfully!");
@@ -941,9 +975,21 @@ export function BookingPage() {
                     <p className="text-xs uppercase tracking-[0.24em] text-[#C8922A] font-['Lato'] mb-1">
                       Estimated total
                     </p>
-                    <p className="text-3xl font-semibold text-[#C8922A]">
-                      ₱{totalEstimate.toLocaleString()}
-                    </p>
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <p className="text-3xl font-semibold text-[#C8922A]">
+                        ₱{discountedTotal.toLocaleString()}
+                      </p>
+                      {activePromo?.has_discount && discountAmount > 0 && (
+                        <span className="text-xs font-bold uppercase tracking-wide text-[#C4541A] bg-[#C4541A]/10 px-2 py-0.5 rounded-full">
+                          Promo −₱{discountAmount.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {activePromo?.has_discount && discountAmount > 0 && (
+                      <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1 line-through">
+                        ₱{totalEstimate.toLocaleString()}
+                      </p>
+                    )}
                     <p className="text-xs text-[#2C1810]/50 font-['Lato'] mt-1">
                       for {guestCount} pax
                     </p>
@@ -1367,14 +1413,24 @@ export function BookingPage() {
                       <span>+₱{menuSurcharge.toLocaleString()}</span>
                     </div>
                   )}
-                  <div className="border-t border-[#C8922A]/30 pt-3 flex justify-between">
+                  <div className="border-t border-[#C8922A]/30 pt-3 flex justify-between items-baseline">
                     <span className="font-['Playfair_Display'] text-lg">
                       Estimated Total
                     </span>
                     <span className="text-[#C8922A] font-['Playfair_Display'] text-xl">
-                      ₱{totalEstimate.toLocaleString()}
+                      ₱{discountedTotal.toLocaleString()}
                     </span>
                   </div>
+                  {activePromo?.has_discount && discountAmount > 0 && (
+                    <div className="flex justify-between text-sm font-['Lato'] mb-3 -mt-2">
+                      <span className="text-[#F5F0E8]/60 line-through">
+                        ₱{totalEstimate.toLocaleString()}
+                      </span>
+                      <span className="text-[#C4541A] font-semibold">
+                        Promo −₱{discountAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
                   <p className="text-[#F5F0E8]/40 text-xs font-['Lato'] mt-1">
                     * Final price confirmed upon booking approval
                   </p>

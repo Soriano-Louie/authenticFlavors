@@ -124,6 +124,7 @@ import {
   ChevronDown,
   RotateCcw,
   CalendarX,
+  AlertTriangle,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -4916,6 +4917,11 @@ interface AnnouncementFormData {
   status: "draft" | "published";
   publish_date: string;
   expiration_date: string;
+  discount_enabled: boolean;
+  discount_type: "percentage" | "fixed" | "";
+  discount_value: string;
+  discount_scope: "all" | "package" | "";
+  discount_package_id: string;
 }
 
 const emptyAnnouncementForm: AnnouncementFormData = {
@@ -4924,6 +4930,11 @@ const emptyAnnouncementForm: AnnouncementFormData = {
   status: "draft",
   publish_date: new Date().toISOString().slice(0, 16),
   expiration_date: "",
+  discount_enabled: false,
+  discount_type: "",
+  discount_value: "",
+  discount_scope: "",
+  discount_package_id: "",
 };
 
 // ──────────────────────────────────────────
@@ -5180,6 +5191,8 @@ function AnnouncementsSection() {
   const [showModal, setShowModal] = useState(false);
   const [editingAnn, setEditingAnn] = useState<Announcement | null>(null);
   const [deletingAnn, setDeletingAnn] = useState<Announcement | null>(null);
+  const [confirmNoExpiry, setConfirmNoExpiry] = useState(false);
+  const [publishNoExpiry, setPublishNoExpiry] = useState<Announcement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<AnnouncementFormData>(
     emptyAnnouncementForm,
@@ -5192,6 +5205,7 @@ function AnnouncementsSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [adminPackages, setAdminPackages] = useState<PackageType[]>([]);
 
   const fetchAnnouncements = async () => {
     if (!accessToken) return;
@@ -5209,6 +5223,16 @@ function AnnouncementsSection() {
 
   useEffect(() => {
     fetchAnnouncements();
+  }, [accessToken]);
+
+  // Load package list for the promotion "apply to package" picker.
+  useEffect(() => {
+    if (!accessToken) return;
+    getAdminPackages(accessToken)
+      .then((res) => setAdminPackages(res.packages))
+      .catch(() => {
+        // Package picker is optional; a failed load just disables it.
+      });
   }, [accessToken]);
 
   const handleAdd = () => {
@@ -5231,6 +5255,13 @@ function AnnouncementsSection() {
       expiration_date: ann.expiration_date
         ? new Date(ann.expiration_date).toISOString().slice(0, 16)
         : "",
+      discount_enabled:
+        !!ann.discount_type && Number(ann.discount_value) > 0,
+      discount_type: (ann.discount_type as "percentage" | "fixed" | "") ?? "",
+      discount_value: ann.discount_value != null ? String(ann.discount_value) : "",
+      discount_scope: (ann.discount_scope as "all" | "package" | "") ?? "",
+      discount_package_id:
+        ann.discount_package_id != null ? String(ann.discount_package_id) : "",
     });
     setImageFile(null);
     setImagePreview(ann.image_url || null);
@@ -5243,6 +5274,7 @@ function AnnouncementsSection() {
     setFormData(emptyAnnouncementForm);
     setImageFile(null);
     setImagePreview(null);
+    setConfirmNoExpiry(false);
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5284,12 +5316,53 @@ function AnnouncementsSection() {
       toast.error("Expiration date must be after publish date.");
       return false;
     }
+
+    if (formData.discount_enabled) {
+      if (!formData.discount_type) {
+        toast.error("Choose a discount type.");
+        return false;
+      }
+      const value = Number(formData.discount_value);
+      if (!Number.isFinite(value) || value <= 0) {
+        toast.error("Discount value must be a positive number.");
+        return false;
+      }
+      if (formData.discount_type === "percentage" && value > 100) {
+        toast.error("Percentage discount cannot exceed 100%.");
+        return false;
+      }
+      if (!formData.discount_scope) {
+        toast.error("Choose where the discount applies.");
+        return false;
+      }
+      if (
+        formData.discount_scope === "package" &&
+        !formData.discount_package_id
+      ) {
+        toast.error("Please choose a package for this discount.");
+        return false;
+      }
+    }
     return true;
   };
 
   const handleSubmit = async () => {
     if (!accessToken) return;
     if (!validateForm()) return;
+
+    // A promotion without an expiration date stays live indefinitely. Ask the
+    // admin to confirm before proceeding — an open-ended discount is easy to
+    // forget about and expensive to leave running by accident.
+    if (formData.discount_enabled && !formData.expiration_date) {
+      setConfirmNoExpiry(true);
+      return;
+    }
+
+    await performSubmit();
+  };
+
+  const performSubmit = async () => {
+    if (!accessToken) return;
 
     setSubmitting(true);
     try {
@@ -5306,6 +5379,24 @@ function AnnouncementsSection() {
 
       if (imageFile) {
         payload.append("image", imageFile);
+      }
+
+      if (formData.discount_enabled) {
+        payload.append("discount_type", formData.discount_type);
+        payload.append("discount_value", formData.discount_value);
+        payload.append("discount_scope", formData.discount_scope);
+        if (formData.discount_scope === "package") {
+          payload.append(
+            "discount_package_id",
+            formData.discount_package_id,
+          );
+        }
+      } else if (editingAnn) {
+        // Explicitly clear any existing promotion when the toggle is off.
+        payload.append("discount_type", "");
+        payload.append("discount_value", "");
+        payload.append("discount_scope", "");
+        payload.append("discount_package_id", "");
       }
 
       // If editing and image was removed (no new file and preview cleared)
@@ -5333,6 +5424,23 @@ function AnnouncementsSection() {
   const handleToggleStatus = async (ann: Announcement) => {
     if (!accessToken) return;
     const newStatus = ann.status === "published" ? "draft" : "published";
+
+    // Publishing a promotion without an expiration date turns on an open-ended
+    // discount — ask for confirmation the same way the create/edit form does.
+    if (
+      newStatus === "published" &&
+      Number(ann.discount_value) > 0 &&
+      !ann.expiration_date
+    ) {
+      setPublishNoExpiry(ann);
+      return;
+    }
+
+    await performToggleStatus(ann, newStatus);
+  };
+
+  const performToggleStatus = async (ann: Announcement, newStatus: string) => {
+    if (!accessToken) return;
     try {
       const payload = new FormData();
       payload.append("title", ann.title);
@@ -5583,6 +5691,14 @@ function AnnouncementsSection() {
                   >
                     {ann.status}
                   </span>
+                  {Number(ann.discount_value) > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 bg-[#C4541A]/10 text-[#C4541A]">
+                      {ann.discount_type === "percentage"
+                        ? `${ann.discount_value}% OFF`
+                        : `₱${Number(ann.discount_value).toLocaleString()} OFF`}
+                      {ann.discount_scope === "package" ? " · One Package" : ""}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-[#2C1810]/60 font-['Lato'] line-clamp-2 mb-1.5">
                   {ann.content}
@@ -5817,6 +5933,185 @@ function AnnouncementsSection() {
                 )}
               </div>
 
+              {/* Promotion */}
+              <div className="rounded-2xl border border-[#C4541A]/20 bg-[#C4541A]/5 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[#2C1810] font-['Lato']">
+                      Promotion Discount
+                    </p>
+                    <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                      Automatically discounts matching bookings.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        discount_enabled: !prev.discount_enabled,
+                      }))
+                    }
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      formData.discount_enabled
+                        ? "bg-[#C4541A]"
+                        : "bg-[#2C1810]/20"
+                    }`}
+                    aria-pressed={formData.discount_enabled}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        formData.discount_enabled
+                          ? "translate-x-5"
+                          : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {formData.discount_enabled && (
+                  <div className="space-y-4">
+                    {/* Discount type */}
+                    <div>
+                      <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                        Discount Type
+                      </label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              discount_type: "percentage",
+                            }))
+                          }
+                          className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
+                            formData.discount_type === "percentage"
+                              ? "bg-[#C4541A]/15 border-[#C4541A]/40 text-[#C4541A]"
+                              : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                          }`}
+                        >
+                          Percentage (%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              discount_type: "fixed",
+                            }))
+                          }
+                          className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
+                            formData.discount_type === "fixed"
+                              ? "bg-[#C4541A]/15 border-[#C4541A]/40 text-[#C4541A]"
+                              : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                          }`}
+                        >
+                          Fixed Amount (₱)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Discount value */}
+                    <div>
+                      <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                        {formData.discount_type === "percentage"
+                          ? "Discount Value (%)"
+                          : "Discount Value (₱)"}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.discount_value}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            discount_value: e.target.value,
+                          }))
+                        }
+                        placeholder={
+                          formData.discount_type === "percentage"
+                            ? "e.g. 10"
+                            : "e.g. 5000"
+                        }
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                      />
+                    </div>
+
+                    {/* Discount scope */}
+                    <div>
+                      <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                        Applies To
+                      </label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              discount_scope: "all",
+                              discount_package_id: "",
+                            }))
+                          }
+                          className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
+                            formData.discount_scope === "all"
+                              ? "bg-[#C4541A]/15 border-[#C4541A]/40 text-[#C4541A]"
+                              : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                          }`}
+                        >
+                          All Packages
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              discount_scope: "package",
+                            }))
+                          }
+                          className={`flex-1 py-2 rounded-xl text-sm font-['Lato'] border transition-all ${
+                            formData.discount_scope === "package"
+                              ? "bg-[#C4541A]/15 border-[#C4541A]/40 text-[#C4541A]"
+                              : "bg-white border-[#2C1810]/10 text-[#2C1810]/50 hover:border-[#2C1810]/20"
+                          }`}
+                        >
+                          Specific Package
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Package picker */}
+                    {formData.discount_scope === "package" && (
+                      <div>
+                        <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                          Package
+                        </label>
+                        <select
+                          value={formData.discount_package_id}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              discount_package_id: e.target.value,
+                            }))
+                          }
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                        >
+                          <option value="">Select a package…</option>
+                          {adminPackages.map((pkg) => (
+                            <option
+                              key={pkg.package_id}
+                              value={String(pkg.package_id)}
+                            >
+                              {pkg.package_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Image */}
               <div>
                 <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
@@ -5883,6 +6178,112 @@ function AnnouncementsSection() {
       )}
 
       {/* Delete Confirmation Modal */}
+      {confirmNoExpiry && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#C8922A]/10 flex items-center justify-center">
+                  <AlertTriangle size={22} className="text-[#C8922A]" />
+                </div>
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+                  No Expiration Date
+                </h3>
+              </div>
+              <p className="text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
+                This promotion has{" "}
+                <strong>no expiration date</strong>, so it will keep applying
+                to matching bookings indefinitely (including in the past if it
+                was already live).
+              </p>
+              <p className="text-xs text-[#2C1810]/45 font-['Lato']">
+                We recommend setting an expiration date so the discount doesn't
+                run longer than intended.
+              </p>
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setConfirmNoExpiry(false);
+                  setFormData((prev) => ({
+                    ...prev,
+                    expiration_date: new Date().toISOString().slice(0, 16),
+                  }));
+                }}
+                disabled={submitting}
+                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-['Lato'] bg-white border border-[#2C1810]/15 text-[#2C1810]/70 hover:border-[#C4541A]/40 hover:text-[#C4541A] transition-colors"
+              >
+                Set Expiration
+              </button>
+              <button
+                onClick={() => setConfirmNoExpiry(false)}
+                disabled={submitting}
+                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmNoExpiry(false);
+                  performSubmit();
+                }}
+                disabled={submitting}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submitting && <Loader2 size={16} className="animate-spin" />}
+                Continue Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {publishNoExpiry && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#C8922A]/10 flex items-center justify-center">
+                  <AlertTriangle size={22} className="text-[#C8922A]" />
+                </div>
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-lg">
+                  Publish Promotion Without Expiry?
+                </h3>
+              </div>
+              <p className="text-sm text-[#2C1810]/60 font-['Lato'] mb-2">
+                <strong>"{publishNoExpiry.title}"</strong> is a promotion with{" "}
+                <strong>no expiration date</strong>. Publishing it will apply
+                the discount to matching bookings indefinitely.
+              </p>
+              <p className="text-xs text-[#2C1810]/45 font-['Lato']">
+                We recommend editing it first to set an expiration date.
+              </p>
+            </div>
+            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setPublishNoExpiry(null)}
+                disabled={submitting}
+                className="px-5 py-2.5 rounded-xl text-sm font-['Lato'] text-[#2C1810]/60 hover:text-[#2C1810] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const ann = publishNoExpiry;
+                  setPublishNoExpiry(null);
+                  performToggleStatus(ann, "published");
+                }}
+                disabled={submitting}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {submitting && <Loader2 size={16} className="animate-spin" />}
+                Publish Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deletingAnn && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full shadow-2xl">

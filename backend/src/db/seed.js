@@ -64,6 +64,40 @@ export async function seedDatabaseIfEmpty() {
       );
     }
 
+    // 0.6b Add discount tracking columns to bookings table so a booking keeps a
+    // record of the promotion it was created under (auditable, and survives the
+    // promo's expiration). total_price stays the customer-facing price; the
+    // original (pre-discount) total and the discount amount are stored beside it.
+    const [discountColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings'",
+      [connection.config.database],
+    );
+    const discountColumnNames = discountColumns.map((c) => c.COLUMN_NAME);
+    const discountAlterations = [];
+    if (!discountColumnNames.includes("discount_announcement_id")) {
+      discountAlterations.push(
+        "ADD COLUMN discount_announcement_id INT NULL",
+      );
+    }
+    if (!discountColumnNames.includes("discount_amount")) {
+      discountAlterations.push(
+        "ADD COLUMN discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00",
+      );
+    }
+    if (!discountColumnNames.includes("original_total")) {
+      discountAlterations.push(
+        "ADD COLUMN original_total DECIMAL(10,2) NULL",
+      );
+    }
+    if (discountAlterations.length > 0) {
+      const alterSql = `ALTER TABLE bookings ${discountAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log(
+        "[MIGRATION] Added discount tracking columns to bookings table:",
+        discountAlterations.join(", "),
+      );
+    }
+
     const [aiRefColumn] = await connection.query(
       `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS 
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'ai_booking_reference'`,
@@ -528,6 +562,48 @@ export async function seedDatabaseIfEmpty() {
       )
     `);
     console.log("[MIGRATION] announcements table ensured.");
+
+    // 0.7b Add discount/promotion columns to announcements. Nullable so a
+    // plain announcement behaves exactly as before; an announcement that is a
+    // promotion sets discount_type + discount_value + discount_scope, and
+    // discount_package_id when scoped to a single package. Idempotent.
+    const [announcementDiscountColumns] = await connection.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'announcements'`,
+      [connection.config.database],
+    );
+    const announcementDiscountColumnNames = announcementDiscountColumns.map(
+      (c) => c.COLUMN_NAME,
+    );
+    const announcementAlterations = [];
+    if (!announcementDiscountColumnNames.includes("discount_type")) {
+      announcementAlterations.push(
+        "ADD COLUMN discount_type ENUM('percentage','fixed') NULL",
+      );
+    }
+    if (!announcementDiscountColumnNames.includes("discount_value")) {
+      announcementAlterations.push(
+        "ADD COLUMN discount_value DECIMAL(10,2) NULL",
+      );
+    }
+    if (!announcementDiscountColumnNames.includes("discount_scope")) {
+      announcementAlterations.push(
+        "ADD COLUMN discount_scope ENUM('all','package') NULL",
+      );
+    }
+    if (!announcementDiscountColumnNames.includes("discount_package_id")) {
+      announcementAlterations.push(
+        "ADD COLUMN discount_package_id INT NULL",
+      );
+    }
+    if (announcementAlterations.length > 0) {
+      const alterSql = `ALTER TABLE announcements ${announcementAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log(
+        "[MIGRATION] Added discount columns to announcements table:",
+        announcementAlterations.join(", "),
+      );
+    }
 
     // 0.8 Create menu_change_requests table
     await connection.query(`
