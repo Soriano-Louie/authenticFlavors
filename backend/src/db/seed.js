@@ -566,7 +566,9 @@ export async function seedDatabaseIfEmpty() {
     // 0.7b Add discount/promotion columns to announcements. Nullable so a
     // plain announcement behaves exactly as before; an announcement that is a
     // promotion sets discount_type + discount_value + discount_scope, and
-    // discount_package_id when scoped to a single package. Idempotent.
+    // discount_package_id when scoped to a single package. discount_pax_count
+    // narrows a package-scoped promotion to one guest-count tier: NULL means
+    // every tier of the package qualifies. Idempotent.
     const [announcementDiscountColumns] = await connection.query(
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'announcements'`,
@@ -594,6 +596,11 @@ export async function seedDatabaseIfEmpty() {
     if (!announcementDiscountColumnNames.includes("discount_package_id")) {
       announcementAlterations.push(
         "ADD COLUMN discount_package_id INT NULL",
+      );
+    }
+    if (!announcementDiscountColumnNames.includes("discount_pax_count")) {
+      announcementAlterations.push(
+        "ADD COLUMN discount_pax_count INT NULL",
       );
     }
     if (announcementAlterations.length > 0) {

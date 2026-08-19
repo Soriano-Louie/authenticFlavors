@@ -413,9 +413,10 @@ export function BookingPage() {
     }, base);
   }, [selectedPackage, guestCount, menuChoices]);
 
-  // Live promotion currently applying to the selected package. Refetched on
-  // every package change (and on mount), matching the server's authoritative
-  // resolveActiveDiscount() so the estimated and submitted totals agree.
+  // Live promotion currently applying to the selected package and guest count.
+  // Refetched whenever either changes, matching the server's authoritative
+  // getActiveDiscount() so the estimated and submitted totals agree. A
+  // promotion scoped to a specific tier only shows for that guest count.
   const [activePromo, setActivePromo] = useState<import("../api/bookingApi").Promotion | null>(
     null,
   );
@@ -423,7 +424,7 @@ export function BookingPage() {
     let cancelled = false;
     setActivePromo(null);
     if (selectedPackage?.id) {
-      getPromotion(selectedPackage.id)
+      getPromotion(selectedPackage.id, guestCount)
         .then((promo) => {
           if (!cancelled) setActivePromo(promo);
         })
@@ -435,7 +436,7 @@ export function BookingPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPackage?.id]);
+  }, [selectedPackage?.id, guestCount]);
 
   const discountAmount = useMemo(() => {
     if (!activePromo?.has_discount) return 0;

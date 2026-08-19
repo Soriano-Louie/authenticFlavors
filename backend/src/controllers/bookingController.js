@@ -374,7 +374,10 @@ export async function createBooking(req, res) {
     // When the client supplies a total_price it must match the discounted
     // total, so the check cannot be bypassed with falsy/empty input.
     const calculatedTotal = basePrice + additionalPriceSum;
-    const activeDiscount = await getActiveDiscount(package_id);
+    const activeDiscount = await getActiveDiscount(
+      package_id,
+      number_of_pax,
+    );
     const discountedTotal = applyDiscount(calculatedTotal, activeDiscount);
     const discountApplied = discountAmount(calculatedTotal, activeDiscount);
 

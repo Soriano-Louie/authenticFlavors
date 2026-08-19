@@ -7,14 +7,16 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
  *    clock) are eligible: publish_date <= now AND (expiration is null OR
  *    expiration >= now).
  *  - A package-specific discount beats an "all packages" discount.
+ *  - A tier-specific discount of a package beats the same package's every-tier
+ *    discount; pax_count NULL means the discount applies to ALL tiers.
  *  - Among equally-scoped candidates, the larger discount wins.
  *  - Ties resolve to the most recently created announcement.
  * Returns null when nothing applies, so callers keep today's behavior.
  */
-export async function getActiveDiscount(packageId) {
+export async function getActiveDiscount(packageId, paxCount = null) {
   const nowPH = getPhilippineDateTimeString();
   const [rows] = await pool.query(
-    `SELECT id, discount_type, discount_value, discount_scope, discount_package_id
+    `SELECT id, discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count
      FROM announcements
      WHERE status = 'published'
        AND discount_type IS NOT NULL
@@ -23,12 +25,16 @@ export async function getActiveDiscount(packageId) {
        AND publish_date <= ?
        AND (expiration_date IS NULL OR expiration_date >= ?)
        AND (discount_scope = 'all' OR discount_package_id = ?)
+       AND (discount_pax_count IS NULL OR discount_pax_count = ?)
      ORDER BY
        CASE WHEN discount_scope = 'package' THEN 0 ELSE 1 END ASC,
+       ${paxCount != null ? "CASE WHEN discount_pax_count IS NOT NULL THEN 0 ELSE 1 END ASC," : ""}
        discount_value DESC,
        id DESC
      LIMIT 1`,
-    [nowPH, nowPH, packageId],
+    paxCount != null
+      ? [nowPH, nowPH, packageId, paxCount]
+      : [nowPH, nowPH, packageId],
   );
 
   if (rows.length === 0) return null;
@@ -38,6 +44,7 @@ export async function getActiveDiscount(packageId) {
     value: Number(row.discount_value),
     scope: row.discount_scope,
     package_id: row.discount_package_id ?? null,
+    pax_count: row.discount_pax_count ?? null,
     announcement_id: row.id,
   };
 }

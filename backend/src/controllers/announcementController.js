@@ -7,9 +7,10 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
 import { getActiveDiscount } from "../services/promotionService.js";
 
 /**
- * GET /api/announcements/promotion?package_id=X
- * Returns the live promotion (if any) that applies to a package, so the
- * booking page can preview the discounted price. Public, read-only.
+ * GET /api/announcements/promotion?package_id=X&pax_count=N
+ * Returns the live promotion (if any) that applies to a package at a guest
+ * count, so the booking page can preview the discounted price. Public,
+ * read-only. pax_count is optional; when omitted, coverage is any tier.
  */
 export async function getActivePromotion(req, res, next) {
   try {
@@ -20,7 +21,17 @@ export async function getActivePromotion(req, res, next) {
       });
     }
 
-    const discount = await getActiveDiscount(packageId);
+    let paxCount = null;
+    if (req.query.pax_count !== undefined && req.query.pax_count !== "") {
+      paxCount = Number(req.query.pax_count);
+      if (!Number.isInteger(paxCount) || paxCount <= 0) {
+        return res.status(400).json({
+          error: { message: "pax_count must be a positive integer." },
+        });
+      }
+    }
+
+    const discount = await getActiveDiscount(packageId, paxCount);
     if (!discount) {
       return res.json({ has_discount: false });
     }
@@ -31,6 +42,7 @@ export async function getActivePromotion(req, res, next) {
       value: discount.value,
       scope: discount.scope,
       package_id: discount.package_id,
+      pax_count: discount.pax_count,
     });
   } catch (error) {
     next(error);
@@ -39,7 +51,9 @@ export async function getActivePromotion(req, res, next) {
 
 /**
  * Validates the discount fields submitted for an announcement. Throws nothing;
- * returns an error message string, or null when valid.
+ * returns an error message string, or null when valid. Only checks shape —
+ * cross-checks against the DB (e.g. the tier exists for the package) run in
+ * the create/update handlers.
  */
 function validateDiscountFields(hasDiscount, body) {
   if (!hasDiscount) return null;
@@ -67,6 +81,19 @@ function validateDiscountFields(hasDiscount, body) {
     if (!pkgId || !Number.isInteger(pkgId) || pkgId <= 0) {
       return "Please choose a package for this discount.";
     }
+    const pax = body.discount_pax_count;
+    if (pax !== undefined && pax !== null && pax !== "") {
+      const paxCount = Number(pax);
+      if (!Number.isInteger(paxCount) || paxCount <= 0) {
+        return "Guest count tier must be a positive integer.";
+      }
+    }
+  } else if (
+    body.discount_pax_count !== undefined &&
+    body.discount_pax_count !== null &&
+    body.discount_pax_count !== ""
+  ) {
+    return "A guest count tier can only be set for a package-specific discount.";
   }
   return null;
 }
@@ -82,7 +109,7 @@ export async function getPublicAnnouncements(req, res, next) {
     const nowPH = getPhilippineDateTimeString();
     const [announcements] = await pool.query(
       `SELECT id, title, content, publish_date, expiration_date, image_url, created_at,
-              discount_type, discount_value, discount_scope, discount_package_id
+              discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count
        FROM announcements
        WHERE status = 'published'
          AND publish_date <= ?
@@ -107,7 +134,7 @@ export async function getAdminAnnouncements(req, res, next) {
     const [rows] = await pool.query(
       `SELECT id, title, content, status, publish_date, expiration_date,
               image_url, image_public_id, created_at, updated_at,
-              discount_type, discount_value, discount_scope, discount_package_id,
+              discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count,
               (status = 'published' AND expiration_date IS NOT NULL AND expiration_date < ?) AS is_expired
        FROM announcements
        ORDER BY created_at DESC`,
@@ -142,6 +169,7 @@ export async function createAnnouncement(req, res, next) {
       discount_value,
       discount_scope,
       discount_package_id,
+      discount_pax_count,
     } = req.body;
 
     // Validation
@@ -189,6 +217,30 @@ export async function createAnnouncement(req, res, next) {
       return res.status(400).json({ error: { message: discountError } });
     }
 
+    // When a guest-count tier is attached to a package-specific promotion,
+    // make sure that tier actually exists in the package's price list.
+    const isPackageScoped = hasDiscount && discount_scope === "package";
+    const selectedPax =
+      discount_pax_count !== undefined &&
+      discount_pax_count !== null &&
+      discount_pax_count !== ""
+        ? Number(discount_pax_count)
+        : null;
+    if (isPackageScoped && selectedPax) {
+      const [tierRows] = await pool.query(
+        "SELECT pax_count FROM package_pricing WHERE package_id = ? AND pax_count = ?",
+        [Number(discount_package_id), selectedPax],
+      );
+      if (tierRows.length === 0) {
+        return res.status(400).json({
+          error: {
+            message:
+              "The selected guest count tier is not available for this package.",
+          },
+        });
+      }
+    }
+
     // Validate expiration_date is after publish_date
     if (expiration_date) {
       // publish_date is required above, so it is safe to build this Date.
@@ -217,9 +269,9 @@ export async function createAnnouncement(req, res, next) {
       `INSERT INTO announcements (
          title, content, status, publish_date, expiration_date,
          image_url, image_public_id,
-         discount_type, discount_value, discount_scope, discount_package_id
+         discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title.trim(),
         content.trim(),
@@ -236,6 +288,7 @@ export async function createAnnouncement(req, res, next) {
         hasDiscount && String(discount_scope).trim() === "package"
           ? Number(discount_package_id)
           : null,
+        isPackageScoped ? selectedPax : null,
       ],
     );
 
@@ -271,6 +324,7 @@ export async function updateAnnouncement(req, res, next) {
       discount_value,
       discount_scope,
       discount_package_id,
+      discount_pax_count,
     } = req.body;
 
     // Check if announcement exists
@@ -309,25 +363,19 @@ export async function updateAnnouncement(req, res, next) {
     const current = existing[0];
     const effectiveStatus = status || current.status;
 
-    if (
-      effectiveStatus !== "draft" &&
-      effectiveStatus !== "published"
-    ) {
-      return res
-        .status(400)
-        .json({ error: { message: "Status must be 'draft' or 'published'." } });
-    }
     const discountFieldsPresent = [
       discount_type,
       discount_value,
       discount_scope,
       discount_package_id,
+      discount_pax_count,
     ].some((v) => v !== undefined);
 
     let effectiveDiscountType = current.discount_type;
     let effectiveDiscountValue = current.discount_value;
     let effectiveDiscountScope = current.discount_scope;
     let effectiveDiscountPackageId = current.discount_package_id;
+    let effectiveDiscountPaxCount = current.discount_pax_count;
 
     if (discountFieldsPresent) {
       const hasDiscount =
@@ -341,6 +389,7 @@ export async function updateAnnouncement(req, res, next) {
         discount_value: discount_value ?? null,
         discount_scope: discount_scope ?? null,
         discount_package_id: discount_package_id ?? null,
+        discount_pax_count: discount_pax_count ?? null,
       });
       if (discountError) {
         return res.status(400).json({ error: { message: discountError } });
@@ -359,6 +408,32 @@ export async function updateAnnouncement(req, res, next) {
         hasDiscount && String(discount_scope ?? "").trim() === "package"
           ? Number(discount_package_id)
           : null;
+      const scopedToPackage =
+        hasDiscount && String(discount_scope ?? "").trim() === "package";
+      effectiveDiscountPaxCount =
+        scopedToPackage &&
+        discount_pax_count !== undefined &&
+        discount_pax_count !== null &&
+        discount_pax_count !== ""
+          ? Number(discount_pax_count)
+          : null;
+
+      // When a guest-count tier is attached, verify it exists in the target
+      // package's price list before saving.
+      if (effectiveDiscountPaxCount != null) {
+        const [tierRows] = await pool.query(
+          "SELECT pax_count FROM package_pricing WHERE package_id = ? AND pax_count = ?",
+          [effectiveDiscountPackageId, effectiveDiscountPaxCount],
+        );
+        if (tierRows.length === 0) {
+          return res.status(400).json({
+            error: {
+              message:
+                "The selected guest count tier is not available for this package.",
+            },
+          });
+        }
+      }
     }
 
     // Validate expiration_date is after publish_date on EVERY update — even
@@ -431,7 +506,7 @@ export async function updateAnnouncement(req, res, next) {
        SET title = ?, content = ?, status = ?, publish_date = ?,
            expiration_date = ?, image_url = ?, image_public_id = ?,
            discount_type = ?, discount_value = ?, discount_scope = ?,
-           discount_package_id = ?
+           discount_package_id = ?, discount_pax_count = ?
        WHERE id = ?`,
       [
         (title || current.title).trim(),
@@ -447,6 +522,7 @@ export async function updateAnnouncement(req, res, next) {
         effectiveDiscountValue,
         effectiveDiscountScope,
         effectiveDiscountPackageId,
+        effectiveDiscountPaxCount,
         id,
       ],
     );

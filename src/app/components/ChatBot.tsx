@@ -533,8 +533,9 @@ export function ChatBot() {
     }
 
     // Estimate any live promotion so the shown price (and the total_price
-    // submitted later) agrees with the backend's authoritative calc.
-    getPromotion(pkg.package_id)
+    // submitted later) agrees with the backend's authoritative calc. The pax
+    // is known at this step, so a tier-scoped discount resolves correctly.
+    getPromotion(pkg.package_id, wizard.pax)
       .then((promo) => {
         if (promo?.has_discount) {
           estimatedPrice = applyPromotion(estimatedPrice, promo);

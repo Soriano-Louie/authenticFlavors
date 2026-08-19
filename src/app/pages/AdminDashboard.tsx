@@ -4922,6 +4922,7 @@ interface AnnouncementFormData {
   discount_value: string;
   discount_scope: "all" | "package" | "";
   discount_package_id: string;
+  discount_pax_count: string;
 }
 
 const emptyAnnouncementForm: AnnouncementFormData = {
@@ -4935,6 +4936,7 @@ const emptyAnnouncementForm: AnnouncementFormData = {
   discount_value: "",
   discount_scope: "",
   discount_package_id: "",
+  discount_pax_count: "",
 };
 
 // ──────────────────────────────────────────
@@ -5262,6 +5264,8 @@ function AnnouncementsSection() {
       discount_scope: (ann.discount_scope as "all" | "package" | "") ?? "",
       discount_package_id:
         ann.discount_package_id != null ? String(ann.discount_package_id) : "",
+      discount_pax_count:
+        ann.discount_pax_count != null ? String(ann.discount_pax_count) : "",
     });
     setImageFile(null);
     setImagePreview(ann.image_url || null);
@@ -5342,6 +5346,26 @@ function AnnouncementsSection() {
         toast.error("Please choose a package for this discount.");
         return false;
       }
+      if (
+        formData.discount_scope === "package" &&
+        formData.discount_pax_count
+      ) {
+        const chosenPax = Number(formData.discount_pax_count);
+        const pkgTiers = adminPackages
+          .find(
+            (pkg) => String(pkg.package_id) === formData.discount_package_id,
+          )
+          ?.pricing?.map((t) => Number(t.pax_count));
+        if (
+          !pkgTiers ||
+          (Number.isFinite(chosenPax) && !pkgTiers.includes(chosenPax))
+        ) {
+          toast.error(
+            "The selected guest count tier is not available for this package.",
+          );
+          return false;
+        }
+      }
     }
     return true;
   };
@@ -5390,6 +5414,10 @@ function AnnouncementsSection() {
             "discount_package_id",
             formData.discount_package_id,
           );
+          payload.append(
+            "discount_pax_count",
+            formData.discount_pax_count || "",
+          );
         }
       } else if (editingAnn) {
         // Explicitly clear any existing promotion when the toggle is off.
@@ -5397,6 +5425,7 @@ function AnnouncementsSection() {
         payload.append("discount_value", "");
         payload.append("discount_scope", "");
         payload.append("discount_package_id", "");
+        payload.append("discount_pax_count", "");
       }
 
       // If editing and image was removed (no new file and preview cleared)
@@ -5697,7 +5726,7 @@ function AnnouncementsSection() {
                     {ann.title}
                   </h3>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 ${
+                    className={`text-[0.625rem] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 ${
                       ann.status === "published"
                         ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
                         : "bg-[#C8922A]/15 text-[#C8922A]"
@@ -5706,18 +5735,22 @@ function AnnouncementsSection() {
                     {ann.status}
                   </span>
                   {Number(ann.discount_value) > 0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 bg-[#C4541A]/10 text-[#C4541A]">
+                    <span className="text-[0.625rem] px-2 py-0.5 rounded-full font-['Lato'] uppercase tracking-wider flex-shrink-0 bg-[#C4541A]/10 text-[#C4541A]">
                       {ann.discount_type === "percentage"
                         ? `${ann.discount_value}% OFF`
                         : `₱${Number(ann.discount_value).toLocaleString()} OFF`}
-                      {ann.discount_scope === "package" ? " · One Package" : ""}
+                      {ann.discount_scope === "all"
+                        ? " · All Packages"
+                        : ann.discount_pax_count
+                          ? ` · ${ann.discount_pax_count} pax`
+                          : " · One Package"}
                     </span>
                   )}
                 </div>
                 <p className="text-sm text-[#2C1810]/60 font-['Lato'] line-clamp-2 mb-1.5">
                   {ann.content}
                 </p>
-                <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#2C1810]/40 font-['Lato']">
+                <div className="flex flex-wrap items-center gap-3 text-[0.625rem] text-[#2C1810]/40 font-['Lato']">
                   <span>
                     Publish:{" "}
                     {new Date(ann.publish_date).toLocaleDateString("en-US", {
@@ -5749,19 +5782,19 @@ function AnnouncementsSection() {
 
                     if (ann.status === "draft") {
                       return (
-                        <span className="px-2 py-0.5 rounded-full bg-[#C8922A]/15 text-[#C8922A] font-semibold">
+                        <span className="px-2 py-0.5 rounded-full text-[0.625rem] bg-[#C8922A]/15 text-[#C8922A] font-semibold">
                           Draft
                         </span>
                       );
                     } else if (publishDate > now) {
                       return (
-                        <span className="px-2 py-0.5 rounded-full bg-[#4A8C9C]/15 text-[#4A8C9C] font-semibold">
+                        <span className="px-2 py-0.5 rounded-full text-[0.625rem] bg-[#4A8C9C]/15 text-[#4A8C9C] font-semibold">
                           Scheduled
                         </span>
                       );
                     } else if (ann.is_expired) {
                       return (
-                        <span className="px-2 py-0.5 rounded-full bg-[#C4541A]/15 text-[#C4541A] font-semibold">
+                        <span className="px-2 py-0.5 rounded-full text-[0.625rem] bg-[#C4541A]/15 text-[#C4541A] font-semibold">
                           Expired
                         </span>
                       );
@@ -5955,7 +5988,8 @@ function AnnouncementsSection() {
                       Promotion Discount
                     </p>
                     <p className="text-xs text-[#2C1810]/50 font-['Lato']">
-                      Automatically discounts matching bookings.
+                      Automatically discounts matching bookings while active —
+                      from the publish date until the expiration date.
                     </p>
                   </div>
                   <button
@@ -6092,6 +6126,13 @@ function AnnouncementsSection() {
                           Specific Package
                         </button>
                       </div>
+                      {formData.discount_scope === "all" && (
+                        <p className="mt-2 text-xs text-[#C4541A] font-['Lato'] bg-[#C4541A]/10 px-3 py-2 rounded-lg">
+                          This discount applies to <strong>every package and
+                          every guest-count tier</strong> in the price lists —
+                          all packages, all pax counts.
+                        </p>
+                      )}
                     </div>
 
                     {/* Package picker */}
@@ -6124,6 +6165,52 @@ function AnnouncementsSection() {
                         </select>
                       </div>
                     )}
+
+                    {/* Guest-count tier picker (package scope only) */}
+                    {formData.discount_scope === "package" &&
+                      formData.discount_package_id && (
+                        <div>
+                          <label className="text-xs font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider block mb-1.5">
+                            Guest Count Tier (Optional)
+                          </label>
+                          <select
+                            value={formData.discount_pax_count}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                discount_pax_count: e.target.value,
+                              }))
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
+                          >
+                            <option value="">
+                              All guest counts (every tier)
+                            </option>
+                            {(() => {
+                              const selPkg = adminPackages.find(
+                                (pkg) =>
+                                  String(pkg.package_id) ===
+                                  formData.discount_package_id,
+                              );
+                              const tiers = (selPkg?.pricing || [])
+                                .map((t) => Number(t.pax_count))
+                                .filter((n) => !Number.isNaN(n))
+                                .sort((a, b) => a - b);
+                              return [...new Set(tiers)].map((pax) => (
+                                <option key={pax} value={String(pax)}>
+                                  {pax} pax
+                                </option>
+                              ));
+                            })()}
+                          </select>
+                          <p className="mt-1.5 text-xs text-[#2C1810]/50 font-['Lato']">
+                            Optional: limit this discount to a single pax tier
+                            of the selected package. Leave on "All guest
+                            counts" to apply it to the package's entire price
+                            list.
+                          </p>
+                        </div>
+                      )}
                   </div>
                 )}
               </div>

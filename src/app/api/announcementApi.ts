@@ -13,6 +13,7 @@ export interface Announcement {
   discount_value?: number | string | null;
   discount_scope?: "all" | "package" | null;
   discount_package_id?: number | null;
+  discount_pax_count?: number | null;
   is_expired?: boolean;
   created_at: string;
   updated_at?: string;

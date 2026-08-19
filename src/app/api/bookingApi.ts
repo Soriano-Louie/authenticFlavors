@@ -104,12 +104,20 @@ export interface Promotion {
   value?: number;
   scope?: "all" | "package";
   package_id?: number | null;
+  pax_count?: number | null;
 }
 
-export function getPromotion(packageId: number | string): Promise<Promotion> {
-  return request<Promotion>(
-    `/api/announcements/promotion?package_id=${encodeURIComponent(packageId)}`,
-  );
+export function getPromotion(
+  packageId: number | string,
+  paxCount?: number,
+): Promise<Promotion> {
+  const params = new URLSearchParams({
+    package_id: String(packageId),
+  });
+  if (paxCount != null) {
+    params.set("pax_count", String(paxCount));
+  }
+  return request<Promotion>(`/api/announcements/promotion?${params.toString()}`);
 }
 
 export function applyPromotion(total: number, promo: Promotion | null): number {
