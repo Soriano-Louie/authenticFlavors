@@ -988,6 +988,24 @@ export function CustomerDashboard() {
   const handleSubmitMenuChange = async () => {
     if (!menuChangeBooking || !accessToken || selectedMenuItems.length === 0)
       return;
+
+    const originalSelections = menuChangeBooking.menu_selections
+      ? menuChangeBooking.menu_selections.map((s) => s.item_name)
+      : [];
+    const originalDietaryNotes = (menuChangeBooking.dietary_notes || "").trim();
+    const itemsChanged =
+      selectedMenuItems.length !== originalSelections.length ||
+      selectedMenuItems.some((item) => !originalSelections.includes(item)) ||
+      originalSelections.some((item) => !selectedMenuItems.includes(item));
+    const notesChanged = menuDietaryNotes.trim() !== originalDietaryNotes;
+
+    if (!itemsChanged && !notesChanged) {
+      toast.error(
+        "No changes made. Please modify your menu selections or special requests to submit.",
+      );
+      return;
+    }
+
     setSubmittingMenuChange(true);
     try {
       await submitMenuChangeRequest(accessToken, menuChangeBooking.booking_id, {
@@ -3187,16 +3205,22 @@ export function CustomerDashboard() {
                   </p>
                 </div>
               ) : (
-                <>
-                  {/* Notice banner */}
-                  {(() => {
-                    const originalSelections = menuChangeBooking.menu_selections
-                      ? menuChangeBooking.menu_selections.map((s) => s.item_name)
-                      : [];
+                (() => {
+                  const originalSelections = menuChangeBooking.menu_selections
+                    ? menuChangeBooking.menu_selections.map((s) => s.item_name)
+                    : [];
+                  const originalDietaryNotes = (menuChangeBooking.dietary_notes || "").trim();
+                  const itemsChanged =
+                    selectedMenuItems.length !== originalSelections.length ||
+                    selectedMenuItems.some((item) => !originalSelections.includes(item)) ||
+                    originalSelections.some((item) => !selectedMenuItems.includes(item));
+                  const notesChanged = menuDietaryNotes.trim() !== originalDietaryNotes;
+                  const hasChanges = itemsChanged || notesChanged;
 
-                    return (
-                      <>
-                        <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  return (
+                    <>
+                      {/* Notice banner */}
+                      <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                           <div className="flex items-start gap-3">
                             <Edit3
                               size={20}
@@ -3382,41 +3406,56 @@ export function CustomerDashboard() {
                             </div>
                           )}
                         </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-6 -mx-6 -mb-6 border-t border-[#2C1810]/10 flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#2C1810]/5 rounded-b-3xl mt-4">
+                          <div>
+                            {!hasChanges && selectedMenuItems.length > 0 && (
+                              <p className="text-xs text-[#2C1810]/50 font-['Lato'] italic text-center sm:text-left">
+                                No changes made to current menu selections.
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowMenuChangeModal(false);
+                                setMenuChangeBooking(null);
+                              }}
+                              disabled={submittingMenuChange}
+                              className="px-5 py-2.5 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSubmitMenuChange}
+                              disabled={
+                                submittingMenuChange ||
+                                selectedMenuItems.length === 0 ||
+                                !hasChanges
+                              }
+                              title={
+                                !hasChanges
+                                  ? "Please make changes to your menu before submitting"
+                                  : undefined
+                              }
+                              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                            >
+                              {submittingMenuChange && (
+                                <Loader2 size={22} className="animate-spin" />
+                              )}
+                              {submittingMenuChange
+                                ? "Submitting..."
+                                : "Submit Menu Change Request"}
+                            </button>
+                          </div>
+                        </div>
                       </>
                     );
-                  })()}
-                </>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenuChangeModal(false);
-                  setMenuChangeBooking(null);
-                }}
-                disabled={submittingMenuChange}
-                className="px-5 py-2.5 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmitMenuChange}
-                disabled={
-                  submittingMenuChange || selectedMenuItems.length === 0
-                }
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
-              >
-                {submittingMenuChange && (
-                  <Loader2 size={22} className="animate-spin" />
+                  })()
                 )}
-                {submittingMenuChange
-                  ? "Submitting..."
-                  : "Submit Menu Change Request"}
-              </button>
             </div>
           </div>
         </div>

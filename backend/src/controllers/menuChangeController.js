@@ -110,6 +110,33 @@ export async function requestMenuChange(req, res, next) {
       });
     }
 
+    // Check if requested menu and notes are identical to current booking
+    const [currentMenuItems] = await connection.query(
+      `SELECT mi.item_name FROM booking_menu_selections bms
+       JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+       WHERE bms.booking_id = ?`,
+      [bookingId],
+    );
+    const currentItemNames = currentMenuItems.map((r) => r.item_name).sort();
+    const requestedItemNames = [...menu_selections].sort();
+
+    const itemsAreIdentical =
+      currentItemNames.length === requestedItemNames.length &&
+      currentItemNames.every((name, i) => name === requestedItemNames[i]);
+    const currentDietaryNotes = (booking.dietary_notes || "").trim();
+    const requestedDietaryNotes = (dietary_notes || "").trim();
+    const notesAreIdentical = currentDietaryNotes === requestedDietaryNotes;
+
+    if (itemsAreIdentical && notesAreIdentical) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "NO_CHANGES_DETECTED",
+          message: "No changes were made to your menu selections or special requests.",
+        },
+      });
+    }
+
     // Save menu change request
     const [result] = await connection.query(
       `INSERT INTO menu_change_requests (booking_id, user_id, requested_menu_selections, dietary_notes, status)

@@ -60,15 +60,15 @@ export async function submitVenueSetupRequest(req, res, next) {
 
     const booking = bookings[0];
 
-    // Only confirmed (fully-paid) bookings may have venue setup work reviewed;
+    // Only active (Reserved or Confirmed) bookings may have venue setup work reviewed;
     // pending, cancelled, rejected, or completed bookings must not.
-    if (booking.booking_status !== "Confirmed") {
+    if (!["Confirmed", "Reserved"].includes(booking.booking_status)) {
       await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
           message:
-            "Venue setup requests are only allowed for confirmed bookings.",
+            "Venue setup requests are only allowed for active bookings (Reserved or Confirmed).",
         },
       });
     }
