@@ -58,6 +58,9 @@ import {
   Camera,
   FileText,
   Home,
+  Search,
+  Filter,
+  RotateCcw,
 } from "lucide-react";
 
 const TABS = [
@@ -760,6 +763,12 @@ export function CustomerDashboard() {
   // Logout state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // My Events filter state
+  const [eventsSearchQuery, setEventsSearchQuery] = useState("");
+  const [eventsStartDate, setEventsStartDate] = useState("");
+  const [eventsEndDate, setEventsEndDate] = useState("");
+  const [eventsStatusFilter, setEventsStatusFilter] = useState("all");
 
   // Lock background scrolling while any modal is open
   useEffect(() => {
@@ -1885,90 +1894,227 @@ export function CustomerDashboard() {
         )}
 
         {/* My Events Tab */}
-        {activeTab === "My Events" && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
-                Active Bookings
-              </h3>
-              {bookingsLoading ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
+        {activeTab === "My Events" && (() => {
+          // Filter helper for bookings
+          const filterBooking = (b: Booking) => {
+            // 1. Search Query filter (booking reference, package name, event type, setup name, etc.)
+            if (eventsSearchQuery.trim()) {
+              const q = eventsSearchQuery.trim().toLowerCase();
+              const ref = getBookingReference(b).toLowerCase();
+              const pkg = (b.package_name || "").toLowerCase();
+              const eventType = getDisplayEventType(b).toLowerCase();
+              const setup = (b.setup_name || "").toLowerCase();
+              const bId = String(b.booking_id);
+
+              const matches =
+                ref.includes(q) ||
+                pkg.includes(q) ||
+                eventType.includes(q) ||
+                setup.includes(q) ||
+                bId.includes(q);
+
+              if (!matches) return false;
+            }
+
+            // 2. Date Range filter
+            if (b.event_date) {
+              const evDateStr = b.event_date.split("T")[0];
+              if (eventsStartDate && evDateStr < eventsStartDate) return false;
+              if (eventsEndDate && evDateStr > eventsEndDate) return false;
+            }
+
+            // 3. Status filter
+            if (eventsStatusFilter !== "all") {
+              if (b.booking_status.toLowerCase() !== eventsStatusFilter.toLowerCase()) {
+                return false;
+              }
+            }
+
+            return true;
+          };
+
+          const filteredActiveBookings = upcomingBookings.filter(filterBooking);
+          const filteredPastBookings = pastBookings.filter(filterBooking);
+
+          const hasActiveFilters =
+            eventsSearchQuery.trim() !== "" ||
+            eventsStartDate !== "" ||
+            eventsEndDate !== "" ||
+            eventsStatusFilter !== "all";
+
+          return (
+            <div className="space-y-6">
+              {/* Search & Filter Bar */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-[#C8922A]/10 space-y-3">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                  {/* Search Input */}
+                  <div className="relative flex-1">
+                    <Search
+                      size={18}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#2C1810]/40 pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      value={eventsSearchQuery}
+                      onChange={(e) => setEventsSearchQuery(e.target.value)}
+                      placeholder="Search reference (e.g. AF-1234), package, event type..."
+                      className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8]/50 text-[#2C1810] placeholder-[#2C1810]/40 text-sm font-['Lato'] outline-none focus:border-[#C8922A] focus:bg-white transition-all"
+                    />
+                    {eventsSearchQuery && (
+                      <button
+                        onClick={() => setEventsSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] p-0.5"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Dropdown */}
+                  <div className="w-full md:w-44 shrink-0">
+                    <select
+                      value={eventsStatusFilter}
+                      onChange={(e) => setEventsStatusFilter(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8]/50 text-[#2C1810] text-sm font-['Lato'] outline-none focus:border-[#C8922A] focus:bg-white cursor-pointer"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="reserved">Reserved</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
                 </div>
-              ) : upcomingBookings.length === 0 ? (
-                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
-                  No active bookings.
-                </p>
-              ) : (
-                upcomingBookings.map((ev) => {
-                  return (
+
+                {/* Date Range & Reset Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-[#C8922A]/10">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 text-xs font-['Lato'] text-[#2C1810]/70 flex-1">
+                    <span className="font-semibold text-[#2C1810]/60 shrink-0 flex items-center gap-1">
+                      <Filter size={14} className="text-[#C8922A]" /> Date Range:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={eventsStartDate}
+                        onChange={(e) => setEventsStartDate(e.target.value)}
+                        className="px-3 py-1.5 rounded-lg border border-[#C8922A]/20 bg-[#F5F0E8]/50 text-[#2C1810] text-xs font-['Lato'] outline-none focus:border-[#C8922A]"
+                      />
+                      <span>to</span>
+                      <input
+                        type="date"
+                        value={eventsEndDate}
+                        onChange={(e) => setEventsEndDate(e.target.value)}
+                        className="px-3 py-1.5 rounded-lg border border-[#C8922A]/20 bg-[#F5F0E8]/50 text-[#2C1810] text-xs font-['Lato'] outline-none focus:border-[#C8922A]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reset Filters */}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={() => {
+                        setEventsSearchQuery("");
+                        setEventsStartDate("");
+                        setEventsEndDate("");
+                        setEventsStatusFilter("all");
+                      }}
+                      className="self-end sm:self-auto px-3 py-1.5 rounded-lg text-xs font-['Lato'] text-[#C4541A] hover:bg-[#C4541A]/10 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw size={12} /> Clear Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Bookings Section */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
+                  Active Bookings
+                </h3>
+                {bookingsLoading ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 size={26} className="animate-spin text-[#C8922A]" />
+                  </div>
+                ) : filteredActiveBookings.length === 0 ? (
+                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
+                    {hasActiveFilters
+                      ? "No active bookings match your search filters."
+                      : "No active bookings."}
+                  </p>
+                ) : (
+                  filteredActiveBookings.map((ev) => {
+                    return (
+                      <div
+                        key={ev.booking_id}
+                        className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
+                                {ev.package_name || getBookingReference(ev)}
+                              </p>
+                              <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                                {formatDate(ev.event_date)} at{" "}
+                                {formatTime(ev.start_time)}
+                              </p>
+                              <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                                 {ev.number_of_pax} guests ·{" "}
+                                 {getDisplayEventType(ev)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                              >
+                                {ev.booking_status}
+                              </span>
+                              <span className="text-xs text-[#2C1810]/40 font-['Lato']">
+                                {getBookingReference(ev)}
+                              </span>
+                            </div>
+                          </div>
+                          {renderPaymentSchedule(ev)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Event History Section */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
+                  Event History
+                </h3>
+                {bookingsLoading ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 size={26} className="animate-spin text-[#C8922A]" />
+                  </div>
+                ) : filteredPastBookings.length === 0 ? (
+                  <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
+                    {hasActiveFilters
+                      ? "No past bookings match your search filters."
+                      : "No past bookings yet."}
+                  </p>
+                ) : (
+                  filteredPastBookings.map((ev) => (
                     <div
                       key={ev.booking_id}
-                      className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
+                      onClick={() => openBookingDetails(ev.booking_id)}
+                      className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3 cursor-pointer hover:bg-[#F5F0E8]/60 transition-colors"
                     >
-                      <div className="flex flex-col gap-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                              {ev.package_name || getBookingReference(ev)}
-                            </p>
-                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} at{" "}
-                              {formatTime(ev.start_time)}
-                            </p>
-                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                               {ev.number_of_pax} guests ·{" "}
-                               {getDisplayEventType(ev)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
-                            >
-                              {ev.booking_status}
-                            </span>
-                            <span className="text-xs text-[#2C1810]/40 font-['Lato']">
-                              {getBookingReference(ev)}
-                            </span>
-                          </div>
-                        </div>
-                        {renderPaymentSchedule(ev)}
+                      <div>
+                        <p className="font-['Playfair_Display'] text-[#2C1810]">
+                          {ev.package_name || `Booking #${ev.booking_id}`}
+                        </p>
+                        <p className="text-[#2C1810]/50 text-sm font-['Lato']">
+                          {formatDate(ev.event_date)} · {ev.number_of_pax} guests
+                        </p>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="font-['Playfair_Display'] text-[#2C1810] text-xl mb-5">
-                Event History
-              </h3>
-              {bookingsLoading ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 size={26} className="animate-spin text-[#C8922A]" />
-                </div>
-              ) : pastBookings.length === 0 ? (
-                <p className="text-[#2C1810]/40 font-['Lato'] text-sm text-center py-6">
-                  No past bookings yet.
-                </p>
-              ) : (
-                pastBookings.map((ev) => (
-                  <div
-                    key={ev.booking_id}
-                    onClick={() => openBookingDetails(ev.booking_id)}
-                    className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl flex flex-wrap justify-between gap-3 cursor-pointer hover:bg-[#F5F0E8]/60 transition-colors"
-                  >
-                    <div>
-                      <p className="font-['Playfair_Display'] text-[#2C1810]">
-                        {ev.package_name || `Booking #${ev.booking_id}`}
-                      </p>
-                      <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                        {formatDate(ev.event_date)} · {ev.number_of_pax} guests
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span
+                      <div className="flex items-center gap-3">
+                        <span
                         className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
                       >
                         {ev.booking_status}
@@ -1980,9 +2126,10 @@ export function CustomerDashboard() {
                   </div>
                 ))
               )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Dietary Profile */}
         {activeTab === "Dietary Profile" && (

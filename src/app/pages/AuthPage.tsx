@@ -260,7 +260,7 @@ export function AuthPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#1A0E08]/90 via-[#1A0E08]/70 to-[#C8922A]/30" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-10 text-center">
-          <div className="w-48 h-48 rounded-full overflow-hidden shadow-2xl mb-4">
+          <div className="w-64 h-64 rounded-full overflow-hidden shadow-2xl mb-6">
             <img
               src="/authentic_flavor_logo.png"
               alt="Authentic Flavors"
@@ -293,7 +293,7 @@ export function AuthPage() {
         <div className="w-full max-w-md my-auto">
           {/* Logo (mobile) */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-            <div className="w-32 h-32 rounded-full overflow-hidden">
+            <div className="w-44 h-44 rounded-full overflow-hidden shadow-md">
               <img
                 src="/authentic_flavor_logo.png"
                 alt="Authentic Flavors"
