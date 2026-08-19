@@ -37,6 +37,9 @@ export function NotificationCenter({
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedNotification, setSelectedNotification] =
+    useState<AppNotification | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const loadNotifications = async (showLoading = false) => {
@@ -139,8 +142,14 @@ export function NotificationCenter({
   };
 
   const handleNotificationClick = async (notification: AppNotification) => {
+    // Always close the popover when a notification is clicked
     setIsOpen(false);
 
+    // Show the detail modal instead of navigating immediately
+    setSelectedNotification(notification);
+    setShowDetailModal(true);
+
+    // Mark as read if not already read and user has token (optimistic UI)
     if (!notification.is_read && accessToken) {
       markNotificationRead(accessToken, notification.notification_id).catch(
         console.error,
@@ -153,26 +162,6 @@ export function NotificationCenter({
         ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
-    }
-
-    if (!notification.link) return;
-
-    if (notification.link.includes("/feedback")) {
-      if (onSelectTab) {
-        onSelectTab("Feedback");
-      } else {
-        navigate("/feedback");
-      }
-    } else if (notification.link.includes("tab=events")) {
-      const match = notification.link.match(/bookingId=(\d+)/);
-      const bookingId = match ? parseInt(match[1], 10) : undefined;
-      if (onSelectTab) {
-        onSelectTab("My Events", bookingId);
-      } else {
-        navigate(notification.link);
-      }
-    } else {
-      navigate(notification.link);
     }
   };
 
