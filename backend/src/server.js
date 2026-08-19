@@ -6,8 +6,13 @@ import { startSessionCleanupScheduler } from "./services/sessionCleanupService.j
 import { startReminderScheduler } from "./services/reminderSchedulerService.js";
 
 async function startServer() {
+  console.log("[Startup] Connecting to database...");
   await testDbConnection();
+  console.log("[Startup] Database connected.");
+
+  console.log("[Startup] Applying migrations / seeding...");
   await seedDatabaseIfEmpty();
+  console.log("[Startup] Migrations / seeding complete.");
 
   const app = createApp();
 
