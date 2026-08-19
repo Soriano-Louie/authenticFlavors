@@ -1859,26 +1859,44 @@ export function CustomerDashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {upcomingBookings.map((ev) => {
+                    const isPending = ev.booking_status === "Pending";
+                    const isReserved = ev.booking_status === "Reserved";
+                    const isConfirmed = ev.booking_status === "Confirmed";
+
+                    const accentClass = isConfirmed
+                      ? "border-l-4 border-l-[#7A8C5C]"
+                      : isReserved
+                        ? "border-l-4 border-l-[#C8922A]"
+                        : "border-l-4 border-l-[#C4541A]";
+
                     return (
                       <div
                         key={ev.booking_id}
-                        className="flex flex-col gap-3 rounded-2xl border border-[#C8922A]/10 bg-[#F5F0E8] p-4"
+                        className={`flex flex-col gap-3 rounded-2xl border border-[#C8922A]/15 bg-white p-5 shadow-sm hover:shadow-md transition-shadow ${accentClass}`}
                       >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                              {ev.package_name || getBookingReference(ev)}
+                        <div className="flex flex-wrap justify-between items-start gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
+                                {getBookingReference(ev)}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
+                                {getDisplayEventType(ev)}
+                              </span>
+                            </div>
+                            <p className="font-['Playfair_Display'] text-[#2C1810] text-xl font-bold pt-1">
+                              {ev.package_name || "Custom Package"}
                             </p>
-                            <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                              {formatDate(ev.event_date)} ·{" "}
-                              {formatTime(ev.start_time)} · {ev.number_of_pax}{" "}
-                              guests
+                            <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
+                              <span>📅 {formatDate(ev.event_date)} at {formatTime(ev.start_time)}</span>
+                              <span>•</span>
+                              <span>👥 {ev.number_of_pax} guests</span>
                             </p>
                           </div>
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                            className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold shadow-xs ${getStatusStyle(ev.booking_status)}`}
                           >
                             {ev.booking_status}
                           </span>
@@ -2043,43 +2061,54 @@ export function CustomerDashboard() {
                       : "No active bookings."}
                   </p>
                 ) : (
-                  filteredActiveBookings.map((ev) => {
-                    return (
-                      <div
-                        key={ev.booking_id}
-                        className="mb-4 p-5 border border-[#C8922A]/10 rounded-xl"
-                      >
-                        <div className="flex flex-col gap-3">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-['Playfair_Display'] text-[#2C1810] text-lg font-semibold">
-                                {ev.package_name || getBookingReference(ev)}
-                              </p>
-                              <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                                {formatDate(ev.event_date)} at{" "}
-                                {formatTime(ev.start_time)}
-                              </p>
-                              <p className="text-[#2C1810]/50 text-sm font-['Lato']">
-                                 {ev.number_of_pax} guests ·{" "}
-                                 {getDisplayEventType(ev)}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
+                  <div className="space-y-4">
+                    {filteredActiveBookings.map((ev) => {
+                      const isConfirmed = ev.booking_status === "Confirmed";
+                      const isReserved = ev.booking_status === "Reserved";
+
+                      const accentClass = isConfirmed
+                        ? "border-l-4 border-l-[#7A8C5C]"
+                        : isReserved
+                          ? "border-l-4 border-l-[#C8922A]"
+                          : "border-l-4 border-l-[#C4541A]";
+
+                      return (
+                        <div
+                          key={ev.booking_id}
+                          className={`p-5 border border-[#C8922A]/15 rounded-2xl bg-white shadow-xs hover:shadow-md transition-shadow ${accentClass}`}
+                        >
+                          <div className="flex flex-col gap-3">
+                            <div className="flex flex-wrap justify-between items-start gap-2">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
+                                    {getBookingReference(ev)}
+                                  </span>
+                                  <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
+                                    {getDisplayEventType(ev)}
+                                  </span>
+                                </div>
+                                <p className="font-['Playfair_Display'] text-[#2C1810] text-xl font-bold pt-1">
+                                  {ev.package_name || "Custom Package"}
+                                </p>
+                                <p className="text-[#2C1810]/70 text-xs font-['Lato'] flex flex-wrap items-center gap-2">
+                                  <span>📅 {formatDate(ev.event_date)} at {formatTime(ev.start_time)}</span>
+                                  <span>•</span>
+                                  <span>👥 {ev.number_of_pax} guests</span>
+                                </p>
+                              </div>
                               <span
-                                className={`px-3 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(ev.booking_status)}`}
+                                className={`px-3 py-1 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(ev.booking_status)}`}
                               >
                                 {ev.booking_status}
                               </span>
-                              <span className="text-xs text-[#2C1810]/40 font-['Lato']">
-                                {getBookingReference(ev)}
-                              </span>
                             </div>
+                            {renderPaymentSchedule(ev)}
                           </div>
-                          {renderPaymentSchedule(ev)}
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
