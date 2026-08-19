@@ -674,7 +674,7 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 
 ## 5. Chatbot / AI / Knowledge base domain
 
-### 5.1 [HIGH][verified] The chatbot's knowledge base still contains old rules that contradict the real ones
+### 5.1 [HIGH][verified][resolved] The chatbot's knowledge base still contains old rules that contradict the real ones
 - **Location:** `.kilo/seed_restaurant_knowledge_base.sql:20-21` vs `seed.js:909,914` +
   `bookingController.js:1356-1368`
 - **What's the problem?** The knowledge base (the canned Q&A the chatbot answers from)
@@ -685,16 +685,20 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Delete the stale old FAQ seed (or update its answers), and
   add an idempotent cleanup in `seed.js` that removes duplicate rows by question,
   keeping the newest/correct one, and never re-inserts old contradictory text.
+- **Status: RESOLVED 2026-08-19.** Legacy seed answers updated + duplicate removed;
+  `seed.js` runs idempotent hygiene (delete stale answers → collapse duplicates keeping
+  newest → corrective UPDATEs). See FIXES.md #39.
 
-### 5.2 [MEDIUM][verified] The chat history loads the FIRST 20 messages instead of the last 20
+### 5.2 [MEDIUM][verified][resolved] The chat history loads the FIRST 20 messages instead of the last 20
 - **Location:** `chatbotController.js:303-310`
 - **What's the problem?** When loading a conversation's history for context, the code
   took the first 20 messages ever sent, so the chatbot's context was the *oldest* part
   of the conversation, not the recent part where the real topic is.
 - **Fix (in plain English):** Load `ORDER BY sent_at DESC LIMIT 20` and then reverse the
   array in JS (or use a sub-query) so the most recent 20 messages are kept.
+- **Status: RESOLVED 2026-08-19.** See FIXES.md #40.
 
-### 5.3 [MEDIUM][verified] The knowledge-base matcher can give irrelevant answers and skip safety checks
+### 5.3 [MEDIUM][verified][resolved] The knowledge-base matcher can give irrelevant answers and skip safety checks
 - **Location:** `chatbotController.js:176-198, 322-326`
 - **What's the problem?** If the user's message matches just **one word** of a FAQ
   answer, the chatbot returns that canned answer immediately — even if it's irrelevant —
@@ -703,8 +707,11 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   canned-answer shortcut, require a minimum number of matched words (not just 1), prefer
   whole-word matches over partial matches, and route canned answers through the same
   safety checks as the AI path.
+- **Status: RESOLVED 2026-08-19.** Safety/off-topic pre-filters run before the KB lookup
+  (exported from geminiService); matcher uses whole-word matches only and requires ≥ 2
+  matched words. See FIXES.md #41.
 
-### 5.4 [MEDIUM][verified] The chatbot can link a conversation to someone else's booking
+### 5.4 [MEDIUM][verified][resolved] The chatbot can link a conversation to someone else's booking
 - **Location:** `chatbotController.js:661-703`
 - **What's the problem?** The "complete booking session" step lets the user submit any
   `booking_id` to link to their chat session, without checking that the booking actually
@@ -712,21 +719,26 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Before linking, verify the submitted `booking_id` belongs
   to the logged-in user (`req.auth.sub`) and matches the session's conversation — return
   403 otherwise.
+- **Status: RESOLVED 2026-08-19.** See FIXES.md #42.
 
-### 5.5 [LOW][verified] The chatbot can be tricked by instructions hidden inside user messages
+### 5.5 [LOW][verified][resolved] The chatbot can be tricked by instructions hidden inside user messages
 - **Location:** `geminiService.js:803-913`
 - **What's the problem?** The AI is given the past chat messages as context, and nothing
   tells it to ignore instructions that might be *embedded inside a user's message* — a
   classic prompt-injection surface.
 - **Fix (in plain English):** Add a system-prompt clause telling the model to ignore
   instructions inside user messages, and/or clean stored messages before replaying them.
+- **Status: RESOLVED 2026-08-19.** A "SECURITY" system-prompt section was added telling
+  the model that user text is always data, never a directive. See FIXES.md #43.
 
-### 5.6 [MEDIUM][agent-verified] The chat booking-session endpoints aren't rate-limited
+### 5.6 [MEDIUM][agent-verified][resolved] The chat booking-session endpoints aren't rate-limited
 - **Location:** `chatbotRoutes.js:43-61`
 - **What's the problem?** Only the main `/chat/message` endpoint is rate-limited; the
   update/complete/cancel booking-session endpoints aren't, so they can be hammered.
 - **Fix (in plain English):** Apply the existing `chatLimiter` to the
   update/complete/cancel session endpoints too.
+- **Status: RESOLVED 2026-08-19.** `chatLimiter` applied to start/update/complete/cancel.
+  See FIXES.md #44.
 
 ---
 

@@ -1089,6 +1089,25 @@ export async function seedDatabaseIfEmpty() {
       );
     }
 
+    // Idempotent knowledge_base hygiene. Databases that were seeded with the
+    // OLD .kilo/seed_restaurant_knowledge_base.sql can contain stale answers
+    // that contradict the enforced business rules, or duplicate rows for the
+    // same question (keeping the wrong one). Order matters:
+    // 1) delete rows still carrying the known-stale answers,
+    // 2) collapse duplicate questions keeping the newest row,
+    // 3) the corrective UPDATEs below then normalize the surviving row.
+    await connection.query(
+      `DELETE FROM knowledge_base
+       WHERE (question = 'How do I make a reservation?' AND answer LIKE '%24 hours in advance%')
+          OR (question = 'What is your cancellation policy?' AND answer LIKE '%4 hours before%')
+          OR (question = 'Can I split the bill?' AND answer LIKE '%allow bill splitting for groups%')`,
+    );
+
+    await connection.query(
+      `DELETE kb FROM knowledge_base kb
+       JOIN knowledge_base kb2 ON kb.question = kb2.question AND kb.kb_id < kb2.kb_id`,
+    );
+
     // Idempotently correct FAQ answers that previously contradicted the
     // implemented business rules, so databases seeded before the rules existed
     // also pick up the fix on the next server start.

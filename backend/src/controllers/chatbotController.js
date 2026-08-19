@@ -1,5 +1,9 @@
 import { pool } from "../db/pool.js";
-import { generateChatResponse } from "../services/geminiService.js";
+import {
+  generateChatResponse,
+  isRestaurantRelated,
+  isSensitiveOrPrivacyRequest,
+} from "../services/geminiService.js";
 
 // ─── Knowledge Base Lookup ────────────────────────────────────────────────────
 // Checks the knowledge_base table for FAQ matches before calling Gemini API
@@ -173,20 +177,21 @@ function calculateMatchScore(userMessage, faqQuestion) {
       .filter((word) => word.length > 2 && !stopWords.has(word)),
   );
 
-  const faqWords = normalizedFAQ.split(" ").filter((word) => word.length > 2);
+  const faqWordSet = new Set(
+    normalizedFAQ
+      .split(" ")
+      .filter((word) => word.length > 2 && !stopWords.has(word)),
+  );
 
-  if (userWords.size === 0 || faqWords.length === 0) {
-    return 0;
+  if (userWords.size === 0 || faqWordSet.size === 0) {
+    return { score: 0, matches: 0 };
   }
 
-  // Count matching words
+  // Whole-word matches only: partial/substring overlaps cause irrelevant
+  // canned answers (e.g. "pay" silently matching the FAQ word "payment").
   let matches = 0;
   userWords.forEach((word) => {
-    if (
-      faqWords.some(
-        (faqWord) => faqWord.includes(word) || word.includes(faqWord),
-      )
-    ) {
+    if (faqWordSet.has(word)) {
       matches++;
     }
   });
@@ -194,7 +199,7 @@ function calculateMatchScore(userMessage, faqQuestion) {
   // Calculate score as percentage of user words matched
   const score = (matches / userWords.size) * 100;
 
-  return score;
+  return { score, matches };
 }
 
 /**
@@ -222,9 +227,12 @@ export async function findKnowledgeBaseAnswer(userMessage, minScore = 60) {
     let highestScore = minScore;
 
     for (const faq of faqs) {
-      const score = calculateMatchScore(userMessage, faq.question);
+      const { score, matches } = calculateMatchScore(userMessage, faq.question);
 
-      if (score > highestScore) {
+      // A single overlapping word is not enough to answer from the canned
+      // knowledge base — require at least two whole-word matches so an
+      // irrelevant FAQ can never win on a lone word.
+      if (matches >= 2 && score > highestScore) {
         highestScore = score;
         bestMatch = {
           answer: faq.answer,
@@ -300,14 +308,16 @@ export async function sendMessage(req, res) {
     // ── Load conversation history (last 20 messages for context) ────────
     let history = [];
     if (conversationId) {
+      // Load the MOST RECENT 20 messages (old history is irrelevant to the
+      // current topic), then reverse so the model sees them chronologically.
       const [rows] = await pool.query(
         `SELECT sender, message_text FROM ai_messages
          WHERE conversation_id = ?
-         ORDER BY sent_at ASC
+         ORDER BY sent_at DESC, message_id DESC
          LIMIT 20`,
         [conversationId],
       );
-      history = rows;
+      history = rows.reverse();
     }
 
     // ── Store user message ──────────────────────────────────────────────
@@ -320,10 +330,16 @@ export async function sendMessage(req, res) {
     }
 
     // ── Check Knowledge Base First (to reduce API calls) ─────────────────
-    const knowledgeBaseMatch = await findKnowledgeBaseAnswer(
-      trimmedMessage,
-      60,
-    );
+    // Sensitive/privacy and off-topic messages are routed straight to the AI
+    // path's safety pre-filters and must NEVER be answered from the canned
+    // knowledge base — the shortcut would bypass those checks entirely.
+    const bypassKnowledgeBase =
+      isSensitiveOrPrivacyRequest(trimmedMessage) ||
+      !isRestaurantRelated(trimmedMessage);
+
+    const knowledgeBaseMatch = bypassKnowledgeBase
+      ? null
+      : await findKnowledgeBaseAnswer(trimmedMessage, 60);
 
     if (knowledgeBaseMatch) {
       // Found a match in knowledge base - return answer without calling Gemini
@@ -669,14 +685,23 @@ export async function completeBookingSession(req, res) {
       });
     }
 
-    // Verify ownership
+    // Verify ownership (and that the session actually belongs to the
+    // submitted conversation)
     const [sessions] = await connection.query(
-      `SELECT session_id FROM ai_booking_sessions WHERE session_id = ? AND user_id = ?`,
+      `SELECT session_id, conversation_id FROM ai_booking_sessions WHERE session_id = ? AND user_id = ?`,
       [session_id, userId],
     );
     if (sessions.length === 0) {
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking session not found." },
+      });
+    }
+    if (Number(sessions[0].conversation_id) !== Number(conversation_id)) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "This booking session does not belong to that conversation.",
+        },
       });
     }
 
@@ -690,6 +715,21 @@ export async function completeBookingSession(req, res) {
         error: {
           code: "FORBIDDEN",
           message: "You can only finalize your own conversations.",
+        },
+      });
+    }
+
+    // The booking being linked must also belong to this user — a user must
+    // never attach someone else's booking to their conversation.
+    const [ownedBookings] = await connection.query(
+      "SELECT booking_id FROM bookings WHERE booking_id = ? AND user_id = ?",
+      [booking_id, userId],
+    );
+    if (ownedBookings.length === 0) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "You can only link your own bookings to a conversation.",
         },
       });
     }

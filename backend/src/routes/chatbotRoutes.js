@@ -43,20 +43,24 @@ chatbotRouter.get("/chat/conversations/:id/messages", requireAuth, getMessages);
 chatbotRouter.post(
   "/chat/booking-session/start",
   requireAuth,
+  chatLimiter,
   startBookingSession,
 );
 chatbotRouter.post(
   "/chat/booking-session/update",
   requireAuth,
+  chatLimiter,
   updateBookingSession,
 );
 chatbotRouter.post(
   "/chat/booking-session/complete",
   requireAuth,
+  chatLimiter,
   completeBookingSession,
 );
 chatbotRouter.post(
   "/chat/booking-session/cancel",
   requireAuth,
+  chatLimiter,
   cancelBookingSession,
 );

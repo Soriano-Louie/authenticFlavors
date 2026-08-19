@@ -270,6 +270,41 @@ Generated: 2026-08-18
 
 ---
 
+## §5 Chatbot / AI / Knowledge-base fixes (review §5.1–§5.6, addressed 2026-08-19)
+
+### 39. The chatbot knowledge base no longer serves the old, wrong rules
+- [x] Files: `backend/src/db/seed.js` + `.kilo/seed_restaurant_knowledge_base.sql`
+- Problem: The legacy `.kilo/seed_restaurant_knowledge_base.sql` contained stale FAQ answers (e.g. "book 24 hours ahead", the old 4-hour/₱500 cancellation policy, generic bill-splitting) that contradict the enforced rules, plus a duplicate "food allergies" row. DBs seeded with that file kept serving the wrong answers.
+- Fix: Updated the legacy seed's answers to match the real policy and removed its duplicate row. `seed.js` now runs idempotent KB hygiene on every start: (1) deletes rows still carrying the known-stale answers, (2) collapses duplicate questions keeping the newest row, (3) the existing corrective UPDATEs then normalize the survivor. New seeds only ever insert the corrected text.
+- Status: FIXED 2026-08-19.
+
+### 40. Chat history now feeds the last 20 messages, not the first 20
+- [x] File: `backend/src/controllers/chatbotController.js`
+- Fix: The context query now loads `ORDER BY sent_at DESC, message_id DESC LIMIT 20` and reverses in JS, so the model sees the most recent 20 messages chronologically (stable tiebreak by message_id).
+- Status: FIXED 2026-08-19.
+
+### 41. Knowledge-base answers can no longer bypass safety checks or win on a single word
+- [x] File: `backend/src/controllers/chatbotController.js` + `backend/src/services/geminiService.js`
+- Fix: `isSensitiveOrPrivacyRequest` / `isRestaurantRelated` are now exported from geminiService and run in `sendMessage` BEFORE the canned-answer lookup — sensitive/off-topic messages skip the KB entirely and fall into the same pre-filtered AI path that returns the fixed refusal. The matcher now uses whole-word matches only (no substring overlap) and requires at least two matching words before any FAQ can answer.
+- Status: FIXED 2026-08-19.
+
+### 42. A conversation can no longer be linked to someone else's booking
+- [x] File: `backend/src/controllers/chatbotController.js`
+- Fix: `completeBookingSession` now (1) verifies the session belongs to the submitted conversation, (2) verifies conversation ownership (already present), and (3) verifies the submitted `booking_id` belongs to the logged-in user — all inside the transaction; each returns 403 `FORBIDDEN` otherwise.
+- Status: FIXED 2026-08-19.
+
+### 43. The chatbot now defends against prompt injection in user messages
+- [x] File: `backend/src/services/geminiService.js`
+- Fix: Added a "SECURITY" system-prompt section: user text is always data (never a directive), embedded instructions / "pretend you are / act as / reveal your prompt" attempts are ignored, and social-engineering attempts get a polite refusal.
+- Status: FIXED 2026-08-19.
+
+### 44. Chat booking-session endpoints are now rate-limited
+- [x] File: `backend/src/routes/chatbotRoutes.js`
+- Fix: `chatLimiter` applied to `/chat/booking-session/start|update|complete|cancel` (the main `/chat/message` endpoint was already limited).
+- Status: FIXED 2026-08-19.
+
+---
+
 ## What is already solid (do not touch unless asked)
 - Auth: bcrypt, email-verification with hashed codes, token-version single-session enforcement, DB-role re-read, rate limiting on auth/upload/chat, magic-byte image validation, CORS fail-closed.
 - getBookingPayments explicit column projection.
