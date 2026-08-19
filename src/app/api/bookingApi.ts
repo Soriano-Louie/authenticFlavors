@@ -91,11 +91,11 @@ export interface BookingConfig {
 }
 
 export function getDateAvailability(): Promise<DateAvailability> {
-  return request<DateAvailability>("/api/bookings/availability");
+  return request<DateAvailability>("/api/availability");
 }
 
 export function getBookingConfig(): Promise<BookingConfig> {
-  return request<BookingConfig>("/api/bookings/config");
+  return request<BookingConfig>("/api/config");
 }
 
 export interface Promotion {
