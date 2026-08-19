@@ -3,6 +3,7 @@ import { getPhilippineDateString } from "../utils/timezone.js";
 import { createNotification } from "../services/notificationService.js";
 import { logActivity } from "../services/activityService.js";
 import {
+  sendVenueSetupRequestedAdminEmail,
   sendVenueSetupApprovedCustomerEmail,
   sendVenueSetupChangesRequestedCustomerEmail,
   sendVenueSetupDeclinedCustomerEmail,
@@ -21,6 +22,7 @@ function getDaysUntilEvent(eventDateStr) {
 }
 
 export async function submitVenueSetupRequest(req, res, next) {
+  const connection = await pool.getConnection();
   try {
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
@@ -35,16 +37,22 @@ export async function submitVenueSetupRequest(req, res, next) {
       });
     }
 
-    const [bookings] = await pool.query(
+    await connection.beginTransaction();
+
+    // Lock the booking row for the whole submit so two simultaneous
+    // submissions for the same booking can't both slip past the active-request
+    // check (race fix). Ownership is enforced by the WHERE below.
+    const [bookings] = await connection.query(
       `SELECT b.*, u.first_name, u.last_name, u.email, p.package_name
        FROM bookings b
        JOIN users u ON b.user_id = u.user_id
        JOIN packages p ON b.package_id = p.package_id
-       WHERE b.booking_id = ? AND b.user_id = ? LIMIT 1`,
+       WHERE b.booking_id = ? AND b.user_id = ? LIMIT 1 FOR UPDATE`,
       [bookingId, userId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -55,6 +63,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     // Only confirmed (fully-paid) bookings may have venue setup work reviewed;
     // pending, cancelled, rejected, or completed bookings must not.
     if (booking.booking_status !== "Confirmed") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
@@ -68,6 +77,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     // submit setup work at the last minute.
     const daysUntilEvent = getDaysUntilEvent(booking.event_date);
     if (daysUntilEvent < 14) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "VENUE_SETUP_RESTRICTED",
@@ -77,29 +87,51 @@ export async function submitVenueSetupRequest(req, res, next) {
       });
     }
 
-    const [existingActive] = await pool.query(
-      `SELECT request_id FROM venue_setup_requests
-       WHERE booking_id = ? AND status IN ('Pending', 'Changes_Requested') LIMIT 1`,
+    // The same endpoint doubles as the resubmit path: when the admin asked for
+    // changes, this updates that request and puts it back to Pending instead of
+    // rejecting the customer (the "edit & resubmit" flow). A still-Pending request
+    // is the only thing that must block a new submission.
+    const [existingActive] = await connection.query(
+      `SELECT request_id, status FROM venue_setup_requests
+       WHERE booking_id = ? AND status IN ('Pending', 'Changes_Requested')
+       ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [bookingId],
     );
 
+    let requestId;
     if (existingActive.length > 0) {
-      return res.status(400).json({
-        error: {
-          code: "PENDING_REQUEST_EXISTS",
-          message:
-            "You already have a pending venue setup request for this booking. Please wait for the admin to respond before submitting again.",
-        },
-      });
+      const existing = existingActive[0];
+      if (existing.status === "Pending") {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "PENDING_REQUEST_EXISTS",
+            message:
+              "You already have a pending venue setup request for this booking. Please wait for the admin to respond before submitting again.",
+          },
+        });
+      }
+      // Changes_Requested → resubmit: replace the notes, reopen as Pending,
+      // and clear the admin review fields so the admin can re-review it.
+      await connection.query(
+        `UPDATE venue_setup_requests
+         SET venue_setup_notes = ?, status = 'Pending',
+             admin_response = NULL, reviewed_by = NULL, reviewed_at = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE request_id = ?`,
+        [venue_setup_notes.trim(), existing.request_id],
+      );
+      requestId = existing.request_id;
+    } else {
+      const [result] = await connection.query(
+        `INSERT INTO venue_setup_requests (booking_id, user_id, venue_setup_notes, status)
+         VALUES (?, ?, ?, 'Pending')`,
+        [bookingId, userId, venue_setup_notes.trim()],
+      );
+      requestId = result.insertId;
     }
 
-    const [result] = await pool.query(
-      `INSERT INTO venue_setup_requests (booking_id, user_id, venue_setup_notes, status)
-       VALUES (?, ?, ?, 'Pending')`,
-      [bookingId, userId, venue_setup_notes.trim()],
-    );
-
-    const requestId = result.insertId;
+    await connection.commit();
 
     logActivity({
       actorUserId: userId,
@@ -128,6 +160,19 @@ export async function submitVenueSetupRequest(req, res, next) {
         message: `Customer ${customerName} submitted venue setup notes for booking ${booking.booking_reference || `#${bookingId}`}.`,
         link: `/admin`,
       });
+
+      // Notify admins by email too, matching the menu-change flow, so a
+      // request is never missed by an admin who doesn't have the dashboard open.
+      try {
+        await sendVenueSetupRequestedAdminEmail(admin.email, {
+          booking_reference: booking.booking_reference || `#${bookingId}`,
+          customer_name: customerName,
+          event_date: booking.event_date,
+          venue_setup_notes: venue_setup_notes.trim(),
+        });
+      } catch (e) {
+        console.error("Failed to send admin venue setup email:", e.message);
+      }
     }
 
     res.status(201).json({
@@ -135,7 +180,10 @@ export async function submitVenueSetupRequest(req, res, next) {
       request_id: requestId,
     });
   } catch (error) {
+    await connection.rollback();
     next(error);
+  } finally {
+    connection.release();
   }
 }
 

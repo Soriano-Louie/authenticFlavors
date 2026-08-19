@@ -76,10 +76,21 @@ export async function getPackages(_req, res) {
 
       const selectionCountByPackage = new Map();
       let maxSelections = 0;
+      let mostPickedPackageId = null;
       for (const row of bookingCountRows) {
         selectionCountByPackage.set(row.package_id, row.selection_count);
         if (row.selection_count > maxSelections) {
           maxSelections = row.selection_count;
+          mostPickedPackageId = row.package_id;
+        } else if (
+          row.selection_count === maxSelections &&
+          maxSelections > 0 &&
+          (mostPickedPackageId === null ||
+            row.package_id < mostPickedPackageId)
+        ) {
+          // Ties are broken deterministically: lowest package_id wins, so the
+          // "most picked" highlight never flips arbitrarily between packages.
+          mostPickedPackageId = row.package_id;
         }
       }
 
@@ -92,7 +103,7 @@ export async function getPackages(_req, res) {
           menu_inclusions: inclusionsByPackage.get(pkg.package_id) ?? [],
           selection_count: selectionCount,
           is_most_picked:
-            maxSelections > 0 && selectionCount === maxSelections,
+            maxSelections > 0 && pkg.package_id === mostPickedPackageId,
         };
       });
     }
@@ -206,7 +217,12 @@ export async function getMenuItemsByCategory(req, res) {
   try {
     const { categoryId } = req.params;
     const [rows] = await pool.query(
-      "SELECT * FROM menu_items WHERE category_id = ? AND availability_status = 'Active' ORDER BY item_name",
+      `SELECT mi.* FROM menu_items mi
+       JOIN menu_categories mc ON mi.category_id = mc.category_id
+       WHERE mi.category_id = ?
+         AND mi.availability_status = 'Active'
+         AND mc.status = 'Active'
+       ORDER BY mi.item_name`,
       [categoryId],
     );
     res.status(200).json({ items: rows });
@@ -353,11 +369,28 @@ export async function createPackage(req, res) {
       }
     }
 
-    // Insert package
-    const [result] = await pool.query(
-      "INSERT INTO packages (package_name, description, max_pax, image, status) VALUES (?, ?, ?, ?, 'Active')",
-      [package_name.trim(), description || null, Number(max_pax), imageUrl],
-    );
+    // Insert package (image_public_id is stored so the exact file can be
+    // deleted from Cloudinary later instead of guessing from the URL).
+    let result;
+    try {
+      [result] = await pool.query(
+        "INSERT INTO packages (package_name, description, max_pax, image, image_public_id, status) VALUES (?, ?, ?, ?, ?, 'Active')",
+        [
+          package_name.trim(),
+          description || null,
+          Number(max_pax),
+          imageUrl,
+          imagePublicId,
+        ],
+      );
+    } catch (insertError) {
+      // The image was uploaded before the row was saved — delete it so it
+      // doesn't become an orphaned file if the insert fails.
+      if (imagePublicId) {
+        await deleteFromCloudinary(imagePublicId).catch(() => {});
+      }
+      throw insertError;
+    }
 
     const packageId = result.insertId;
 
@@ -518,31 +551,36 @@ export async function updatePackage(req, res) {
     }
 
     let imageUrl = currentPackage.image;
-    let imagePublicId = null;
+    let imagePublicId = currentPackage.image_public_id || null;
+    let newlyUploadedPublicId = null;
 
-    // Handle image upload/replacement
+    // Resolve the old image's public_id so it can be deleted ONLY after the new
+    // one is safely saved. Prefer the stored id; fall back to deriving it from
+    // the Cloudinary URL for rows created before image_public_id existed.
+    let oldImagePublicId = null;
+    if (
+      currentPackage.image &&
+      currentPackage.image.includes("cloudinary")
+    ) {
+      const urlParts = currentPackage.image.split("/");
+      const filename = urlParts[urlParts.length - 1]?.split(".")[0];
+      oldImagePublicId =
+        currentPackage.image_public_id ||
+        (filename ? `authentic_flavors/packages/${filename}` : null);
+    }
+
+    // Handle image upload/replacement: upload the NEW file first, save it to
+    // the database, and only then delete the old file. If the database step
+    // fails, the freshly uploaded file is removed so nothing is orphaned.
     if (req.file) {
       try {
-        // Delete old image from Cloudinary if it exists and is a Cloudinary URL
-        if (
-          currentPackage.image &&
-          currentPackage.image.includes("cloudinary")
-        ) {
-          // Extract public_id from URL (last part before extension)
-          const urlParts = currentPackage.image.split("/");
-          const filename = urlParts[urlParts.length - 1]?.split(".")[0];
-          if (filename) {
-            const oldPublicId = `authentic_flavors/packages/${filename}`;
-            await deleteFromCloudinary(oldPublicId).catch(() => {});
-          }
-        }
-
         const uploadResult = await uploadToCloudinary(
           req.file.buffer,
           "packages",
         );
         imageUrl = uploadResult.secure_url;
         imagePublicId = uploadResult.public_id;
+        newlyUploadedPublicId = uploadResult.public_id;
       } catch (uploadError) {
         console.error("Image upload failed:", uploadError);
         return res.status(500).json({
@@ -574,46 +612,48 @@ export async function updatePackage(req, res) {
     if (req.file) {
       updateFields.push("image = ?");
       updateValues.push(imageUrl);
+      updateFields.push("image_public_id = ?");
+      updateValues.push(imagePublicId);
     }
 
-    if (updateFields.length > 0) {
-      updateValues.push(id);
-      await pool.query(
-        `UPDATE packages SET ${updateFields.join(", ")} WHERE package_id = ?`,
-        updateValues,
-      );
+    try {
+      if (updateFields.length > 0) {
+        updateValues.push(id);
+        await pool.query(
+          `UPDATE packages SET ${updateFields.join(", ")} WHERE package_id = ?`,
+          updateValues,
+        );
+      }
+    } catch (updateError) {
+      // The new file was uploaded but the row never saved — remove it.
+      if (newlyUploadedPublicId) {
+        await deleteFromCloudinary(newlyUploadedPublicId).catch(() => {});
+      }
+      throw updateError;
     }
 
-    // Update pricing tiers if provided
-    if (pricing) {
-      let pricingArray;
+    // Only after the new image is committed to the database is the old file
+    // removed (best-effort; a cleanup failure must not fail the request).
+    if (req.file && oldImagePublicId) {
+      await deleteFromCloudinary(oldImagePublicId).catch(() => {});
+    }
+
+    // Update pricing tiers and menu inclusions atomically. A present-but-empty
+    // tier list means "delete all tiers" (the admin cleared them), so we use
+    // `!== undefined` and let the empty array fall through to the delete path.
+    // Both the tiers and the inclusions are replaced in ONE transaction so a
+    // mid-way failure can never leave half-saved data.
+    let pricingArray;
+    if (pricing !== undefined && pricing !== null) {
       try {
         pricingArray =
           typeof pricing === "string" ? JSON.parse(pricing) : pricing;
       } catch {
         pricingArray = [];
       }
-
-      if (Array.isArray(pricingArray)) {
-        // Delete existing pricing and re-insert
-        await pool.query("DELETE FROM package_pricing WHERE package_id = ?", [
-          id,
-        ]);
-
-        for (const tier of pricingArray) {
-          if (tier.pax_count && tier.price) {
-            await pool.query(
-              "INSERT INTO package_pricing (package_id, pax_count, price) VALUES (?, ?, ?)",
-              [Number(id), Number(tier.pax_count), Number(tier.price)],
-            );
-          }
-        }
-      }
     }
-
-    // Update menu inclusions if provided
-    if (menu_inclusions !== undefined) {
-      let inclusionsArray;
+    let inclusionsArray = undefined;
+    if (menu_inclusions !== undefined && menu_inclusions !== null) {
       try {
         inclusionsArray =
           typeof menu_inclusions === "string"
@@ -622,30 +662,62 @@ export async function updatePackage(req, res) {
       } catch {
         inclusionsArray = [];
       }
+    }
 
-      if (Array.isArray(inclusionsArray)) {
-        // Delete existing inclusions and re-insert
-        await pool.query(
-          "DELETE FROM package_menu_inclusions WHERE package_id = ?",
-          [id],
-        );
+    const pricingChanged =
+      pricingArray !== undefined && Array.isArray(pricingArray);
+    const inclusionsChanged =
+      inclusionsArray !== undefined && Array.isArray(inclusionsArray);
 
-        // Normalize to support both plain numbers [1,2,3] and objects
-        // [{ menu_item_id: 1 }, ...] so the API is tolerant to any caller.
-        const normalizedIds = inclusionsArray
-          .map((inc) =>
-            typeof inc === "object" && inc !== null
-              ? Number(inc.menu_item_id)
-              : Number(inc),
-          )
-          .filter((mid) => !Number.isNaN(mid));
+    if (pricingChanged || inclusionsChanged) {
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
 
-        for (let i = 0; i < normalizedIds.length; i++) {
-          await pool.query(
-            "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
-            [Number(id), normalizedIds[i], i],
+        if (pricingChanged) {
+          await connection.query(
+            "DELETE FROM package_pricing WHERE package_id = ?",
+            [id],
           );
+          for (const tier of pricingArray) {
+            if (tier.pax_count && tier.price) {
+              await connection.query(
+                "INSERT INTO package_pricing (package_id, pax_count, price) VALUES (?, ?, ?)",
+                [Number(id), Number(tier.pax_count), Number(tier.price)],
+              );
+            }
+          }
         }
+
+        if (inclusionsChanged) {
+          await connection.query(
+            "DELETE FROM package_menu_inclusions WHERE package_id = ?",
+            [id],
+          );
+          // Normalize to support both plain numbers [1,2,3] and objects
+          // [{ menu_item_id: 1 }, ...] so the API is tolerant to any caller.
+          const normalizedIds = inclusionsArray
+            .map((inc) =>
+              typeof inc === "object" && inc !== null
+                ? Number(inc.menu_item_id)
+                : Number(inc),
+            )
+            .filter((mid) => !Number.isNaN(mid));
+
+          for (let i = 0; i < normalizedIds.length; i++) {
+            await connection.query(
+              "INSERT INTO package_menu_inclusions (package_id, menu_item_id, display_order) VALUES (?, ?, ?)",
+              [Number(id), normalizedIds[i], i],
+            );
+          }
+        }
+
+        await connection.commit();
+      } catch (tierError) {
+        await connection.rollback();
+        throw tierError;
+      } finally {
+        connection.release();
       }
     }
 

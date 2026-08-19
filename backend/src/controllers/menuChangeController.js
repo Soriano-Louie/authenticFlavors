@@ -28,6 +28,7 @@ function getDaysUntilEvent(eventDateStr) {
  * Customer submits a menu change request.
  */
 export async function requestMenuChange(req, res, next) {
+  const connection = await pool.getConnection();
   try {
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
@@ -42,17 +43,23 @@ export async function requestMenuChange(req, res, next) {
       });
     }
 
-    // 1. Fetch booking details and verify ownership & status
-    const [bookings] = await pool.query(
+    await connection.beginTransaction();
+
+    // 1. Fetch booking details and verify ownership & status. The booking row
+    // is locked (FOR UPDATE) so two simultaneous submissions for the same
+    // booking line up behind the same lock and only one can pass the
+    // "already pending" check below (race fix).
+    const [bookings] = await connection.query(
       `SELECT b.*, u.first_name, u.last_name, u.email, p.package_name
        FROM bookings b
        JOIN users u ON b.user_id = u.user_id
        JOIN packages p ON b.package_id = p.package_id
-       WHERE b.booking_id = ? AND b.user_id = ? LIMIT 1`,
+       WHERE b.booking_id = ? AND b.user_id = ? LIMIT 1 FOR UPDATE`,
       [bookingId, userId],
     );
 
     if (bookings.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -62,6 +69,7 @@ export async function requestMenuChange(req, res, next) {
 
     // Status check: must be Confirmed
     if (booking.booking_status !== "Confirmed") {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
@@ -74,6 +82,7 @@ export async function requestMenuChange(req, res, next) {
     // 14-day rule check (backend enforcement)
     const daysUntilEvent = getDaysUntilEvent(booking.event_date);
     if (daysUntilEvent < 14) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "MENU_CHANGE_RESTRICTED",
@@ -84,13 +93,14 @@ export async function requestMenuChange(req, res, next) {
     }
 
     // Check if there is already a pending request for this booking
-    const [existingPending] = await pool.query(
+    const [existingPending] = await connection.query(
       `SELECT request_id FROM menu_change_requests
-       WHERE booking_id = ? AND status = 'Pending' LIMIT 1`,
+       WHERE booking_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE`,
       [bookingId],
     );
 
     if (existingPending.length > 0) {
+      await connection.rollback();
       return res.status(400).json({
         error: {
           code: "PENDING_REQUEST_EXISTS",
@@ -101,7 +111,7 @@ export async function requestMenuChange(req, res, next) {
     }
 
     // Save menu change request
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO menu_change_requests (booking_id, user_id, requested_menu_selections, dietary_notes, status)
        VALUES (?, ?, ?, ?, 'Pending')`,
       [
@@ -111,6 +121,8 @@ export async function requestMenuChange(req, res, next) {
         dietary_notes ? dietary_notes.trim() : null,
       ],
     );
+
+    await connection.commit();
 
     const requestId = result.insertId;
 
@@ -157,7 +169,10 @@ export async function requestMenuChange(req, res, next) {
       request_id: requestId,
     });
   } catch (error) {
+    await connection.rollback();
     next(error);
+  } finally {
+    connection.release();
   }
 }
 
@@ -233,7 +248,8 @@ export async function approveMenuChangeRequest(req, res, next) {
 
     // Fetch request details
     const [requests] = await connection.query(
-      `SELECT mcr.*, b.booking_reference, b.event_date, b.package_id, b.dietary_notes as current_dietary_notes,
+      `SELECT mcr.*, b.booking_reference, b.event_date, b.booking_status,
+              b.package_id, b.dietary_notes as current_dietary_notes,
               b.number_of_pax, b.total_price, b.amount_paid,
               u.user_id, u.first_name, u.last_name, u.email
        FROM menu_change_requests mcr
@@ -258,19 +274,77 @@ export async function approveMenuChangeRequest(req, res, next) {
       });
     }
 
-    const newSelections =
+    // Re-verify the booking is still confirmed and still 14+ days out. The
+    // situation can change between when the customer submits and when the admin
+    // clicks approve (booking cancelled, event too close) — refusing here keeps
+    // the change from being applied to a booking that no longer qualifies.
+    // The booking row was locked FOR UPDATE above, so this check is race-safe.
+    if (request.booking_status !== "Confirmed") {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "MENU_CHANGE_RESTRICTED",
+          message:
+            "Menu changes can only be approved for confirmed bookings. This booking is no longer Confirmed.",
+        },
+      });
+    }
+    const daysUntilEvent = getDaysUntilEvent(request.event_date);
+    if (daysUntilEvent < 14) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "MENU_CHANGE_RESTRICTED",
+          message:
+            "Menu changes are only allowed until 14 days before the scheduled event. This event is now too close.",
+        },
+      });
+    }
+
+    const newSelectionsRaw =
       typeof request.requested_menu_selections === "string"
         ? JSON.parse(request.requested_menu_selections)
         : request.requested_menu_selections;
 
-    // Fetch current menu selections for auditing
+    // The item list must never be empty at approval time — wiping the whole
+    // menu on an empty request is a data-loss bug, so reject it explicitly.
+    if (!Array.isArray(newSelectionsRaw) || newSelectionsRaw.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "The requested menu selections list is empty. Ask the customer to resubmit the request with at least one item.",
+        },
+      });
+    }
+
+    // De-duplicate the requested items (case-insensitive) so an item listed
+    // twice can't double-count its additional_price or crash on the unique key.
+    const newSelections = [
+      ...new Set(
+        newSelectionsRaw
+          .map((s) => String(s).trim())
+          .filter((s) => s.length > 0),
+      ),
+    ];
+
+    // Fetch current menu selections for auditing and to recover the package
+    // base price the customer actually booked at. The old total is priced as
+    // base + additional, so base = oldTotal − sum(old additional prices). The
+    // re-approval then uses that original base — never the package's current
+    // tier — so a price change since booking can't skew the surcharge.
     const [oldSelectionsRows] = await connection.query(
-      `SELECT mi.item_name FROM booking_menu_selections bms
+      `SELECT mi.item_name, mi.additional_price FROM booking_menu_selections bms
        JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
+       JOIN menu_categories mc ON bms.category_id = mc.category_id
        WHERE bms.booking_id = ?`,
       [request.booking_id],
     );
     const oldSelections = oldSelectionsRows.map((r) => r.item_name);
+    const oldAdditionalSum = oldSelectionsRows.reduce(
+      (sum, row) => sum + parseFloat(row.additional_price || 0),
+      0,
+    );
 
     // Delete existing menu selections for booking and re-insert approved new selections
     await connection.query(
@@ -279,10 +353,18 @@ export async function approveMenuChangeRequest(req, res, next) {
     );
 
     // Accumulate the additional price of the approved items while re-inserting.
+    // Only items from still-active menu categories are accepted, so a disabled
+    // category can never have its items silently re-added through an approval.
     let additionalPriceSum = 0;
     for (const itemName of newSelections) {
       const [menuItems] = await connection.query(
-        "SELECT menu_item_id, category_id, additional_price FROM menu_items WHERE item_name = ? AND availability_status = 'Active' LIMIT 1",
+        `SELECT mi.menu_item_id, mi.category_id, mi.additional_price
+         FROM menu_items mi
+         JOIN menu_categories mc ON mi.category_id = mc.category_id
+         WHERE mi.item_name = ?
+           AND mi.availability_status = 'Active'
+           AND mc.status = 'Active'
+         LIMIT 1`,
         [itemName],
       );
 
@@ -316,33 +398,44 @@ export async function approveMenuChangeRequest(req, res, next) {
       );
     }
 
-    // Recompute the booking price from the approved selections. Menu items add
-    // an additional_price on top of the package base price (same formula as
-    // createBooking), so switching to pricier items must raise the total and
-    // charge the difference; downgrades lower the total (no refund is issued).
-    const [pricingRows] = await connection.query(
-      "SELECT price FROM package_pricing WHERE package_id = ? AND pax_count = ?",
-      [request.package_id, request.number_of_pax],
-    );
-    if (pricingRows.length === 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message:
-            "Selected guest count tier is not available for this package.",
-        },
-      });
+    // Recompute the booking price from the approved selections. The base is the
+    // price the customer originally booked at (recovered from the old total),
+    // NOT the package's current tier — so a package price change after booking
+    // can never skew the surcharge. Menu items add an additional_price on top of
+    // that base (same formula as createBooking), so switching to pricier items
+    // must raise the total and charge the difference; downgrades lower the total
+    // (no refund is issued).
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const oldTotal = parseFloat(request.total_price);
+    let basePrice;
+    if (oldSelectionsRows.length > 0) {
+      basePrice = round2(oldTotal - oldAdditionalSum);
+    } else {
+      // Fallback for a booking with no stored menu rows: use the current tier.
+      const [pricingRows] = await connection.query(
+        "SELECT price FROM package_pricing WHERE package_id = ? AND pax_count = ?",
+        [request.package_id, request.number_of_pax],
+      );
+      if (pricingRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message:
+              "Selected guest count tier is not available for this package.",
+          },
+        });
+      }
+      basePrice = parseFloat(pricingRows[0].price);
     }
 
-    const round2 = (n) => Math.round(n * 100) / 100;
-    const newTotal = round2(
-      parseFloat(pricingRows[0].price) + additionalPriceSum,
-    );
-    const oldTotal = parseFloat(request.total_price);
+    const newTotal = round2(basePrice + additionalPriceSum);
     const amountPaid = parseFloat(request.amount_paid || 0);
     const newRemaining = Math.max(round2(newTotal - amountPaid), 0);
-    const priceDelta = round2(newTotal - oldTotal);
+    // Bill only the increase the customer has not already covered. If the
+    // customer overpaid relative to the old total, part (or all) of the rise is
+    // already settled and must not be charged again.
+    const priceDelta = round2(newTotal - Math.max(amountPaid, oldTotal));
 
     // Update the booking's total and remaining balance. A menu change is only
     // allowed on confirmed (fully-paid) bookings, so a price increase becomes

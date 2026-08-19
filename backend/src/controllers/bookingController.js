@@ -791,14 +791,15 @@ export async function getBookings(req, res) {
     await autoCancelUnpaidPastBookings();
 
     const [bookings] = await pool.query(
-      `SELECT b.*, p.package_name, et.type_name, vs.setup_name
+      `SELECT b.*, p.package_name, et.type_name, vs.setup_name,
+              DATEDIFF(b.event_date, ?) AS days_until_event
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        JOIN event_types et ON b.event_type_id = et.event_type_id
        JOIN venue_setups vs ON b.venue_setup_id = vs.venue_setup_id
        WHERE b.user_id = ?
        ORDER BY b.created_at DESC`,
-      [userId],
+      [getPhilippineDateString(), userId],
     );
 
     // Fetch menu selections for all bookings in one query (avoids N+1)

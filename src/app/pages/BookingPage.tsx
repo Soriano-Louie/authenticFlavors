@@ -180,15 +180,11 @@ export function BookingPage() {
 
   const preselectedPackage = searchParams.get("package") ?? "";
   const preselectedEventType = searchParams.get("event") ?? "Birthday";
-  const paxOptions = [30, 40, 50, 60, 70];
   const initialMenuChoices = useMemo(
     () => parseMenuSelections(searchParams.get("menu")),
     [searchParams],
   );
   const initialPax = Number(searchParams.get("pax") || 30);
-  const normalizedInitialPax = paxOptions.includes(initialPax)
-    ? initialPax
-    : 30;
 
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -214,7 +210,7 @@ export function BookingPage() {
     null,
   );
   const [minEventDate, setMinEventDate] = useState<string | null>(null);
-  const [guestCount, setGuestCount] = useState(normalizedInitialPax);
+  const [guestCount, setGuestCount] = useState(initialPax);
   const [eventType, setEventType] = useState(preselectedEventType);
   const [customEventType, setCustomEventType] = useState("");
   const [contactName, setContactName] = useState("");
@@ -384,6 +380,29 @@ export function BookingPage() {
     }
     return found || packages[0];
   }, [selectedPackageId, packages]);
+
+  // Guest-count options come from the selected package's actual price tiers
+  // (same rule the package-selection page uses), never a hardcoded list, so
+  // the two screens can't disagree about which pax options exist.
+  const paxOptions = useMemo(() => {
+    const pricing = selectedPackage?.pricing;
+    if (Array.isArray(pricing) && pricing.length > 0) {
+      return pricing
+        .map((t: any) => Number(t.pax_count))
+        .filter((n: number) => !Number.isNaN(n))
+        .sort((a: number, b: number) => a - b);
+    }
+    return [30, 40, 50, 60, 70];
+  }, [selectedPackage]);
+
+  // If the carried-over pax (from URL / package selection) isn't offered by the
+  // chosen package, snap to the lowest valid option instead of silently leaving
+  // an unselectable value in place.
+  useEffect(() => {
+    if (paxOptions.length > 0 && !paxOptions.includes(guestCount)) {
+      setGuestCount(paxOptions[0]);
+    }
+  }, [paxOptions, guestCount]);
 
   const totalEstimate = useMemo(() => {
     const base = getPackagePriceForPax(selectedPackage, guestCount);

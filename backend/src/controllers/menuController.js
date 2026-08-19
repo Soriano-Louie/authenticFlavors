@@ -1,8 +1,4 @@
 import { pool } from "../db/pool.js";
-import {
-  uploadToCloudinary,
-  deleteFromCloudinary,
-} from "../services/cloudinaryService.js";
 
 // ─── Admin: Menu Categories CRUD ─────────────────────────────────────
 
@@ -225,30 +221,14 @@ export async function adminCreateMenuItem(req, res) {
       });
     }
 
-    let imageUrl = null;
-
-    // Upload image if provided
-    if (req.file) {
-      try {
-        const uploadResult = await uploadToCloudinary(req.file.buffer, "menu_items");
-        imageUrl = uploadResult.secure_url;
-      } catch (uploadError) {
-        console.error("Image upload failed:", uploadError);
-        return res.status(500).json({
-          error: { code: "UPLOAD_ERROR", message: "Failed to upload image." },
-        });
-      }
-    }
-
     const [result] = await pool.query(
-      "INSERT INTO menu_items (category_id, item_name, description, additional_price, availability_status, image) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO menu_items (category_id, item_name, description, additional_price, availability_status) VALUES (?, ?, ?, ?, ?)",
       [
         Number(category_id),
         item_name.trim(),
         description || null,
         additional_price ? Number(additional_price) : 0,
         availability_status || "Active",
-        imageUrl,
       ],
     );
 
@@ -291,31 +271,6 @@ export async function adminUpdateMenuItem(req, res) {
     }
 
     const currentItem = existing[0];
-    let imageUrl = currentItem.image;
-
-    // Handle image upload/replacement
-    if (req.file) {
-      try {
-        if (currentItem.image && currentItem.image.includes("cloudinary")) {
-          const urlParts = currentItem.image.split("/");
-          const filename = urlParts[urlParts.length - 1]?.split(".")[0];
-          if (filename) {
-            const oldPublicId = `authentic_flavors/menu_items/${filename}`;
-            await deleteFromCloudinary(oldPublicId).catch(() => {});
-          }
-        }
-        const uploadResult = await uploadToCloudinary(
-          req.file.buffer,
-          "menu_items",
-        );
-        imageUrl = uploadResult.secure_url;
-      } catch (uploadError) {
-        console.error("Image upload failed:", uploadError);
-        return res.status(500).json({
-          error: { code: "UPLOAD_ERROR", message: "Failed to upload image." },
-        });
-      }
-    }
 
     const updateFields = [];
     const updateValues = [];
@@ -339,10 +294,6 @@ export async function adminUpdateMenuItem(req, res) {
     if (availability_status !== undefined) {
       updateFields.push("availability_status = ?");
       updateValues.push(availability_status);
-    }
-    if (req.file) {
-      updateFields.push("image = ?");
-      updateValues.push(imageUrl);
     }
 
     if (updateFields.length > 0) {

@@ -395,6 +395,24 @@ export async function seedDatabaseIfEmpty() {
       );
     }
 
+    // Ensure packages.image_public_id exists so admin image replacements can
+    // delete the exact old file from Cloudinary instead of guessing from the URL.
+    const [packageImageColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'packages'",
+      [connection.config.database],
+    );
+    const packageImageColumnNames = packageImageColumns.map(
+      (c) => c.COLUMN_NAME,
+    );
+    if (!packageImageColumnNames.includes("image_public_id")) {
+      await connection.query(
+        "ALTER TABLE packages ADD COLUMN image_public_id VARCHAR(255) NULL",
+      );
+      console.log(
+        "[MIGRATION] Added image_public_id column to packages table.",
+      );
+    }
+
     // 0.3 Create email_verifications table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS email_verifications (

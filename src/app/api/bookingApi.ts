@@ -59,6 +59,7 @@ export interface Booking {
   middle_name?: string | null;
   last_name?: string;
   menu_selections?: BookingMenuSelection[];
+  days_until_event?: number | null;
 }
 
 const API_BASE_URL =

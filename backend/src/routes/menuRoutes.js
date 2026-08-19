@@ -10,7 +10,6 @@ import {
   adminDeleteMenuItem,
 } from "../controllers/menuController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
 
 export const menuRouter = Router();
 
@@ -51,14 +50,12 @@ menuRouter.post(
   "/admin/menu/items",
   requireAuth,
   requireRole("Admin"),
-  upload.single("image"),
   adminCreateMenuItem,
 );
 menuRouter.put(
   "/admin/menu/items/:id",
   requireAuth,
   requireRole("Admin"),
-  upload.single("image"),
   adminUpdateMenuItem,
 );
 menuRouter.delete(

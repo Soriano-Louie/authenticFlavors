@@ -1504,13 +1504,24 @@ export function CustomerDashboard() {
 
             if (isCancelledOrCompleted) return null;
 
-            // 14-day calculation
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const eventDate = new Date(booking.event_date);
-            eventDate.setHours(0, 0, 0, 0);
-            const diffTime = eventDate.getTime() - today.getTime();
-            const daysBeforeEvent = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // 14-day calculation. The authoritative count comes from the backend
+            // (`days_until_event`, computed in Philippine time); a local estimate
+            // is only a transient fallback and is never the deciding value.
+            const serverDays =
+              typeof booking.days_until_event === "number"
+                ? booking.days_until_event
+                : null;
+            let daysBeforeEvent = serverDays;
+            if (daysBeforeEvent === null) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const eventDate = new Date(booking.event_date);
+              eventDate.setHours(0, 0, 0, 0);
+              const diffTime = eventDate.getTime() - today.getTime();
+              daysBeforeEvent = Math.ceil(
+                diffTime / (1000 * 60 * 60 * 24),
+              );
+            }
             const isEligibleForMenuChange =
               isConfirmed && daysBeforeEvent >= 14;
             const existingPendingRequest =
@@ -1594,6 +1605,48 @@ export function CustomerDashboard() {
                     )}
                   </div>
                 )}
+
+                {/* Request Venue Setup Section */}
+                {isConfirmed &&
+                  (() => {
+                    const existingVenue =
+                      venueSetupRequests[booking.booking_id];
+                    const hasActiveVenueRequest =
+                      existingVenue &&
+                      (existingVenue.status === "Pending" ||
+                        existingVenue.status === "Changes_Requested");
+                    const isEligibleForVenueSetup =
+                      !hasActiveVenueRequest && daysBeforeEvent >= 14;
+
+                    return (
+                      <div className="mt-2 pt-2 border-t border-[#C8922A]/10">
+                        <button
+                          type="button"
+                          disabled={!isEligibleForVenueSetup}
+                          onClick={() =>
+                            handleOpenVenueSetupModal(booking)
+                          }
+                          className={`w-full px-4 py-2.5 rounded-full text-xs font-['Lato'] font-semibold transition-all flex items-center justify-center gap-2 ${
+                            isEligibleForVenueSetup
+                              ? "bg-[#2C1810] text-[#F5F0E8] hover:bg-[#3a241a] cursor-pointer shadow-sm"
+                              : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                          }`}
+                        >
+                          <FileText size={16} />
+                          {hasActiveVenueRequest
+                            ? "Venue Setup Request Pending"
+                            : "Request Venue Setup"}
+                        </button>
+                        {!isEligibleForVenueSetup &&
+                          !hasActiveVenueRequest && (
+                            <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
+                              Venue setup requests are only allowed until 14
+                              days before the scheduled event.
+                            </p>
+                          )}
+                      </div>
+                    );
+                  })()}
               </div>
             );
           })()}
