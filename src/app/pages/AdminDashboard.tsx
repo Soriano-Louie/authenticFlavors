@@ -4411,7 +4411,7 @@ function BookingsSection() {
 
         return (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-[#F5F0E8] rounded-3xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20 flex flex-col">
+            <div className="bg-[#F5F0E8] rounded-3xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto af-scrollbar-hide [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden shadow-2xl border border-[#C8922A]/20 flex flex-col">
               {/* Modal Header */}
               <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between sticky top-0 z-20 shadow-md">
                 <div>
