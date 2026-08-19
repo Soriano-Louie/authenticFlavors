@@ -949,8 +949,11 @@ export function CustomerDashboard() {
   const handleOpenMenuChangeModal = async (booking: Booking) => {
     setMenuChangeBooking(booking);
     setShowMenuChangeModal(true);
-    setSelectedMenuItems([]);
-    setMenuDietaryNotes("");
+    const initialItems = booking.menu_selections
+      ? booking.menu_selections.map((s) => s.item_name)
+      : [];
+    setSelectedMenuItems(initialItems);
+    setMenuDietaryNotes(booking.dietary_notes || "");
     setLoadingMenuData(true);
     try {
       const [categoriesRes, itemsRes] = await Promise.all([
@@ -3186,117 +3189,202 @@ export function CustomerDashboard() {
               ) : (
                 <>
                   {/* Notice banner */}
-                  <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex items-start gap-3">
-                    <Edit3
-                      size={20}
-                      className="text-[#C8922A] shrink-0 mt-0.5"
-                    />
-                    <div className="text-xs font-['Lato'] text-[#2C1810]">
-                      <p className="font-semibold text-[#C8922A] mb-0.5">
-                        Menu Selection Policy
-                      </p>
-                      <p className="text-[#2C1810]/70">
-                        Select your preferred dishes below. All menu changes are
-                        submitted to Chef Ramos for approval.
-                      </p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const originalSelections = menuChangeBooking.menu_selections
+                      ? menuChangeBooking.menu_selections.map((s) => s.item_name)
+                      : [];
 
-                  {/* Category Selection */}
-                  <div className="space-y-6">
-                    {menuCategories.map((category) => {
-                      const categoryItems = menuItems.filter(
-                        (i) => i.category_id === category.category_id,
-                      );
-                      if (categoryItems.length === 0) return null;
-
-                      return (
-                        <div key={category.category_id} className="space-y-3">
-                          <h4 className="font-['Playfair_Display'] text-[#2C1810] text-base font-bold border-b border-[#C8922A]/15 pb-1 flex items-center justify-between">
-                            <span>{category.category_name}</span>
-                            <span className="text-xs font-normal text-[#2C1810]/50 font-['Lato']">
-                              Select items
-                            </span>
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                            {categoryItems.map((item) => {
-                              const isSelected = selectedMenuItems.includes(
-                                item.item_name,
-                              );
-                              return (
-                                <button
-                                  key={item.menu_item_id}
-                                  type="button"
-                                  onClick={() =>
-                                    handleToggleMenuItem(item.item_name)
-                                  }
-                                  className={`p-3 rounded-xl border text-left text-xs font-['Lato'] transition-all flex items-center justify-between cursor-pointer ${
-                                    isSelected
-                                      ? "bg-[#C8922A]/15 border-[#C8922A] text-[#2C1810] font-semibold shadow-xs"
-                                      : "bg-white border-[#2C1810]/10 text-[#2C1810]/70 hover:border-[#C8922A]/40"
-                                  }`}
-                                >
-                                  <div>
-                                    <p className="font-medium text-[#2C1810]">
-                                      {item.item_name}
-                                    </p>
-                                    {item.description && (
-                                      <p className="text-xs text-[#2C1810]/50 line-clamp-1 mt-0.5">
-                                        {item.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {isSelected && (
-                                    <div className="w-5 h-5 rounded-full bg-[#C8922A] text-white flex items-center justify-center shrink-0 ml-2">
-                                      <Check size={12} />
-                                    </div>
-                                  )}
-                                </button>
-                              );
-                            })}
+                    return (
+                      <>
+                        <div className="p-4 bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <Edit3
+                              size={20}
+                              className="text-[#C8922A] shrink-0 mt-0.5"
+                            />
+                            <div className="text-xs font-['Lato'] text-[#2C1810]">
+                              <p className="font-semibold text-[#C8922A] mb-0.5">
+                                Menu Modification
+                              </p>
+                              <p className="text-[#2C1810]/70">
+                                Your current menu choices are pre-selected below. Check or uncheck items to customize your selection.
+                              </p>
+                            </div>
                           </div>
+                          {originalSelections.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedMenuItems(originalSelections);
+                                toast.info("Reset to your booking's current menu.");
+                              }}
+                              className="shrink-0 text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 self-end sm:self-auto cursor-pointer"
+                            >
+                              <RotateCcw size={13} /> Reset to Current
+                            </button>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
 
-                  {/* Dietary & Allergy Notes */}
-                  <div className="space-y-2 pt-2 border-t border-[#C8922A]/15">
-                    <label className="block text-xs font-semibold text-[#2C1810] font-['Lato']">
-                      Special Dietary Requests / Allergy Notes (Optional)
-                    </label>
-                    <textarea
-                      value={menuDietaryNotes}
-                      onChange={(e) => setMenuDietaryNotes(e.target.value)}
-                      placeholder="Specify any food allergies, vegan/vegetarian preferences, or chef notes..."
-                      rows={3}
-                      className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] placeholder-[#2C1810]/30 resize-none"
-                    />
-                  </div>
+                        {/* Category Selection */}
+                        <div className="space-y-6">
+                          {menuCategories.map((category) => {
+                            const categoryItems = menuItems.filter(
+                              (i) => i.category_id === category.category_id,
+                            );
+                            if (categoryItems.length === 0) return null;
 
-                  {/* Updated Menu Review Summary */}
-                  <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-2">
-                    <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] uppercase tracking-wider">
-                      Updated Menu Review Summary ({selectedMenuItems.length}{" "}
-                      items)
-                    </h5>
-                    {selectedMenuItems.length === 0 ? (
-                      <p className="text-xs text-[#C4541A] font-['Lato'] italic">
-                        Please select at least one menu item.
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {selectedMenuItems.map((item) => (
-                          <span
-                            key={item}
-                            className="px-2.5 py-1 bg-[#C8922A]/10 text-[#C8922A] border border-[#C8922A]/20 rounded-lg text-xs font-['Lato'] font-medium"
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                            return (
+                              <div key={category.category_id} className="space-y-3">
+                                <h4 className="font-['Playfair_Display'] text-[#2C1810] text-base font-bold border-b border-[#C8922A]/15 pb-1 flex items-center justify-between">
+                                  <span>{category.category_name}</span>
+                                  <span className="text-xs font-normal text-[#2C1810]/50 font-['Lato']">
+                                    Click items to select/unselect
+                                  </span>
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {categoryItems.map((item) => {
+                                    const isSelected = selectedMenuItems.includes(
+                                      item.item_name,
+                                    );
+                                    const isOriginallySelected = originalSelections.includes(
+                                      item.item_name,
+                                    );
+
+                                    return (
+                                      <button
+                                        key={item.menu_item_id}
+                                        type="button"
+                                        onClick={() =>
+                                          handleToggleMenuItem(item.item_name)
+                                        }
+                                        className={`p-3.5 rounded-xl border text-left text-xs font-['Lato'] transition-all flex items-center justify-between cursor-pointer ${
+                                          isSelected
+                                            ? "bg-[#C8922A]/15 border-[#C8922A] text-[#2C1810] font-semibold shadow-xs"
+                                            : isOriginallySelected
+                                              ? "bg-white border-[#C4541A]/30 text-[#2C1810]/70 hover:border-[#C8922A]/40"
+                                              : "bg-white border-[#2C1810]/10 text-[#2C1810]/70 hover:border-[#C8922A]/40"
+                                        }`}
+                                      >
+                                        <div className="min-w-0 flex-1 pr-2">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <p className="font-medium text-[#2C1810] text-sm">
+                                              {item.item_name}
+                                            </p>
+                                            {isOriginallySelected && isSelected && (
+                                              <span className="px-2 py-0.5 rounded-full bg-[#7A8C5C]/20 text-[#5C7A3E] text-[10px] font-semibold tracking-wide">
+                                                Current Pick
+                                              </span>
+                                            )}
+                                            {!isOriginallySelected && isSelected && (
+                                              <span className="px-2 py-0.5 rounded-full bg-[#C8922A]/20 text-[#C8922A] text-[10px] font-semibold tracking-wide">
+                                                + New
+                                              </span>
+                                            )}
+                                            {isOriginallySelected && !isSelected && (
+                                              <span className="px-2 py-0.5 rounded-full bg-[#C4541A]/15 text-[#C4541A] text-[10px] font-semibold tracking-wide">
+                                                Unchecked
+                                              </span>
+                                            )}
+                                          </div>
+                                          {item.description && (
+                                            <p className="text-xs text-[#2C1810]/50 line-clamp-1 mt-0.5">
+                                              {item.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div
+                                          className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ml-2 transition-colors ${
+                                            isSelected
+                                              ? "bg-[#C8922A] text-white"
+                                              : "border-2 border-[#2C1810]/20 bg-white"
+                                          }`}
+                                        >
+                                          {isSelected && <Check size={12} />}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Dietary & Allergy Notes */}
+                        <div className="space-y-2 pt-2 border-t border-[#C8922A]/15">
+                          <label className="block text-xs font-semibold text-[#2C1810] font-['Lato']">
+                            Special Dietary Requests / Allergy Notes (Optional)
+                          </label>
+                          <textarea
+                            value={menuDietaryNotes}
+                            onChange={(e) => setMenuDietaryNotes(e.target.value)}
+                            placeholder="Specify any food allergies, vegan/vegetarian preferences, or chef notes..."
+                            rows={3}
+                            className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] placeholder-[#2C1810]/30 resize-none"
+                          />
+                        </div>
+
+                        {/* Updated Menu Review Summary */}
+                        <div className="p-4 bg-white rounded-2xl border border-[#C8922A]/20 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] uppercase tracking-wider">
+                              Updated Menu Review Summary ({selectedMenuItems.length} item{selectedMenuItems.length === 1 ? "" : "s"} selected)
+                            </h5>
+                          </div>
+
+                          {selectedMenuItems.length === 0 ? (
+                            <p className="text-xs text-[#C4541A] font-['Lato'] italic">
+                              Please select at least one menu item.
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {selectedMenuItems.map((item) => {
+                                  const isOriginal = originalSelections.includes(item);
+                                  return (
+                                    <span
+                                      key={item}
+                                      className={`px-2.5 py-1 rounded-lg text-xs font-['Lato'] font-medium flex items-center gap-1.5 ${
+                                        isOriginal
+                                          ? "bg-[#7A8C5C]/15 text-[#5C7A3E] border border-[#7A8C5C]/30"
+                                          : "bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30"
+                                      }`}
+                                    >
+                                      <span>{item}</span>
+                                      <span className="text-[10px] opacity-75 font-semibold">
+                                        ({isOriginal ? "Current" : "New"})
+                                      </span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Unselected from original notice */}
+                              {originalSelections.some((o) => !selectedMenuItems.includes(o)) && (
+                                <div className="pt-2 border-t border-[#2C1810]/10 text-xs font-['Lato']">
+                                  <span className="text-[#C4541A] font-semibold block mb-1">
+                                    Dishes to be replaced / removed:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {originalSelections
+                                      .filter((o) => !selectedMenuItems.includes(o))
+                                      .map((removed) => (
+                                        <span
+                                          key={removed}
+                                          className="px-2 py-0.5 rounded-md bg-[#C4541A]/10 text-[#C4541A] line-through text-[11px]"
+                                        >
+                                          {removed}
+                                        </span>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </div>
