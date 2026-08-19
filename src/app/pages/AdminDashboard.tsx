@@ -402,11 +402,19 @@ export function AdminDashboard() {
                         (user.last_name?.charAt(0) || "")}
                     </div>
                   )}
-                  <div className="hidden sm:block">
-                    <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                      {user.first_name} {user.last_name}
+                  <div className="flex flex-col min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-[220px] md:max-w-xs transition-all duration-200">
+                    <p
+                      className="text-xs sm:text-sm font-['Lato'] font-semibold text-[#2C1810] truncate max-w-full leading-snug"
+                      title={`${user.first_name || ""} ${user.last_name || ""}`.trim() || "System Administrator"}
+                    >
+                      {user.first_name || user.last_name
+                        ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
+                        : "System Administrator"}
                     </p>
-                    <p className="text-[11px] text-[#2C1810]/50 font-['Lato']">
+                    <p
+                      className="text-[10px] sm:text-[11px] text-[#2C1810]/60 font-['Lato'] truncate max-w-full leading-tight"
+                      title={user.email || ""}
+                    >
                       {user.email}
                     </p>
                   </div>
