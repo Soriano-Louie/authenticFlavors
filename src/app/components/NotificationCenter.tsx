@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -359,16 +360,16 @@ export function NotificationCenter({
         </div>
       )}
 
-      {/* Notification Detail Modal */}
-      {showDetailModal && selectedNotification && (
+      {/* Notification Detail Modal — rendered via portal so it escapes the Navbar's stacking context */}
+      {showDetailModal && selectedNotification && createPortal(
         <div
-          className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-4 pt-20 sm:pt-4"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 py-20"
           onClick={() => setShowDetailModal(false)}
         >
-          {/* Backdrop — absolute so it stays in this stacking context, not fixed */}
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          {/* Full-screen backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-          {/* Modal Card — z-10 ensures it sits above the backdrop */}
+          {/* Modal Card */}
           <div
             className="relative z-10 bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
@@ -423,10 +424,8 @@ export function NotificationCenter({
                   const isAdmin = user?.role === "Admin";
 
                   if (onSelectTab) {
-                    // Already inside a dashboard — just switch tabs directly
                     onSelectTab(targetTab, selectedNotification.booking_id);
                   } else {
-                    // From homepage / Navbar — navigate to the correct dashboard with state
                     navigate(isAdmin ? "/admin" : "/dashboard", {
                       state: { targetTab },
                     });
@@ -449,7 +448,8 @@ export function NotificationCenter({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
