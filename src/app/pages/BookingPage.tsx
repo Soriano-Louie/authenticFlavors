@@ -289,10 +289,11 @@ export function BookingPage() {
       const occupied: Record<string, number> = {};
       const blocked: Record<string, string | null> = {};
       data.occupiedDays.forEach((d) => {
-        if (d.status === "blocked") {
-          blocked[d.event_date] = d.reason ?? null;
+        const key = String(d.event_date).slice(0, 10);
+        if (d.status === "blocked" || d.reason != null) {
+          blocked[key] = d.reason ?? null;
         } else if (d.booking_count >= data.capacityPerDay) {
-          occupied[d.event_date] = d.booking_count;
+          occupied[key] = d.booking_count;
         }
       });
       setOccupiedDays(occupied);
@@ -852,6 +853,7 @@ export function BookingPage() {
                         const msg = "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.";
                         setSubmitError(msg);
                         toast.error(msg);
+                        setEventDate("");
                         return;
                       }
                       const [y, m, d] = value.split("-").map(Number);
@@ -859,21 +861,24 @@ export function BookingPage() {
                         const msg = "The store is closed on Mondays. Please pick another date.";
                         setSubmitError(msg);
                         toast.error(msg);
+                        setEventDate("");
                         return;
                       }
                       if (blockedDays[value] !== undefined) {
                         const reason = blockedDays[value];
                         const msg = reason
-                          ? `This day is unavailable for booking (Reason: ${reason}). Please choose another date.`
-                          : "This day is unavailable for booking. Please choose another date.";
+                          ? `This day (${value}) is blocked by the restaurant (Reason: ${reason}). Please choose another date.`
+                          : `This day (${value}) is blocked by the restaurant. Please choose another date.`;
                         setSubmitError(msg);
                         toast.error(msg);
+                        setEventDate("");
                         return;
                       }
                       if (occupiedDays[value]) {
                         const msg = "This date is already fully booked. Please choose another date.";
                         setSubmitError(msg);
                         toast.error(msg);
+                        setEventDate("");
                         return;
                       }
                       setSubmitError(null);

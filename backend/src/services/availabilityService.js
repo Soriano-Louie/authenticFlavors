@@ -54,18 +54,20 @@ export async function getDateOccupancy() {
   // occupied so its reason takes precedence when listing.
   const byDate = new Map();
   for (const row of blockedRows) {
-    byDate.set(row.event_date, {
-      event_date: row.event_date,
+    const key = String(row.event_date).slice(0, 10);
+    byDate.set(key, {
+      event_date: key,
       booking_count: CAPACITY_PER_DAY,
       reason: row.reason || null,
       status: "blocked",
     });
   }
   for (const row of bookingRows) {
-    const existing = byDate.get(row.event_date);
+    const key = String(row.event_date).slice(0, 10);
+    const existing = byDate.get(key);
     if (existing && existing.status === "blocked") continue;
-    byDate.set(row.event_date, {
-      event_date: row.event_date,
+    byDate.set(key, {
+      event_date: key,
       booking_count: row.booking_count,
       reason: null,
       status: "booked",
@@ -93,10 +95,11 @@ export async function isDateUnavailable(
   eventDate,
   excludeBookingId = null,
 ) {
+  const dateStr = String(eventDate).slice(0, 10);
   // 1. Admin-declared blocked date?
   const [blocked] = await queryable.query(
-    "SELECT blocked_date_id FROM blocked_dates WHERE blocked_date = ? LIMIT 1",
-    [eventDate],
+    "SELECT blocked_date_id FROM blocked_dates WHERE DATE_FORMAT(blocked_date, '%Y-%m-%d') = ? LIMIT 1",
+    [dateStr],
   );
   if (blocked.length > 0) return true;
 
