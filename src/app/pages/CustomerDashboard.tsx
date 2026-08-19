@@ -269,12 +269,18 @@ export function CustomerDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { targetTab?: string } | null;
-  const initialTab =
-    locationState?.targetTab === "payments" ||
-    locationState?.targetTab === "venue" ||
-    locationState?.targetTab === "bookings"
-      ? "My Events"
-      : "Overview";
+  const targetTabFromState = locationState?.targetTab;
+  const initialTab = (() => {
+    if (
+      targetTabFromState === "payments" ||
+      targetTabFromState === "venue" ||
+      targetTabFromState === "bookings" ||
+      targetTabFromState === "menu-changes"
+    )
+      return "My Events";
+    if (targetTabFromState === "feedback") return "My Events";
+    return "Overview";
+  })();
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // Profile photo upload state

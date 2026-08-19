@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
   getAdminBookings,
@@ -179,6 +179,23 @@ export function AdminDashboard() {
 
   const { accessToken, logout, user } = useAuth();
   const navigateTo = useNavigate();
+  const location = useLocation();
+
+  // Apply targetTab from navigation state (e.g. from notification redirect)
+  useEffect(() => {
+    const state = location.state as { targetTab?: string } | null;
+    if (!state?.targetTab) return;
+    const tab = state.targetTab;
+    if (tab === "bookings" || tab === "payments" || tab === "venue") {
+      setActiveSection("bookings");
+    } else if (tab === "menu-changes") {
+      setActiveSection("menu-changes");
+    } else if (tab === "feedback") {
+      setActiveSection("feedback");
+    }
+    // Clear state so refreshing doesn't re-trigger
+    navigateTo("/admin", { replace: true, state: {} });
+  }, []);
 
   const handleLogoutClick = () => {
     setShowLogoutConfirm(true);

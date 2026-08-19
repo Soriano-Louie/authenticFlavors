@@ -126,7 +126,7 @@ export function Navbar() {
                 <NotificationCenter
                   onSelectTab={(tab) => {
                     if (user?.role === "Admin") {
-                      navigate("/admin");
+                      navigate("/admin", { state: { targetTab: tab } });
                     } else {
                       navigate("/dashboard", { state: { targetTab: tab } });
                     }

@@ -362,15 +362,15 @@ export function NotificationCenter({
       {/* Notification Detail Modal */}
       {showDetailModal && selectedNotification && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center p-4 pt-16 sm:pt-4 overflow-y-auto"
           onClick={() => setShowDetailModal(false)}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
 
           {/* Modal Card */}
           <div
-            className="relative bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
+            className="relative bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -430,7 +430,11 @@ export function NotificationCenter({
                   if (onSelectTab) {
                     onSelectTab(targetTab, selectedNotification.booking_id);
                   } else {
-                    navigate(user?.role === "Admin" ? "/admin" : "/dashboard");
+                    // From homepage/navbar — navigate with state so dashboard picks it up
+                    const isAdmin = user?.role === "Admin";
+                    navigate(isAdmin ? "/admin" : "/dashboard", {
+                      state: { targetTab },
+                    });
                   }
                 }}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -442,7 +446,9 @@ export function NotificationCenter({
                       ? "View Feedback"
                       : selectedNotification.type.includes("payment")
                         ? "View Payment Details"
-                        : "View Booking"}
+                        : selectedNotification.type.includes("venue_setup")
+                          ? "View Venue Request"
+                          : "View Booking"}
                 </span>
                 <ArrowRight size={14} />
               </button>
