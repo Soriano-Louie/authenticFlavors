@@ -5952,7 +5952,7 @@ function AnnouncementsSection() {
                         discount_enabled: !prev.discount_enabled,
                       }))
                     }
-                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                    className={`relative w-12 h-6 rounded-full transition-colors ${
                       formData.discount_enabled
                         ? "bg-[#C4541A]"
                         : "bg-[#2C1810]/20"
@@ -5960,10 +5960,10 @@ function AnnouncementsSection() {
                     aria-pressed={formData.discount_enabled}
                   >
                     <span
-                      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                      className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
                         formData.discount_enabled
-                          ? "translate-x-5"
-                          : "translate-x-0.5"
+                          ? "translate-x-6"
+                          : "translate-x-0"
                       }`}
                     />
                   </button>
@@ -6097,14 +6097,16 @@ function AnnouncementsSection() {
                           className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] font-['Lato'] text-sm focus:outline-none focus:ring-2 focus:ring-[#C8922A]/30"
                         >
                           <option value="">Select a package…</option>
-                          {adminPackages.map((pkg) => (
-                            <option
-                              key={pkg.package_id}
-                              value={String(pkg.package_id)}
-                            >
-                              {pkg.package_name}
-                            </option>
-                          ))}
+                          {adminPackages
+                            .filter((pkg) => pkg.status === "Active")
+                            .map((pkg) => (
+                              <option
+                                key={pkg.package_id}
+                                value={String(pkg.package_id)}
+                              >
+                                {pkg.package_name}
+                              </option>
+                            ))}
                         </select>
                       </div>
                     )}
