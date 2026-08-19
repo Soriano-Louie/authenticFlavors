@@ -357,6 +357,81 @@ export function NotificationCenter({
           )}
         </div>
       )}
+
+      {/* Notification Detail Modal */}
+      {showDetailModal && selectedNotification && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          onClick={() => setShowDetailModal(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+          {/* Modal Card */}
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl border border-[#C8922A]/20 w-full max-w-md animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-[#2C1810] px-5 py-4 rounded-t-2xl flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 w-9 h-9 rounded-full bg-[#F5F0E8]/10 border border-[#C8922A]/30 flex items-center justify-center">
+                  {getNotificationIcon(selectedNotification.type)}
+                </div>
+                <h3 className="font-['Playfair_Display'] text-[#F5F0E8] text-base font-medium leading-snug">
+                  {selectedNotification.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="shrink-0 text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1 mt-0.5"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-5 space-y-4">
+              <p className="text-sm text-[#2C1810]/80 font-['Lato'] leading-relaxed">
+                {selectedNotification.message}
+              </p>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-[#2C1810]/40 font-['Lato']">
+                <Clock size={11} />
+                <span>{formatTimestamp(selectedNotification.created_at)}</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-5 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 rounded-xl border border-[#C8922A]/30 text-[#2C1810]/70 text-sm font-['Lato'] hover:bg-[#F5F0E8] transition-colors"
+              >
+                Dismiss
+              </button>
+              {onSelectTab && selectedNotification.booking_id && (
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    const type = selectedNotification.type;
+                    if (type.includes("payment")) {
+                      onSelectTab("payments", selectedNotification.booking_id);
+                    } else if (type.includes("venue_setup")) {
+                      onSelectTab("venue", selectedNotification.booking_id);
+                    } else {
+                      onSelectTab("bookings", selectedNotification.booking_id);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity"
+                >
+                  View Details
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
