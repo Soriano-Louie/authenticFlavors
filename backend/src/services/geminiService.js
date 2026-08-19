@@ -569,7 +569,7 @@ async function buildRestaurantContext() {
 // off-topic queries. Anything with a system keyword passes through (Gemini is
 // the final authority on scope); topics matching an off-topic pattern are
 // blocked here. Anything else falls through to Gemini which politely restricts.
-function isRestaurantRelated(message) {
+export function isRestaurantRelated(message) {
   const lower = message.toLowerCase().trim();
   if (!lower || lower.length < 2) return true;
 
@@ -773,7 +773,7 @@ function isRestaurantRelated(message) {
 // Blocks queries that would require access to data this chatbot is not
 // authorized to handle (admin credentials, other people's info, payment card
 // details, etc.). These never reach the AI — a fixed safe refusal is returned.
-function isSensitiveOrPrivacyRequest(message) {
+export function isSensitiveOrPrivacyRequest(message) {
   const lower = message.toLowerCase().trim();
   if (!lower || lower.length < 2) return false;
 
