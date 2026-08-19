@@ -41,11 +41,11 @@ authRouter.post("/send-verification", authLimiter, sendVerification);
 authRouter.post("/verify-email", authLimiter, verifyEmail);
 
 // Verified email change (requires login)
-authRouter.post("/change-email/request", requireAuth, requestEmailChange);
-authRouter.post("/change-email/verify", requireAuth, verifyEmailChange);
+authRouter.post("/change-email/request", requireAuth, authLimiter, requestEmailChange);
+authRouter.post("/change-email/verify", requireAuth, authLimiter, verifyEmailChange);
 
 // Secure password change (requires login)
-authRouter.post("/change-password", requireAuth, changePassword);
+authRouter.post("/change-password", requireAuth, authLimiter, changePassword);
 
 // Password reset
 authRouter.post("/forgot-password", passwordResetLimiter, forgotPassword);

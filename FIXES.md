@@ -216,6 +216,60 @@ Generated: 2026-08-18
 
 ---
 
+## §4 Auth & account fixes (review §4.1–§4.9, addressed 2026-08-19)
+
+### 30. Suspended/inactive accounts can no longer reactivate themselves via the email flow
+- [x] File: `backend/src/controllers/authController.js`
+- Problem: `sendVerification` only blocked `Active` accounts and `verifyEmail` set any matching email to `Active`, so a Suspended/Inactive account could self-reactivate.
+- Fix: `sendVerification` now only serves `Pending` accounts (400 `INVALID_STATE` otherwise). `verifyEmail` now only activates accounts currently in `Pending` — a held account is rejected even with a valid code. Reviving a suspended account is admin-only.
+- Status: FIXED 2026-08-19.
+
+### 31. Login-check middleware now re-reads account status every request
+- [x] File: `backend/src/middleware/auth.js`
+- Problem: `requireAuth` verified token + token_version but never re-checked `account_status`, so a Suspended/Inactive user with a valid token kept using the app.
+- Fix: The middleware now selects `account_status` and returns 403 `ACCOUNT_DISABLED` for anything but `Active`. (Note: the codebase has no admin suspend endpoint yet — when one is added it should also bump `token_version` so the session dies immediately.) The `changePassword` action is covered by this middleware.
+- Status: FIXED 2026-08-19.
+
+### 32. Email-change verification re-checks the new email at apply time (TOCTOU closed)
+- [x] File: `backend/src/controllers/authController.js`
+- Problem: The "is the new email taken?" check ran only at request time; by verify time another user could have claimed it, and the resulting duplicate-key error surfaced as a 500.
+- Fix: Inside `verifyEmailChange`, the availability check is repeated before marking the code used (rejects with 409 without burning the code), and the actual `UPDATE users SET email` is guarded so the DB unique key maps to a clean 409 instead of a 500.
+- Status: FIXED 2026-08-19.
+
+### 33. Phone-number uniqueness is now enforced by the database
+- [x] File: `backend/src/db/seed.js` + `backend/src/controllers/authController.js`
+- Problem: Registration only pre-checked phone duplicates (not atomic), so two simultaneous sign-ups could both save the same phone.
+- Fix: Added idempotent migration `0.5.2` adding `UNIQUE KEY uq_users_phone_number (phone_number)` (skipped if legacy duplicates exist). Registration still pre-checks normalized phones for a friendly message, and the INSERT now catches `ER_DUP_ENTRY` → 409 `PHONE_IN_USE` (or `EMAIL_IN_USE` for the email key). Stored phones are already normalized to 0XXXXXXXXXX, so the raw-column index is effective.
+- Status: FIXED 2026-08-19.
+
+### 34. Email-change and change-password endpoints are now rate-limited
+- [x] File: `backend/src/routes/authRoutes.js`
+- Fix: Applied the existing `authLimiter` to `/change-email/request`, `/change-email/verify` and `/change-password`.
+- Status: FIXED 2026-08-19.
+
+### 35. Email-verification code comparison is now constant-time
+- [x] File: `backend/src/controllers/authController.js`
+- Fix: `verifyEmail` compares the stored SHA-256 hash with `crypto.timingSafeEqual` (same pattern the email-change flow already used).
+- Status: FIXED 2026-08-19.
+
+### 36. Bypassing the verification attempt cap is no longer race-able
+- [x] File: `backend/src/controllers/authController.js`
+- Problem: The attempt counter was read-then-incremented, so concurrent attempts could both pass the limit.
+- Fix: Both `verifyEmail` and `verifyEmailChange` now consume attempts atomically: `UPDATE … SET attempt_count = attempt_count + 1 WHERE id = ? AND attempt_count < max` and treat 0 affected rows as `TOO_MANY_ATTEMPTS`.
+- Status: FIXED 2026-08-19.
+
+### 37. Logout now revokes the session server-side
+- [x] File: `backend/src/controllers/authController.js`
+- Fix: `logout` bumps the user's `token_version`, invalidating every previously issued access/refresh token, then clears the cookie as before.
+- Status: FIXED 2026-08-19.
+
+### 38. Profile updates no longer demand an ignored email field
+- [x] File: `backend/src/utils/validators.js`
+- Fix: `email` is now optional in `validateProfileUpdateInput` (validated for format only when supplied) and removed from the returned `data` (email changes go through the dedicated verified flow).
+- Status: FIXED 2026-08-19.
+
+---
+
 ## What is already solid (do not touch unless asked)
 - Auth: bcrypt, email-verification with hashed codes, token-version single-session enforcement, DB-role re-read, rate limiting on auth/upload/chat, magic-byte image validation, CORS fail-closed.
 - getBookingPayments explicit column projection.

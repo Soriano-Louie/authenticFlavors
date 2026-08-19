@@ -571,7 +571,7 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 
 ## 4. Auth & account domain (`authController.js`, middleware, validators)
 
-### 4.1 [HIGH][verified] Suspended/inactive accounts could reactivate themselves through the email flow
+### 4.1 [HIGH][verified][resolved] Suspended/inactive accounts could reactivate themselves through the email flow
 - **Location:** `authController.js:394-401, 540-543`
 - **What's the problem?** The "send verification code" and "verify email" endpoints let
   any account verify/reactivate itself. A `Suspended` or `Inactive` account (put on hold
@@ -580,8 +580,9 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   `Pending` (return `INVALID_STATE` for `Active`/`Suspended`/`Inactive`), and
   `verifyEmail` should only set `Active` when starting from `Pending`. A suspended
   account may only be revived by an admin.
+- **Status: RESOLVED 2026-08-19.** Implemented exactly as recommended (see FIXES.md #30).
 
-### 4.2 [MEDIUM][verified] The login-check middleware never looks at account status
+### 4.2 [MEDIUM][verified][resolved] The login-check middleware never looks at account status
 - **Location:** `middleware/auth.js:19-38`
 - **What's the problem?** The middleware that guards protected endpoints verifies the
   token and role but never re-reads `account_status`. A `Suspended`/`Inactive` user with
@@ -591,8 +592,12 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   to the change-password action (or rely on the middleware once applied). Optionally
   bump the account's token version when suspending so the current session dies
   immediately.
+- **Status: RESOLVED 2026-08-19.** Middleware now re-reads `account_status` on every
+  request (403 `ACCOUNT_DISABLED` for non-`Active`); `change-password` is covered by it.
+  Note: no admin suspend endpoint exists yet — when one is added it should bump
+  `token_version`. See FIXES.md #31.
 
-### 4.3 [MEDIUM][agent-verified] Changing email has a check-then-use gap
+### 4.3 [MEDIUM][agent-verified][resolved] Changing email has a check-then-use gap
 - **Location:** `authController.js:1026-1038` vs `:1205-1222`
 - **What's the problem?** The email-change flow checks "is the new email already taken?"
   at request time, then verifies the change later — by then another user may have taken
@@ -602,8 +607,9 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   transaction (`WHERE email = ? AND user_id != ?`), handle the duplicate-key error
   gracefully, and mark the code used only after the update succeeds (or in the same
   transaction that can roll back).
+- **Status: RESOLVED 2026-08-19.** See FIXES.md #32.
 
-### 4.4 [MEDIUM][agent-verified] Two people could register the same phone number
+### 4.4 [MEDIUM][agent-verified][resolved] Two people could register the same phone number
 - **Location:** `authController.js:289-306`
 - **What's the problem?** Registration checks "is this phone taken?" then inserts —
   but with no uniqueness rule and no race protection, two simultaneous sign-ups could
@@ -611,23 +617,28 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Add a `UNIQUE` index on `users.phone_number` (if the
   business allows unique phones) and catch the duplicate-key error → 409. Otherwise,
   accept duplicates but stop doing a misleading pre-check.
+- **Status: RESOLVED 2026-08-19.** Migrated a UNIQUE index (skipped if legacy dupes
+  exist) and catch `ER_DUP_ENTRY` → 409 in `register`. See FIXES.md #33.
 
-### 4.5 [MEDIUM][agent-verified] No rate limiting on email-change / password-change endpoints
+### 4.5 [MEDIUM][agent-verified][resolved] No rate limiting on email-change / password-change endpoints
 - **Location:** `authRoutes.js:44-48`
 - **What's the problem?** The login/registration endpoints are rate-limited (to slow down
   brute force), but the email-change and change-password endpoints are not.
 - **Fix (in plain English):** Apply the existing `authLimiter` to
   `/profile/email-change` (request + verify) and `/profile/change-password`.
+- **Status: RESOLVED 2026-08-19.** `authLimiter` applied to `/change-email/request`,
+  `/change-email/verify`, `/change-password`. See FIXES.md #34.
 
-### 4.6 [LOW][verified] Email-verification code comparison isn't constant-time
+### 4.6 [LOW][verified][resolved] Email-verification code comparison isn't constant-time
 - **Location:** `authController.js:524`
 - **What's the problem?** The verification code was compared with a normal string
   compare, which reveals (tiny amounts of) timing information an attacker could use to
   guess the code.
 - **Fix (in plain English):** Use `crypto.timingSafeEqual` for the comparison, exactly
   like the email-change flow already does (`:1192-1194`).
+- **Status: RESOLVED 2026-08-19.** See FIXES.md #35.
 
-### 4.7 [LOW][agent-verified] The "attempts left" counter for email verification has a race
+### 4.7 [LOW][agent-verified][resolved] The "attempts left" counter for email verification has a race
 - **Location:** `authController.js:507-521`
 - **What's the problem?** The counter that limits how many times you can try a
   verification code was read-then-write with no lock, so two attempts at the same time
@@ -635,15 +646,20 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Lock the row while updating the counter (`SELECT …
   FOR UPDATE`), or decrement atomically (`UPDATE … SET attempts_left = attempts_left - 1
   WHERE attempts_left > 0`) and check how many rows were affected.
+- **Status: RESOLVED 2026-08-19.** Both `verifyEmail` and `verifyEmailChange` now
+  consume attempts atomically (`AND attempt_count < max`, 0 rows affected → 429). See
+  FIXES.md #36.
 
-### 4.8 [LOW][verified] Logging out doesn't actually revoke the session tokens
+### 4.8 [LOW][verified][resolved] Logging out doesn't actually revoke the session tokens
 - **Location:** `authController.js:901-904`
 - **What's the problem?** Logout clears the browser cookie but doesn't invalidate the
   tokens on the server, so a stolen token could still be used until it expires.
 - **Fix (in plain English):** On logout, bump `users.token_version`, which revokes the
   refresh chain. Access tokens stay short-lived (15 min) as the accepted window.
+- **Status: RESOLVED 2026-08-19.** `logout` now bumps `token_version` before clearing
+  the cookie. See FIXES.md #37.
 
-### 4.9 [LOW][verified] Profile updates demand an email address that is then ignored
+### 4.9 [LOW][verified][resolved] Profile updates demand an email address that is then ignored
 - **Location:** `validators.js:138-144` + `authController.js:928-931`
 - **What's the problem?** The profile-update form requires an `email` field, but the
   update action ignores it (email changes have their own dedicated flow). So a user
@@ -651,6 +667,8 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
 - **Fix (in plain English):** Make `email` optional in the profile-update validator
   (allow name/phone-only updates), or support the email-change flow only under its
   dedicated endpoint.
+- **Status: RESOLVED 2026-08-19.** `email` is now optional in
+  `validateProfileUpdateInput` and dropped from its `data` payload. See FIXES.md #38.
 
 ---
 

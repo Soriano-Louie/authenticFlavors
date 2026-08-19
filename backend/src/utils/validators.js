@@ -135,9 +135,10 @@ export function validateProfileUpdateInput(body) {
   const lastNameError = getInvalidNameReason(lastName, "Last name");
   if (lastNameError) fieldErrors.last_name = lastNameError;
 
-  if (!email) {
-    fieldErrors.email = "Email is required.";
-  } else if (!isEmailFormatValid(email)) {
+  // Email is optional on profile updates: changing an email goes through its
+  // dedicated verified email-change flow, so a user updating just their
+  // name/phone isn't forced to re-submit an email that is then ignored.
+  if (email && !isEmailFormatValid(email)) {
     fieldErrors.email =
       "Enter a valid email address (e.g. name@example.com).";
   }
@@ -160,7 +161,6 @@ export function validateProfileUpdateInput(body) {
       first_name: firstName,
       middle_name: middleName || null,
       last_name: lastName,
-      email,
       phone_number: phoneResult.valid ? phoneResult.normalized : phoneNumber,
       dietary_preferences: dietaryPreferences || null,
     },

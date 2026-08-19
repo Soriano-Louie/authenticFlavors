@@ -834,6 +834,32 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added token_version to users table.");
     }
 
+    // 0.5.2 Unique phone_number: closes the check-then-insert race in
+    // register(). Stored phones are already normalized (0XXXXXXXXXX), so the
+    // raw column index is enough. NULLs are allowed to repeat, so users
+    // without a phone are unaffected. Skipped if legacy duplicates exist.
+    const [phoneIndex] = await connection.query(
+      `SELECT COUNT(*) as count FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND INDEX_NAME = 'uq_users_phone_number'`,
+      [connection.config.database],
+    );
+    if (phoneIndex[0].count === 0) {
+      const [dupPhones] = await connection.query(
+        "SELECT phone_number FROM users GROUP BY phone_number HAVING COUNT(*) > 1",
+      );
+      if (dupPhones.length > 0) {
+        console.warn(
+          "[MIGRATION] Skipped unique index on users.phone_number — existing duplicates found:",
+          dupPhones.map((d) => d.phone_number),
+        );
+      } else {
+        await connection.query(
+          "ALTER TABLE users ADD UNIQUE KEY uq_users_phone_number (phone_number)",
+        );
+        console.log("[MIGRATION] Added unique index on users.phone_number.");
+      }
+    }
+
     // 1. Seed event_types
     const [eventTypes] = await connection.query(
       "SELECT COUNT(*) as count FROM event_types",

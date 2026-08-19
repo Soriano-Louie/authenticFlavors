@@ -307,9 +307,11 @@ export async function register(req, res) {
 
   const password_hash = await bcrypt.hash(password, 12);
 
-  // Create user with Pending status — will be activated after email verification
-  const [result] = await pool.query(
-    `
+  let insertId;
+  try {
+    // Create user with Pending status — will be activated after email verification
+    const [result] = await pool.query(
+      `
       INSERT INTO users (
         first_name,
         middle_name,
@@ -321,8 +323,32 @@ export async function register(req, res) {
         account_status
       ) VALUES (?, ?, ?, ?, ?, ?, 'Customer', 'Pending')
     `,
-    [first_name, middle_name, last_name, email, phone_number, password_hash],
-  );
+      [first_name, middle_name, last_name, email, phone_number, password_hash],
+    );
+    insertId = result.insertId;
+  } catch (error) {
+    // Race-proof duplicate guard: the UNIQUE keys on email/phone_number are
+    // the source of truth — even if the pre-checks above are bypassed or slip
+    // through a race, the database rejects the second row and we map it to a
+    // clean 409 instead of a 500.
+    if (error?.code === "ER_DUP_ENTRY") {
+      const isEmailDup = String(error.sqlMessage ?? "").includes(
+        "uq_users_email",
+      );
+      return res.status(409).json({
+        error: {
+          code: isEmailDup ? "EMAIL_IN_USE" : "PHONE_IN_USE",
+          message: isEmailDup
+            ? "Email is already registered."
+            : "Phone number is already registered.",
+          fieldErrors: isEmailDup
+            ? { email: "Email is already registered." }
+            : { phone_number: "Phone number is already registered." },
+        },
+      });
+    }
+    throw error;
+  }
 
   // Generate and store verification code (only its hash is persisted)
   const code = generateVerificationCode();
@@ -331,7 +357,7 @@ export async function register(req, res) {
   const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes
 
   logActivity({
-    actorUserId: result.insertId,
+    actorUserId: insertId,
     actorRole: "Customer",
     activityType: "user_registered",
     action: "created a new customer account",
@@ -391,12 +417,16 @@ export async function sendVerification(req, res) {
     });
   }
 
-  if (users[0].account_status === "Active") {
+  // Only a Pending account may request a verification code. A Suspended or
+  // Inactive account must be revived by an admin — it must not be able to
+  // reactivate itself through the email flow.
+  if (users[0].account_status !== "Pending") {
+    const message =
+      users[0].account_status === "Active"
+        ? "This email is already verified."
+        : "This account is not active. Please contact support.";
     return res.status(400).json({
-      error: {
-        code: "ALREADY_VERIFIED",
-        message: "This email is already verified.",
-      },
+      error: { code: "INVALID_STATE", message },
     });
   }
 
@@ -504,8 +534,13 @@ export async function verifyEmail(req, res) {
     });
   }
 
-  // Check attempt count (max 5 attempts)
-  if (verification.attempt_count >= 5) {
+  // Atomically consume one attempt: the UPDATE only touches the row while
+  // attempts remain, so two concurrent attempts can't both slip past the cap.
+  const [attemptResult] = await pool.query(
+    "UPDATE email_verifications SET attempt_count = attempt_count + 1 WHERE id = ? AND attempt_count < ?",
+    [verification.id, 5],
+  );
+  if (attemptResult.affectedRows === 0) {
     return res.status(429).json({
       error: {
         code: "TOO_MANY_ATTEMPTS",
@@ -514,18 +549,34 @@ export async function verifyEmail(req, res) {
     });
   }
 
-  // Increment attempt count
-  await pool.query(
-    "UPDATE email_verifications SET attempt_count = attempt_count + 1 WHERE id = ?",
-    [verification.id],
-  );
+  // Verify code (constant-time compare against the stored SHA-256 hash)
+  const storedHash = Buffer.from(verification.code, "hex");
+  const providedHash = Buffer.from(hashVerificationCode(code), "hex");
+  const codeMatches =
+    storedHash.length === providedHash.length &&
+    crypto.timingSafeEqual(storedHash, providedHash);
 
-  // Verify code (compare against the stored SHA-256 hash)
-  if (verification.code !== hashVerificationCode(code)) {
+  if (!codeMatches) {
     return res.status(400).json({
       error: {
         code: "INVALID_CODE",
         message: "Invalid verification code. Please try again.",
+      },
+    });
+  }
+
+  // Only a Pending account may be activated through this flow. A Suspended /
+  // Inactive account must be revived by an admin, so reject it even if a valid
+  // code exists — the email flow can never silently reactivate a held account.
+  const [userRows] = await pool.query(
+    "SELECT user_id FROM users WHERE email = ? AND account_status = 'Pending' LIMIT 1",
+    [email],
+  );
+  if (userRows.length === 0) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_STATE",
+        message: "This account cannot be activated. Please contact support.",
       },
     });
   }
@@ -898,7 +949,21 @@ export async function refresh(req, res) {
   }
 }
 
-export function logout(req, res) {
+export async function logout(req, res) {
+  // Revoke the whole session chain server-side: bumping token_version makes
+  // every previously issued access/refresh token invalid, so a stolen token
+  // can't keep being used after the user logs out.
+  if (req.auth?.sub) {
+    try {
+      await pool.query(
+        "UPDATE users SET token_version = token_version + 1 WHERE user_id = ?",
+        [Number(req.auth.sub)],
+      );
+    } catch (error) {
+      console.error("Failed to bump token_version on logout:", error);
+    }
+  }
+
   res.clearCookie(getRefreshCookieName(req), cookieConfig(req));
   return res.status(200).json({ message: "Logged out successfully." });
 }
@@ -1170,8 +1235,13 @@ export async function verifyEmailChange(req, res) {
       });
     }
 
-    // Limit repeated attempts
-    if (verification.attempt_count >= EMAIL_CHANGE_MAX_ATTEMPTS) {
+    // Atomically consume one attempt: only touches the row while attempts
+    // remain, so concurrent attempts can't both slip past the cap.
+    const [attemptResult] = await pool.query(
+      "UPDATE email_change_verifications SET attempt_count = attempt_count + 1 WHERE id = ? AND attempt_count < ?",
+      [verification.id, EMAIL_CHANGE_MAX_ATTEMPTS],
+    );
+    if (attemptResult.affectedRows === 0) {
       return res.status(429).json({
         error: {
           code: "TOO_MANY_ATTEMPTS",
@@ -1179,12 +1249,6 @@ export async function verifyEmailChange(req, res) {
         },
       });
     }
-
-    // Increment attempt count before verifying
-    await pool.query(
-      "UPDATE email_change_verifications SET attempt_count = attempt_count + 1 WHERE id = ?",
-      [verification.id],
-    );
 
     // Compare against the stored hash (constant-time via crypto.timingSafeEqual)
     const storedHash = Buffer.from(verification.code_hash, "hex");
@@ -1202,6 +1266,23 @@ export async function verifyEmailChange(req, res) {
       });
     }
 
+    // Re-check that the new email hasn't been taken since the code was
+    // requested (TOCTOU): another user may have claimed it meanwhile. If so,
+    // reject without consuming the code so the user can pick another address.
+    const [dupCheck] = await pool.query(
+      "SELECT user_id FROM users WHERE email = ? AND user_id != ? LIMIT 1",
+      [newEmail, userId],
+    );
+    if (dupCheck.length > 0) {
+      return res.status(409).json({
+        error: {
+          code: "EMAIL_IN_USE",
+          message: "Email is already registered to another account.",
+          fieldErrors: { new_email: "Email is already registered." },
+        },
+      });
+    }
+
     // Mark this code as used
     await pool.query(
       "UPDATE email_change_verifications SET is_used = TRUE WHERE id = ?",
@@ -1215,11 +1296,25 @@ export async function verifyEmailChange(req, res) {
       [userId, newEmail],
     );
 
-    // Now save the new email (only after successful verification)
-    await pool.query("UPDATE users SET email = ? WHERE user_id = ?", [
-      newEmail,
-      userId,
-    ]);
+    // Now save the new email (only after successful verification). The DB
+    // UNIQUE key is the final authority — if it fires, map it to a clean 409.
+    try {
+      await pool.query("UPDATE users SET email = ? WHERE user_id = ?", [
+        newEmail,
+        userId,
+      ]);
+    } catch (error) {
+      if (error?.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          error: {
+            code: "EMAIL_IN_USE",
+            message: "Email is already registered to another account.",
+            fieldErrors: { new_email: "Email is already registered." },
+          },
+        });
+      }
+      throw error;
+    }
 
     // Fetch the updated user
     const [rows] = await pool.query(
