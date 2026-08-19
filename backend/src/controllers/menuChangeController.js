@@ -67,14 +67,14 @@ export async function requestMenuChange(req, res, next) {
 
     const booking = bookings[0];
 
-    // Status check: must be Confirmed
-    if (booking.booking_status !== "Confirmed") {
+    // Status check: must be Reserved or Confirmed
+    if (!["Confirmed", "Reserved"].includes(booking.booking_status)) {
       await connection.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
           message:
-            "Menu change requests are only allowed for confirmed bookings.",
+            "Menu change requests are only allowed for active bookings (Reserved or Confirmed).",
         },
       });
     }
@@ -279,13 +279,13 @@ export async function approveMenuChangeRequest(req, res, next) {
     // clicks approve (booking cancelled, event too close) — refusing here keeps
     // the change from being applied to a booking that no longer qualifies.
     // The booking row was locked FOR UPDATE above, so this check is race-safe.
-    if (request.booking_status !== "Confirmed") {
+    if (!["Confirmed", "Reserved"].includes(request.booking_status)) {
       await connection.rollback();
       return res.status(400).json({
         error: {
           code: "MENU_CHANGE_RESTRICTED",
           message:
-            "Menu changes can only be approved for confirmed bookings. This booking is no longer Confirmed.",
+            "Menu changes can only be approved for active bookings (Reserved or Confirmed).",
         },
       });
     }

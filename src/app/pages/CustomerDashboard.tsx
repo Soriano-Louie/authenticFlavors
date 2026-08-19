@@ -1493,7 +1493,9 @@ export function CustomerDashboard() {
 
           {/* Request Menu Change Section */}
           {(() => {
-            const isConfirmed = booking.booking_status === "Confirmed";
+            const isConfirmedOrReserved =
+              booking.booking_status === "Confirmed" ||
+              booking.booking_status === "Reserved";
             const isCancelledOrCompleted =
               booking.booking_status === "Cancelled" ||
               booking.booking_status === "Completed";
@@ -1519,7 +1521,7 @@ export function CustomerDashboard() {
               );
             }
             const isEligibleForMenuChange =
-              isConfirmed && daysBeforeEvent >= 14;
+              isConfirmedOrReserved && daysBeforeEvent >= 14;
             const existingPendingRequest =
               pendingMenuRequests[booking.booking_id];
 
@@ -1548,12 +1550,12 @@ export function CustomerDashboard() {
                         <ul className="text-xs font-['Lato'] text-[#2C1810]/60 space-y-1 ml-3 list-disc">
                           <li
                             className={
-                              isConfirmed ? "text-[#7A8C5C]" : "text-[#C4541A]"
+                              isConfirmedOrReserved ? "text-[#7A8C5C]" : "text-[#C4541A]"
                             }
                           >
                             Booking status:{" "}
                             <strong>{booking.booking_status}</strong>
-                            {!isConfirmed && " (must be Confirmed)"}
+                            {!isConfirmedOrReserved && " (must be Reserved or Confirmed)"}
                           </li>
                           <li
                             className={
@@ -1567,14 +1569,12 @@ export function CustomerDashboard() {
                             {daysBeforeEvent < 14 && " (must be 14+ days)"}
                           </li>
                         </ul>
-                        {!isConfirmed && (
+                        {!isConfirmedOrReserved && (
                           <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 italic">
-                            Note: Menu changes are only available for Confirmed
-                            bookings. Complete your down payment to confirm your
-                            booking.
+                            Note: Menu changes are available for active reserved bookings. Complete your reservation fee to secure your booking.
                           </p>
                         )}
-                        {isConfirmed && daysBeforeEvent < 14 && (
+                        {isConfirmedOrReserved && daysBeforeEvent < 14 && (
                           <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 italic">
                             Note: The 14-day window for menu changes has passed.
                           </p>
@@ -1593,7 +1593,7 @@ export function CustomerDashboard() {
                       <Utensils size={16} />
                       Request Menu Change
                     </button>
-                    {!isEligibleForMenuChange && isConfirmed && (
+                    {!isEligibleForMenuChange && isConfirmedOrReserved && (
                       <p className="text-xs font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
                         Menu changes are only allowed until 14 days before the
                         scheduled event.
@@ -1603,7 +1603,7 @@ export function CustomerDashboard() {
                 )}
 
                 {/* Request Venue Setup Section */}
-                {isConfirmed &&
+                {isConfirmedOrReserved &&
                   (() => {
                     const existingVenue =
                       venueSetupRequests[booking.booking_id];

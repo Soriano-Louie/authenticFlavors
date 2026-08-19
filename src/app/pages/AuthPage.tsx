@@ -269,8 +269,6 @@ export function AuthPage() {
           </div>
           <h2 className="font-['Playfair_Display'] text-[#F5F0E8] text-3xl mb-2">
             Authentic Flavors
-            <br />
-            by Chef Ramos
           </h2>
           <p className="text-[#F5F0E8]/65 font-['Lato'] leading-relaxed max-w-sm text-sm">
             Sign in to manage your bookings, track events, and access exclusive
@@ -308,9 +306,6 @@ export function AuthPage() {
             <div>
               <p className="text-[#2C1810] text-sm font-['Playfair_Display']">
                 Authentic Flavors
-              </p>
-              <p className="text-[#C8922A] text-[10px] tracking-widest uppercase">
-                by Chef Ramos
               </p>
             </div>
           </div>
