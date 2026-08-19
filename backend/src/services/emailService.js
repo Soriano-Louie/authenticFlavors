@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { formatPhilippineDate } from "../utils/timezone.js";
 
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
@@ -194,11 +195,7 @@ export async function sendUpcomingPaymentReminder(
 ) {
   const { payment_type, amount, due_date, booking_reference } = paymentDetails;
   const formattedAmount = `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-  const formattedDate = new Date(due_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(due_date);
   const paymentTypeLabel =
     payment_type === "Reservation"
       ? "Reservation Fee"
@@ -256,11 +253,7 @@ export async function sendUpcomingPaymentReminder(
 export async function sendPaymentDueToday(email, firstName, paymentDetails) {
   const { payment_type, amount, due_date, booking_reference } = paymentDetails;
   const formattedAmount = `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-  const formattedDate = new Date(due_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(due_date);
   const paymentTypeLabel =
     payment_type === "Reservation"
       ? "Reservation Fee"
@@ -384,11 +377,7 @@ export async function sendPaymentOverdueNotice(
 
 export async function sendBookingSubmittedEmail(email, firstName, bookingDetails) {
   const { booking_reference, event_date, package_name, guest_count } = bookingDetails;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -432,11 +421,7 @@ export async function sendBookingSubmittedEmail(email, firstName, bookingDetails
 
 export async function sendBookingConfirmedEmail(email, firstName, bookingDetails) {
   const { booking_reference, event_date, package_name } = bookingDetails;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -482,11 +467,7 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
 
 export async function sendBookingRejectedEmail(email, firstName, bookingDetails, reason) {
   const { booking_reference, event_date } = bookingDetails;
-  const formattedDate = event_date ? new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }) : "";
+  const formattedDate = event_date ? formatPhilippineDate(event_date) : "";
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -654,11 +635,7 @@ export async function sendPaymentRejectedEmail(email, firstName, paymentDetails,
 
 export async function sendEventReminderEmail(email, firstName, bookingDetails, daysBefore) {
   const { booking_reference, event_date, package_name } = bookingDetails;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -739,11 +716,7 @@ export async function sendFeedbackReminderEmail(email, firstName, bookingDetails
 
 export async function sendMenuChangeRequestedAdminEmail(adminEmail, details) {
   const { booking_reference, customer_name, event_date, requested_items } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -783,11 +756,7 @@ export async function sendMenuChangeRequestedAdminEmail(adminEmail, details) {
 
 export async function sendMenuChangeApprovedCustomerEmail(email, firstName, details) {
   const { booking_reference, event_date, updated_items } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -827,11 +796,7 @@ export async function sendMenuChangeApprovedCustomerEmail(email, firstName, deta
 
 export async function sendMenuChangeRejectedCustomerEmail(email, firstName, details, reason) {
   const { booking_reference, event_date } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -875,11 +840,7 @@ export async function sendMenuChangeRejectedCustomerEmail(email, firstName, deta
 
 export async function sendVenueSetupRequestedAdminEmail(adminEmail, details) {
   const { booking_reference, customer_name, event_date, venue_setup_notes } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -920,11 +881,7 @@ export async function sendVenueSetupRequestedAdminEmail(adminEmail, details) {
 
 export async function sendVenueSetupApprovedCustomerEmail(email, firstName, details) {
   const { booking_reference, event_date } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -960,11 +917,7 @@ export async function sendVenueSetupApprovedCustomerEmail(email, firstName, deta
 
 export async function sendVenueSetupChangesRequestedCustomerEmail(email, firstName, details, adminResponse) {
   const { booking_reference, event_date } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -1007,11 +960,7 @@ export async function sendVenueSetupChangesRequestedCustomerEmail(email, firstNa
 
 export async function sendVenueSetupDeclinedCustomerEmail(email, firstName, details, adminResponse) {
   const { booking_reference, event_date } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -1051,11 +1000,7 @@ export async function sendVenueSetupDeclinedCustomerEmail(email, firstName, deta
 
 export async function sendNewBookingAdminEmail(adminEmail, details) {
   const { booking_reference, customer_name, event_date, guest_count, total_price } = details;
-  const formattedDate = new Date(event_date).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">

@@ -30,14 +30,21 @@ export async function runSessionCleanup() {
        AND booking_id IS NOT NULL`,
   );
 
-  // 1c. Abandoned mid-chat: no booking & stale -> conversation Cancelled
+  // 1c. Abandoned mid-chat: no booking & stale -> conversation Cancelled.
+  // "Stale" is based on the LAST activity (latest message) rather than the
+  // conversation's started_at, so an active multi-day chat is never wiped.
   await pool.query(
-    `UPDATE ai_conversations
-     SET conversation_status = 'Cancelled',
-         ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
-     WHERE conversation_status = 'Active'
-       AND booking_id IS NULL
-       AND started_at < CURRENT_TIMESTAMP - INTERVAL 1 DAY`,
+    `UPDATE ai_conversations c
+     LEFT JOIN (
+       SELECT conversation_id, MAX(sent_at) AS last_sent_at
+       FROM ai_messages
+       GROUP BY conversation_id
+     ) m ON m.conversation_id = c.conversation_id
+     SET c.conversation_status = 'Cancelled',
+         c.ended_at = COALESCE(c.ended_at, CURRENT_TIMESTAMP)
+     WHERE c.conversation_status = 'Active'
+       AND c.booking_id IS NULL
+       AND COALESCE(m.last_sent_at, c.started_at) < CURRENT_TIMESTAMP - INTERVAL 1 DAY`,
   );
 
   // ── 2. Fix ai_booking_sessions (mirror the conversations) ──────────────

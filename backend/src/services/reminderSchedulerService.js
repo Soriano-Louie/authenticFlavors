@@ -206,7 +206,9 @@ async function checkFeedbackReminders() {
        JOIN users u ON b.user_id = u.user_id
        LEFT JOIN packages p ON b.package_id = p.package_id
        LEFT JOIN feedback f ON b.booking_id = f.booking_id
-       WHERE (b.booking_status = 'Completed' OR (b.booking_status = 'Confirmed' AND b.event_date < CURDATE()))
+       WHERE (b.booking_status = 'Completed'
+              OR (b.booking_status = 'Confirmed' AND b.event_date < CURDATE())
+              OR (b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NOT NULL))
          AND f.feedback_id IS NULL`,
     );
 

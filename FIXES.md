@@ -358,6 +358,43 @@ Generated: 2026-08-18
 
 ---
 
+## Scheduler & timezone fixes (review §8, §9 verification, §10, addressed 2026-08-19)
+
+### 54. Feedback reminders now also go out for bookings cancelled by the customer
+- [x] File: `backend/src/services/reminderSchedulerService.js`
+- Problem: `checkFeedbackReminders` invited feedback only for `Completed` (or past-dated `Confirmed`) events — never for events the customer cancelled, even though customers are allowed to review those (see #45).
+- Fix: Added the eligibility branch `OR (b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NOT NULL)` to the reminder query, matching the feedback-eligible rules.
+- Status: FIXED 2026-08-19.
+
+### 55. Chat-session cleanup no longer kills active multi-day conversations
+- [x] File: `backend/src/services/sessionCleanupService.js`
+- Problem: The "abandoned mid-chat" sweep cancelled conversations older than a day based on `started_at`, so a customer still chatting over several days had their session wiped mid-conversation.
+- Fix: "Stale" is now based on the last activity — the latest message `sent_at` (falling back to `started_at` only when there are no messages) — via a `LEFT JOIN` to `MAX(sent_at)` per conversation.
+- Status: FIXED 2026-08-19.
+
+### 56. Email templates no longer misread YYYY-MM-DD dates as UTC
+- [x] File: `backend/src/services/emailService.js`, `backend/src/utils/timezone.js`
+- Problem: Every email that printed a `due_date`/`event_date` did `new Date('YYYY-MM-DD')`, which parses as UTC midnight — so on a server west of UTC the printed day could be off by one.
+- Fix: Added `formatPhilippineDate()` in `timezone.js` (formats calendar-day data in UTC against the Philippine date, purely for display) and replaced all 14 call sites in `emailService.js`.
+- Status: FIXED 2026-08-19.
+
+### 57. Manual payment-reminder overdue decisions no longer depend on the server clock
+- [x] File: `backend/src/controllers/paymentController.js`
+- Problem: `sendPaymentReminder` decided overdue vs upcoming with `Date.now()`/`new Date()` (server-local) against `due_date` parsed as UTC — three clocks disagreeing.
+- Fix: The overdue check now compares the due date string against `getPhilippineDateString()` (Manila today) and computes `overdue_days` from Manila calendar days, matching the rest of the system.
+
+### §9 verification (no code change needed)
+- The `Payment` type + `getPaymentStatus` already include `CancellationCharge` / `Overdue` (`src/app/api/paymentApi.ts`).
+- Admin badge helper already styles `Overdue`/`Pending` (`AdminDashboard.tsx`).
+- `Rejected` filter matches the DB enum: the idempotent `seed.js` migration adds `'Rejected'` to `bookings.booking_status` and `rejectBooking` stores it (see #2).
+- `getBookingPayments` already returns every field the screens read (explicit projection; see "already solid").
+
+### §10 timezone report — already in place
+- MySQL session timezone is `+08:00` via `pool.js`, so `CURDATE()`/`NOW()` agree with Manila.
+- `bookingController.js` already uses `getPhilippineDateString()`/`toPhilippineDateString()` for all calendar-day logic; the old `localToday`/`getTimezoneOffset` code is gone.
+
+---
+
 ## What is already solid (do not touch unless asked)
 - Auth: bcrypt, email-verification with hashed codes, token-version single-session enforcement, DB-role re-read, rate limiting on auth/upload/chat, magic-byte image validation, CORS fail-closed.
 - getBookingPayments explicit column projection.

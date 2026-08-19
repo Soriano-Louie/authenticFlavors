@@ -32,6 +32,23 @@ export function addDaysToDateString(dateStr, days) {
 }
 
 /**
+ * Formats a date value as a long, human-readable date string rooted in
+ * Philippine calendar days, regardless of the server's local timezone. DO NOT
+ * compare the result against other dates — it is purely for display.
+ */
+export function formatPhilippineDate(value, locale = "en-PH") {
+  const dateStr =
+    value instanceof Date ? toPhilippineDateString(value) : String(value).slice(0, 10);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+/**
  * The earliest date a booking may be scheduled for, in Philippine time:
  * the Manila "today" plus the lead-time window (default 14 days). This is the
  * single source of truth for the booking cutoff so the backend validation and

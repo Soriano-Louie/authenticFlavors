@@ -12,7 +12,7 @@ import {
 } from "../services/emailService.js";
 import { createNotification } from "../services/notificationService.js";
 import { logActivity } from "../services/activityService.js";
-import { getPhilippineDateTimeString } from "../utils/timezone.js";
+import { getPhilippineDateTimeString, getPhilippineDateString } from "../utils/timezone.js";
 import { isDateUnavailable } from "../services/availabilityService.js";
 
 // ──────────────────────────────────────────
@@ -897,27 +897,31 @@ export async function sendPaymentReminder(req, res) {
     }
 
     const payment = payments[0];
+    // Compare against Philippine calendar days (the same clock the rest of the
+    // system uses) instead of server-local time, so a due date that is already
+    // "today" in Manila never flips to overdue just because the server is west
+    // of UTC.
+    const todayStr = getPhilippineDateString();
+    const dueStr = String(payment.due_date).slice(0, 10);
+    const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
+    const dueMs = new Date(`${dueStr}T00:00:00Z`).getTime();
+    const overdueDays = Math.max(
+      0,
+      Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24)),
+    );
+
     const paymentDetails = {
       payment_type: payment.payment_type,
       amount: payment.amount,
       due_date: payment.due_date,
       booking_reference: payment.booking_reference,
-      overdue_days: Math.max(
-        0,
-        Math.floor(
-          (Date.now() - new Date(payment.due_date).getTime()) /
-            (1000 * 60 * 60 * 24),
-        ),
-      ),
+      overdue_days: overdueDays,
     };
 
     const fullName = `${payment.first_name} ${payment.last_name}`.trim();
 
     // Determine which email to send based on overdue status
-    if (
-      payment.payment_status === "Overdue" ||
-      new Date(payment.due_date) < new Date()
-    ) {
+    if (payment.payment_status === "Overdue" || dueStr < todayStr) {
       await sendPaymentOverdueNotice(payment.email, fullName, paymentDetails);
     } else {
       await sendUpcomingPaymentReminder(

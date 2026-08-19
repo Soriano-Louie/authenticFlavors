@@ -857,6 +857,9 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   business lets customers review those too.
 - **Fix (in plain English):** Add the extra eligibility branch:
   `… OR (b.booking_status = 'Cancelled' AND b.cancellation_requested_at IS NOT NULL)`.
+- **Status: RESOLVED 2026-08-19.** `checkFeedbackReminders` now includes the
+  `Cancelled`-with-`cancellation_requested_at` branch, matching the feedback-eligible
+  rules (6.1). See FIXES.md #54.
 
 ### 8.2 [MEDIUM][agent-verified] Session cleanup cancels chat sessions that are still actively being used
 - **Location:** `sessionCleanupService.js:38-41`
@@ -866,6 +869,10 @@ Ground-truth rules used: `BOOKING_RULES.md`, `DOCUMENTATION.md`, `FIXES.md`
   would be wiped mid-conversation.
 - **Fix (in plain English):** Base "abandoned" on the last activity (the latest message
   timestamp or the row's `updated_at`) instead of the start time.
+- **Status: RESOLVED 2026-08-19.** The conversation sweep now marks a conversation as
+  "abandoned" using the latest message `sent_at` (falling back to `started_at` only
+  when there are no messages), so active multi-day chats survive. The session sweep
+  already keyed off `last_updated`. See FIXES.md #55.
 
 ---
 
@@ -906,6 +913,15 @@ completions.
    (`new Date(due_date + 'T00:00:00+08:00')` or via the timezone utility).
 4. Audit the remaining `new Date(due_date) < new Date()` comparisons
    (`paymentController.js:842`) against Manila "today".
+
+**Status: RESOLVED 2026-08-19.** Item 1 was already in place (`pool.js` sets
+`timezone: "+08:00"`, so all SQL `CURDATE()`/`NOW()` run in Manila). Item 2 was already
+done (`bookingController.js` uses `getPhilippineDateString()`; the old
+`localToday`/`getTimezoneOffset` code is gone). Items 3 and 4 were fixed: all 14
+`emailService.js` date printouts now use `formatPhilippineDate()` from the timezone
+utility, and `paymentController.js` `sendPaymentReminder` compares the due date against
+`getPhilippineDateString()` (Manila today) instead of `Date.now()`/`new Date()`. See
+FIXES.md #56, #57.
 
 ---
 
