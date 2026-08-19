@@ -80,6 +80,7 @@ import {
   deleteAdminMenuItem,
 } from "../api/adminApi";
 import { toast } from "sonner";
+import { NotificationCenter } from "../components/NotificationCenter";
 import { ReceiptViewer } from "../components/ReceiptViewer";
 import {
   BarChart2,
@@ -356,26 +357,36 @@ export function AdminDashboard() {
               </div>
             </div>
             {user && (
-              <div className="flex items-center gap-2.5">
-                {user.profile_photo_url ? (
-                  <img
-                    src={user.profile_photo_url}
-                    alt="Admin"
-                    className="w-9 h-9 rounded-full object-cover border border-[#C8922A]/30"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold">
-                    {(user.first_name?.charAt(0) || "A") +
-                      (user.last_name?.charAt(0) || "")}
+              <div className="flex items-center gap-3">
+                <NotificationCenter
+                  isLightHeader={true}
+                  onSelectTab={(tab) => {
+                    if (tab === "bookings") setActiveSection("bookings");
+                    else if (tab === "payments") setActiveSection("bookings");
+                    else if (tab === "venue") setActiveSection("bookings");
+                  }}
+                />
+                <div className="flex items-center gap-2.5">
+                  {user.profile_photo_url ? (
+                    <img
+                      src={user.profile_photo_url}
+                      alt="Admin"
+                      className="w-9 h-9 rounded-full object-cover border border-[#C8922A]/30"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C8922A] to-[#C4541A] flex items-center justify-center text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold">
+                      {(user.first_name?.charAt(0) || "A") +
+                        (user.last_name?.charAt(0) || "")}
+                    </div>
+                  )}
+                  <div className="hidden sm:block">
+                    <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                      {user.first_name} {user.last_name}
+                    </p>
+                    <p className="text-[11px] text-[#2C1810]/50 font-['Lato']">
+                      {user.email}
+                    </p>
                   </div>
-                )}
-                <div className="hidden sm:block">
-                  <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                    {user.first_name} {user.last_name}
-                  </p>
-                  <p className="text-[11px] text-[#2C1810]/50 font-['Lato']">
-                    {user.email}
-                  </p>
                 </div>
               </div>
             )}
