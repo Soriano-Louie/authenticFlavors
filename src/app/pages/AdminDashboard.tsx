@@ -5441,6 +5441,20 @@ function AnnouncementsSection() {
 
   const performToggleStatus = async (ann: Announcement, newStatus: string) => {
     if (!accessToken) return;
+
+    // Publishing an announcement whose publish date is already in the past is
+    // not allowed — the publish date must be today or later. Show the error
+    // and leave the status unchanged so the admin can fix the date via Edit.
+    if (newStatus === "published") {
+      const publishDateTime = new Date(ann.publish_date);
+      if (!isNaN(publishDateTime.getTime()) && publishDateTime < new Date()) {
+        toast.error(
+          "Cannot publish: publish date must not be earlier than the current date and time. Edit the announcement to fix the date.",
+        );
+        return;
+      }
+    }
+
     try {
       const payload = new FormData();
       payload.append("title", ann.title);

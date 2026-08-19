@@ -164,6 +164,18 @@ export async function createAnnouncement(req, res, next) {
         .json({ error: { message: "Status must be 'draft' or 'published'." } });
     }
 
+    // A published announcement must never start in the past.
+    if ((status || "draft") === "published") {
+      if (new Date(publish_date) < new Date(getPhilippineDateTimeString())) {
+        return res.status(400).json({
+          error: {
+            message:
+              "Publish date cannot be earlier than the current date and time.",
+          },
+        });
+      }
+    }
+
     // A promotion is any announcement that carries discount fields. All four
     // fields must be consistent (type, value, scope and, when scoped to a
     // package, a valid package id); a fully-empty discount is a plain post.
@@ -295,6 +307,16 @@ export async function updateAnnouncement(req, res, next) {
     // an empty group clears the promotion); when none is present the existing
     // discount (if any) is preserved, so simple edits/status toggles are safe.
     const current = existing[0];
+    const effectiveStatus = status || current.status;
+
+    if (
+      effectiveStatus !== "draft" &&
+      effectiveStatus !== "published"
+    ) {
+      return res
+        .status(400)
+        .json({ error: { message: "Status must be 'draft' or 'published'." } });
+    }
     const discountFieldsPresent = [
       discount_type,
       discount_value,
@@ -356,6 +378,27 @@ export async function updateAnnouncement(req, res, next) {
       ) {
         return res.status(400).json({
           error: { message: "Expiration date must be after publish date." },
+        });
+      }
+    }
+
+    // Publishing (draft -> published) is only allowed when the publish date is
+    // not in the past — an announcement going live must be dated today or
+    // later. Already-published announcements are exempt, since editing their
+    // content legitimately keeps an older publish date.
+    const isPublishing =
+      effectiveStatus === "published" && current.status !== "published";
+    if (isPublishing) {
+      const effectivePublishDate = publish_date || current.publish_date;
+      if (
+        new Date(effectivePublishDate) <
+        new Date(getPhilippineDateTimeString())
+      ) {
+        return res.status(400).json({
+          error: {
+            message:
+              "Publish date cannot be earlier than the current date and time.",
+          },
         });
       }
     }
