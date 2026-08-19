@@ -47,8 +47,7 @@ export async function getDateOccupancy() {
     `SELECT DATE_FORMAT(bd.blocked_date, '%Y-%m-%d') AS event_date,
             0 AS booking_count,
             bd.reason
-     FROM blocked_dates bd
-     WHERE bd.blocked_date >= CURDATE()`,
+     FROM blocked_dates bd`,
   );
 
   // Blocked dates and occupied bookings can overlap; a blocked date is fully

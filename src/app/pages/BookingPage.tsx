@@ -849,31 +849,31 @@ export function BookingPage() {
                       }
                       const minStr = effectiveMinEventDate;
                       if (value < minStr) {
-                        setSubmitError(
-                          "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.",
-                        );
+                        const msg = "Events must be booked at least 14 days (two weeks) in advance to allow time for the down payment.";
+                        setSubmitError(msg);
+                        toast.error(msg);
                         return;
                       }
                       const [y, m, d] = value.split("-").map(Number);
                       if (y && m && d && new Date(y, m - 1, d).getDay() === 1) {
-                        setSubmitError(
-                          "The store is closed on Mondays. Please pick another date.",
-                        );
+                        const msg = "The store is closed on Mondays. Please pick another date.";
+                        setSubmitError(msg);
+                        toast.error(msg);
                         return;
                       }
                       if (blockedDays[value] !== undefined) {
                         const reason = blockedDays[value];
-                        setSubmitError(
-                          reason
-                            ? `This day is unavailable for booking. Reason: ${reason}. Please choose another date.`
-                            : "This day is unavailable for booking. Please choose another date.",
-                        );
+                        const msg = reason
+                          ? `This day is unavailable for booking (Reason: ${reason}). Please choose another date.`
+                          : "This day is unavailable for booking. Please choose another date.";
+                        setSubmitError(msg);
+                        toast.error(msg);
                         return;
                       }
                       if (occupiedDays[value]) {
-                        setSubmitError(
-                          "This date is already fully booked. Please choose another date.",
-                        );
+                        const msg = "This date is already fully booked. Please choose another date.";
+                        setSubmitError(msg);
+                        toast.error(msg);
                         return;
                       }
                       setSubmitError(null);
@@ -881,15 +881,16 @@ export function BookingPage() {
                     min={effectiveMinEventDate}
                     className="w-full px-4 py-3 rounded-xl border border-[#C8922A]/20 bg-[#F5F0E8] text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato']"
                   />
-                  {availabilityError && (
-                    <p className="text-xs text-[#C4541A] font-['Lato'] mt-1">
-                      {availabilityError}
-                    </p>
-                  )}
-                  {dateAvailabilityMessage && !availabilityError && (
-                    <p className="text-xs text-[#C4541A] font-['Lato'] mt-1.5 font-medium bg-[#C4541A]/5 border border-[#C4541A]/15 rounded-lg px-3 py-2">
-                      {dateAvailabilityMessage}
-                    </p>
+                  {submitError && (
+                    <div className="mt-2 text-xs font-['Lato'] font-semibold text-[#C4541A] bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3 flex items-start gap-2 animate-in fade-in duration-150">
+                      <AlertCircle size={16} className="shrink-0 mt-0.5 text-[#C4541A]" />
+                      <div>
+                        <p>{submitError}</p>
+                        <p className="text-[11px] font-normal text-[#2C1810]/70 mt-0.5">
+                          Please select another date to enable the continue button.
+                        </p>
+                      </div>
+                    </div>
                   )}
                   {!availabilityError && upcomingBlockedDates.length > 0 && (
                     <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">

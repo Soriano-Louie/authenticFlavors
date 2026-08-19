@@ -188,7 +188,7 @@ export function LandingPage() {
         const data = await getDateAvailability();
         const blocked: Record<string, string | null> = {};
         data.occupiedDays.forEach((d) => {
-          if (d.status === "blocked") {
+          if (d.status === "blocked" || d.reason != null) {
             blocked[d.event_date] = d.reason ?? null;
           }
         });
