@@ -159,7 +159,13 @@ function transformPackage(
     description: pkg.description || "Catering package for your special event",
     serving: `Up to ${pkg.max_pax} guests`,
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
-    image: pkg.image || "/packagesFood.png",
+    image: pkg.image || (
+      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.png" :
+      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.png" :
+      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.png" :
+      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.png" :
+      "/packagesFood.png"
+    ),
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,
     menuSections,

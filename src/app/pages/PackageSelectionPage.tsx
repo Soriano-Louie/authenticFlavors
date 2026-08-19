@@ -51,8 +51,17 @@ function getPromoAmount(price: number, promo: Promotion | null): number {
 
 // Normalize package images to a consistent 16:9 crop so cards render
 // with the same aspect ratio and zoom regardless of the source image.
-function getNormalizedImage(image: string | null): string {
-  if (!image) return "/packagesFood.png";
+function getNormalizedImage(image: string | null, packageName?: string): string {
+  if (!image) {
+    if (packageName) {
+      const lower = packageName.toLowerCase();
+      if (lower.includes("package a") || lower === "a") return "/packagesImage/package A.png";
+      if (lower.includes("package b") || lower === "b") return "/packagesImage/Package B.png";
+      if (lower.includes("package c") || lower === "c") return "/packagesImage/Package C.png";
+      if (lower.includes("package d") || lower === "d") return "/packagesImage/Package D.png";
+    }
+    return "/packagesFood.png";
+  }
   if (
     image.includes("res.cloudinary.com") &&
     image.includes("/image/upload/")
@@ -107,7 +116,7 @@ function transformPackage(
     description: pkg.description || "Catering package for your special event",
     serving: `Up to ${pkg.max_pax} guests`,
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
-    image: getNormalizedImage(pkg.image),
+    image: getNormalizedImage(pkg.image, pkg.package_name),
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,
     isMostPicked: Boolean(pkg.is_most_picked),

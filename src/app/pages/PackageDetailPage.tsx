@@ -75,7 +75,13 @@ function transformPackage(
   return {
     id: String(pkg.package_id),
     name: pkg.package_name,
-    image: pkg.image || "/packagesFood.png",
+    image: pkg.image || (
+      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.png" :
+      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.png" :
+      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.png" :
+      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.png" :
+      "/packagesFood.png"
+    ),
     dishes: items.slice(0, 4).map((i) => i.item_name), // Show first 4 items as preview
     guestRange: `Up to ${pkg.max_pax} guests`,
     pricePerPerson: startingPrice.toLocaleString(),

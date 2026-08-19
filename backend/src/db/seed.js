@@ -229,6 +229,20 @@ export async function seedDatabaseIfEmpty() {
       console.log("[MIGRATION] Added description column to packages table.");
     }
 
+    // Seed/update default package images for Package A, B, C, D if missing
+    await connection.query(
+      "UPDATE packages SET image = '/packagesImage/package A.png' WHERE (package_id = 1 OR LOWER(package_name) = 'package a') AND (image IS NULL OR image = '')",
+    );
+    await connection.query(
+      "UPDATE packages SET image = '/packagesImage/Package B.png' WHERE (package_id = 2 OR LOWER(package_name) = 'package b') AND (image IS NULL OR image = '')",
+    );
+    await connection.query(
+      "UPDATE packages SET image = '/packagesImage/Package C.png' WHERE (package_id = 3 OR LOWER(package_name) = 'package c') AND (image IS NULL OR image = '')",
+    );
+    await connection.query(
+      "UPDATE packages SET image = '/packagesImage/Package D.png' WHERE (package_id = 4 OR LOWER(package_name) = 'package d') AND (image IS NULL OR image = '')",
+    );
+
     // 0.0.1 Ensure package_menu_inclusions table exists
     const [inclusionTableCheck] = await connection.query(
       `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'package_menu_inclusions'`,
