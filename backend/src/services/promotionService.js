@@ -15,6 +15,16 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
  */
 export async function getActiveDiscount(packageId, paxCount = null) {
   const nowPH = getPhilippineDateTimeString();
+  const paxClause = paxCount != null
+    ? "AND (discount_pax_count IS NULL OR discount_pax_count = ?)"
+    : "AND discount_pax_count IS NULL";
+  const paxOrder = paxCount != null
+    ? "CASE WHEN discount_pax_count IS NOT NULL THEN 0 ELSE 1 END ASC,"
+    : "";
+  const params = paxCount != null
+    ? [nowPH, nowPH, packageId, paxCount]
+    : [nowPH, nowPH, packageId];
+
   const [rows] = await pool.query(
     `SELECT id, discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count
      FROM announcements
@@ -25,16 +35,14 @@ export async function getActiveDiscount(packageId, paxCount = null) {
        AND publish_date <= ?
        AND (expiration_date IS NULL OR expiration_date >= ?)
        AND (discount_scope = 'all' OR discount_package_id = ?)
-       AND (discount_pax_count IS NULL OR discount_pax_count = ?)
+       ${paxClause}
      ORDER BY
        CASE WHEN discount_scope = 'package' THEN 0 ELSE 1 END ASC,
-       ${paxCount != null ? "CASE WHEN discount_pax_count IS NOT NULL THEN 0 ELSE 1 END ASC," : ""}
+       ${paxOrder}
        discount_value DESC,
        id DESC
      LIMIT 1`,
-    paxCount != null
-      ? [nowPH, nowPH, packageId, paxCount]
-      : [nowPH, nowPH, packageId],
+    params,
   );
 
   if (rows.length === 0) return null;
