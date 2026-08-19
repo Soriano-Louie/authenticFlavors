@@ -267,9 +267,6 @@ export function AuthPage() {
               className="w-full h-full object-cover"
             />
           </div>
-          <h2 className="font-['Playfair_Display'] text-[#F5F0E8] text-3xl mb-2">
-            Authentic Flavors
-          </h2>
           <p className="text-[#F5F0E8]/65 font-['Lato'] leading-relaxed max-w-sm text-sm">
             Sign in to manage your bookings, track events, and access exclusive
             culinary experiences crafted just for you.
@@ -302,11 +299,6 @@ export function AuthPage() {
                 alt="Authentic Flavors"
                 className="w-full h-full object-cover"
               />
-            </div>
-            <div>
-              <p className="text-[#2C1810] text-sm font-['Playfair_Display']">
-                Authentic Flavors
-              </p>
             </div>
           </div>
 
