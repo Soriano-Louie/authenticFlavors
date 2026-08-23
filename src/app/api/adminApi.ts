@@ -173,6 +173,19 @@ export function deleteAdminPackage(
   });
 }
 
+/** Delete a package's image */
+export function deleteAdminPackageImage(
+  accessToken: string,
+  id: number,
+): Promise<AdminDeleteResponse> {
+  return request<AdminDeleteResponse>(`/api/admin/packages/${id}/image`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 // ─── Admin Menu Management ──────────────────────────────────────────
 
 export interface AdminMenuCategory {

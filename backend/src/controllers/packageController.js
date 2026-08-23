@@ -782,6 +782,51 @@ export async function deletePackage(req, res) {
   }
 }
 
+// ─── Admin: Delete Package Image ──────────────────────────────────────
+export async function deletePackageImage(req, res) {
+  try {
+    const { id } = req.params;
+
+    const [existing] = await pool.query(
+      "SELECT * FROM packages WHERE package_id = ?",
+      [id],
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Package not found." },
+      });
+    }
+
+    const currentPackage = existing[0];
+
+    if (!currentPackage.image) {
+      return res.status(400).json({
+        error: { code: "INVALID_STATE", message: "Package has no image to delete." },
+      });
+    }
+
+    // Delete from Cloudinary if public_id exists
+    if (currentPackage.image_public_id) {
+      await deleteFromCloudinary(currentPackage.image_public_id).catch((err) => {
+        console.error("Failed to delete image from Cloudinary:", err);
+      });
+    }
+
+    // Clear image fields in database
+    await pool.query(
+      "UPDATE packages SET image = NULL, image_public_id = NULL WHERE package_id = ?",
+      [id],
+    );
+
+    res.status(200).json({ message: "Package image deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting package image:", error);
+    res.status(500).json({
+      error: { code: "DATABASE_ERROR", message: "Failed to delete package image." },
+    });
+  }
+}
+
 // Homepage Statistics
 export async function getHomepageStatistics(_req, res) {
   try {

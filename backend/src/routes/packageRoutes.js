@@ -14,6 +14,7 @@ import {
   createPackage,
   updatePackage,
   deletePackage,
+  deletePackageImage,
 } from "../controllers/packageController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
@@ -51,6 +52,12 @@ packageRouter.delete(
   requireAuth,
   requireRole("Admin"),
   deletePackage,
+);
+packageRouter.delete(
+  "/admin/packages/:id/image",
+  requireAuth,
+  requireRole("Admin"),
+  deletePackageImage,
 );
 
 // Menu routes

@@ -37,6 +37,7 @@ import {
   createAdminPackage,
   updateAdminPackage,
   deleteAdminPackage,
+  deleteAdminPackageImage,
   getAdminBlockedDates,
   createBlockedDate,
   deleteBlockedDate,
@@ -3241,6 +3242,7 @@ function BookingsSection() {
     bookingRef: string;
     paymentType: Payment["payment_type"];
     amount: number;
+    approveWithoutReceipt?: boolean;
   } | null>(null);
   const [verifyRemarks, setVerifyRemarks] = useState("");
   const [submittingVerification, setSubmittingVerification] = useState(false);
@@ -3262,6 +3264,27 @@ function BookingsSection() {
       bookingRef,
       paymentType: payment.payment_type,
       amount: payment.amount,
+      approveWithoutReceipt: false,
+    });
+  };
+
+  const handleOpenApproveWithoutReceiptDialog = (
+    booking: Booking,
+    payment: Payment,
+  ) => {
+    const bookingRef =
+      booking.booking_reference ||
+      (booking.ai_booking_reference
+        ? `#AF-${booking.ai_booking_reference}`
+        : `#BK${String(booking.booking_id).padStart(4, "0")}`);
+    setVerifyRemarks("");
+    setVerifyingPayment({
+      paymentId: payment.payment_id,
+      action: "approve",
+      bookingRef,
+      paymentType: payment.payment_type,
+      amount: payment.amount,
+      approveWithoutReceipt: true,
     });
   };
 
@@ -3271,6 +3294,10 @@ function BookingsSection() {
       toast.error("Please provide a rejection reason.");
       return;
     }
+    if (verifyingPayment.approveWithoutReceipt && !verifyRemarks.trim()) {
+      toast.error("Please provide admin remarks when approving without a receipt.");
+      return;
+    }
     setSubmittingVerification(true);
     try {
       const res = await verifyReceipt(
@@ -3278,6 +3305,7 @@ function BookingsSection() {
         verifyingPayment.paymentId,
         verifyingPayment.action,
         verifyRemarks.trim() || undefined,
+        verifyingPayment.approveWithoutReceipt,
       );
       toast.success(
         res.message || `Payment ${verifyingPayment.action}d successfully.`,
@@ -3922,6 +3950,27 @@ function BookingsSection() {
                                           </button>
                                         </div>
                                       )}
+                                      {payment.payment_type === "FinalPayment" &&
+                                        !payment.receipt_url &&
+                                        (payment.payment_status === "Pending" ||
+                                          payment.payment_status === "Overdue") && (
+                                          <div className="flex items-center gap-2 mt-2">
+                                            <button
+                                              onClick={() =>
+                                                handleOpenApproveWithoutReceiptDialog(
+                                                  booking,
+                                                  payment,
+                                                )
+                                              }
+                                              disabled={isActioning}
+                                              className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                            >
+                                              {isActioning
+                                                ? "Saving..."
+                                                : "Approve Without Receipt"}
+                                            </button>
+                                          </div>
+                                        )}
                                       {payment.payment_type ===
                                         "CancellationCharge" &&
                                         (payment.payment_status ===
@@ -4328,9 +4377,11 @@ function BookingsSection() {
                 ) : (
                   <XCircle className="text-[#C4541A]" size={20} />
                 )}
-                {verifyingPayment.action === "approve"
-                  ? "Approve Receipt?"
-                  : "Reject Receipt?"}
+                {verifyingPayment.approveWithoutReceipt
+                  ? "Approve Final Payment Without Receipt?"
+                  : verifyingPayment.action === "approve"
+                    ? "Approve Receipt?"
+                    : "Reject Receipt?"}
               </h3>
               <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
                 {paymentTypeLabel[verifyingPayment.paymentType] ||
@@ -4342,10 +4393,12 @@ function BookingsSection() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  {verifyingPayment.action === "approve"
-                    ? "Optional Remarks"
-                    : "Rejection Reason"}{" "}
-                  {verifyingPayment.action === "reject" && (
+                  {verifyingPayment.approveWithoutReceipt
+                    ? "Admin Remarks"
+                    : verifyingPayment.action === "approve"
+                      ? "Optional Remarks"
+                      : "Rejection Reason"}{" "}
+                  {(verifyingPayment.action === "reject" || verifyingPayment.approveWithoutReceipt) && (
                     <span className="text-[#C4541A]">*</span>
                   )}
                 </label>
@@ -4353,17 +4406,21 @@ function BookingsSection() {
                   value={verifyRemarks}
                   onChange={(e) => setVerifyRemarks(e.target.value)}
                   placeholder={
-                    verifyingPayment.action === "approve"
-                      ? "Optional note to the customer (e.g. amount received)..."
-                      : "Please explain why this receipt is being rejected..."
+                    verifyingPayment.approveWithoutReceipt
+                      ? "Please explain why this payment is being approved without a receipt (e.g. paid in cash on event date)..."
+                      : verifyingPayment.action === "approve"
+                        ? "Optional note to the customer (e.g. amount received)..."
+                        : "Please explain why this receipt is being rejected..."
                   }
                   rows={4}
                   className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
                 />
                 <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
-                  {verifyingPayment.action === "approve"
-                    ? "The payment will be marked as Paid and the booking status will be updated."
-                    : "This reason will be sent to the customer via notification and email."}
+                  {verifyingPayment.approveWithoutReceipt
+                    ? "The payment will be marked as Paid with method 'Cash' and the booking status will be updated."
+                    : verifyingPayment.action === "approve"
+                      ? "The payment will be marked as Paid and the booking status will be updated."
+                      : "This reason will be sent to the customer via notification and email."}
                 </p>
               </div>
             </div>
@@ -4383,6 +4440,8 @@ function BookingsSection() {
                 disabled={
                   submittingVerification ||
                   (verifyingPayment.action === "reject" &&
+                    !verifyRemarks.trim()) ||
+                  (verifyingPayment.approveWithoutReceipt &&
                     !verifyRemarks.trim())
                 }
                 className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
@@ -5030,6 +5089,25 @@ function PackagesSection() {
     }
   };
 
+  // Handle image deletion
+  const handleDeleteImage = async () => {
+    if (!editingPkg || !accessToken) return;
+    
+    if (!window.confirm("Are you sure you want to remove this package image? It will be replaced with a placeholder.")) {
+      return;
+    }
+
+    try {
+      await deleteAdminPackageImage(accessToken, editingPkg.package_id);
+      setImagePreview(null);
+      toast.success("Package image removed successfully.");
+      await fetchPackages();
+    } catch (err) {
+      console.error("Failed to delete package image:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to remove package image.");
+    }
+  };
+
   // Validate form
   const validateForm = (): boolean => {
     if (!formData.package_name.trim()) {
@@ -5227,13 +5305,11 @@ function PackagesSection() {
                     >
                       <td data-label="Name" className="py-3 px-2">
                         <div className="flex items-center gap-3">
-                          {pkg.image && (
-                            <img
-                              src={pkg.image}
-                              alt={pkg.package_name}
-                              className="w-10 h-10 rounded-lg object-cover"
-                            />
-                          )}
+                          <img
+                            src={pkg.image || "/packagesFood.png"}
+                            alt={pkg.package_name}
+                            className="w-10 h-10 rounded-lg object-cover"
+                          />
                           <span className="text-[#2C1810] font-medium">
                             {pkg.package_name}
                           </span>
@@ -5386,6 +5462,7 @@ function PackagesSection() {
                           setImagePreview(null);
                         }}
                         className="absolute top-1 right-1 p-0.5 rounded-full bg-[#C4541A]/80 text-white"
+                        title="Clear preview"
                       >
                         <X size={12} />
                       </button>
@@ -5404,9 +5481,19 @@ function PackagesSection() {
                       />
                     </label>
                   )}
-                  <span className="text-xs font-['Lato'] text-[#2C1810]/40">
-                    JPEG, PNG, GIF, or WebP. Max 5MB.
-                  </span>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-['Lato'] text-[#2C1810]/40">
+                      JPEG, PNG, GIF, or WebP. Max 5MB.
+                    </span>
+                    {editingPkg && editingPkg.image && (
+                      <button
+                        onClick={handleDeleteImage}
+                        className="text-xs font-['Lato'] text-[#C4541A] hover:underline"
+                      >
+                        Remove current image
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

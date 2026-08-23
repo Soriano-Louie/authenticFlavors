@@ -450,7 +450,7 @@ export async function verifyReceipt(req, res) {
   try {
     const { paymentId } = req.params;
     const adminId = Number(req.auth.sub);
-    const { action, admin_remarks } = req.body;
+    const { action, admin_remarks, approve_without_receipt } = req.body;
 
     if (!action || !["approve", "reject"].includes(action)) {
       return res.status(400).json({
@@ -469,6 +469,37 @@ export async function verifyReceipt(req, res) {
           message: "Rejection reason is required.",
         },
       });
+    }
+
+    // Require admin remarks when approving without receipt
+    if (action === "approve" && approve_without_receipt && (!admin_remarks || !admin_remarks.trim())) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Admin remarks are required when approving without a receipt.",
+        },
+      });
+    }
+
+    // Only allow approve_without_receipt for FinalPayment type
+    if (approve_without_receipt && action === "approve") {
+      const [paymentTypeCheck] = await pool.query(
+        "SELECT payment_type FROM payments WHERE payment_id = ?",
+        [paymentId]
+      );
+      if (paymentTypeCheck.length === 0) {
+        return res.status(404).json({
+          error: { code: "NOT_FOUND", message: "Payment not found." },
+        });
+      }
+      if (paymentTypeCheck[0].payment_type !== "FinalPayment") {
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Approving without receipt is only allowed for Final Payment.",
+          },
+        });
+      }
     }
 
     // Lock the payment row so a payment cannot be verified twice concurrently.
@@ -498,20 +529,37 @@ export async function verifyReceipt(req, res) {
     // A receipt can be verified while For_Verification, or while Overdue if a
     // receipt was already uploaded (covers payments that went overdue after
     // the receipt was submitted). A receipt is required either way.
+    // Exception: FinalPayment can be approved without receipt when approve_without_receipt is true
     const VERIFIABLE_STATUSES = ["For_Verification", "Overdue"];
-    if (
-      !payment.receipt_url ||
-      !VERIFIABLE_STATUSES.includes(payment.payment_status)
-    ) {
-      await connection.rollback();
-      return res.status(400).json({
-        error: {
-          code: "INVALID_STATE",
-          message:
-            "Only payments awaiting verification with an uploaded receipt can be verified. Current status: " +
-            payment.payment_status,
-        },
-      });
+    const APPROVE_WITHOUT_RECEIPT_STATUSES = ["Pending", "Overdue"];
+    
+    if (approve_without_receipt && action === "approve" && payment.payment_type === "FinalPayment") {
+      if (!APPROVE_WITHOUT_RECEIPT_STATUSES.includes(payment.payment_status)) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "INVALID_STATE",
+            message:
+              "Final Payment can only be approved without receipt when status is Pending or Overdue. Current status: " +
+              payment.payment_status,
+          },
+        });
+      }
+    } else {
+      if (
+        !payment.receipt_url ||
+        !VERIFIABLE_STATUSES.includes(payment.payment_status)
+      ) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: {
+            code: "INVALID_STATE",
+            message:
+              "Only payments awaiting verification with an uploaded receipt can be verified. Current status: " +
+              payment.payment_status,
+          },
+        });
+      }
     }
 
     const paymentTypeLabel =
@@ -526,6 +574,16 @@ export async function verifyReceipt(req, res) {
     if (action === "approve") {
       const paidAt = getPhilippineDateTimeString();
 
+      // Determine allowed statuses based on whether we're approving without receipt
+      const allowedStatuses = approve_without_receipt && payment.payment_type === "FinalPayment"
+        ? ['Pending', 'Overdue']
+        : ['For_Verification', 'Overdue'];
+
+      // Set payment method to Cash when approving without receipt, otherwise keep existing or set to Receipt
+      const paymentMethod = approve_without_receipt && payment.payment_type === "FinalPayment"
+        ? 'Cash'
+        : (payment.payment_method || 'Receipt');
+
       // Update payment as paid (guarded so it can only happen once)
       const [payUpdate] = await connection.query(
         `UPDATE payments 
@@ -533,9 +591,10 @@ export async function verifyReceipt(req, res) {
              paid_at = ?, 
              verified_by = ?, 
              verified_at = ?,
-             admin_remarks = ?
-         WHERE payment_id = ? AND payment_status IN ('For_Verification', 'Overdue')`,
-        [paidAt, adminId, paidAt, admin_remarks || null, paymentId],
+             admin_remarks = ?,
+             payment_method = ?
+         WHERE payment_id = ? AND payment_status IN (${allowedStatuses.map(() => '?').join(',')})`,
+        [paidAt, adminId, paidAt, admin_remarks || null, paymentMethod, paymentId, ...allowedStatuses],
       );
 
       if (payUpdate.affectedRows === 0) {

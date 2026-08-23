@@ -236,6 +236,7 @@ export function verifyReceipt(
   paymentId: number,
   action: "approve" | "reject",
   adminRemarks?: string,
+  approveWithoutReceipt?: boolean,
 ): Promise<{
   message: string;
   payment_status: string;
@@ -254,7 +255,7 @@ export function verifyReceipt(
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ action, admin_remarks: adminRemarks }),
+    body: JSON.stringify({ action, admin_remarks: adminRemarks, approve_without_receipt: approveWithoutReceipt }),
   });
 }
 
