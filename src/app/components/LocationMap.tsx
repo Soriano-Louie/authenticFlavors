@@ -9,7 +9,7 @@ const RESTAURANT_NAME = "Authentic Flavors by Chef Ramos";
 const RESTAURANT_ADDRESS =
   "35 M. L. Quezon Ave, New Lower Bicutan, Taguig, 1632 Metro Manila";
 const GOOGLE_MAPS_URL =
-  "https://www.google.com/maps/dir/?api=1&destination=14.507071738801775,121.06604401778748";
+  "https://www.google.com/maps/dir/?api=1&destination=Authentic+Flavors+by+Chef+Ramos,+35+M.+L.+Quezon+Ave,+New+Lower+Bicutan,+Taguig,+1632+Metro+Manila";
 
 export function LocationMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -35,15 +35,13 @@ export function LocationMap() {
       zoomControl: true,
     });
 
-    // CartoDB Voyager tiles — high quality, free, no API key, renders roads/terrain/buildings.
-    // Uses <img> tags internally (not iframes), so only requires img-src CSP permission.
+    // Standard OpenStreetMap tiles — truly free, no API key ever needed.
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
       {
-        maxZoom: 20,
-        subdomains: "abcd",
+        maxZoom: 19,
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       },
     ).addTo(map);
 
