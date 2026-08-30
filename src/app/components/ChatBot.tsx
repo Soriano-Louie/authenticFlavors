@@ -814,15 +814,33 @@ export function ChatBot() {
       minute: "2-digit",
     });
 
-    // Detect explicit booking intent (word-boundary match to avoid false
-    // positives like "facebook" or "notebook").
-    const bookingIntent = /\b(book|booked|booking|bookings|reserve|reserved|reservation|reservations)\b/.test(
-      text.toLowerCase(),
-    );
+    // Only trigger the interactive booking wizard for explicit action commands
+    // (e.g., "book now", "i want to book", "start booking").
+    // Informational inquiries (e.g., "what are dates available to book for this month",
+    // "how do I book?", "cancellation policy for bookings") must go to the AI/FAQ backend.
+    const lowerText = text.toLowerCase().trim();
+    const isQuestionOrInquiry =
+      lowerText.includes("?") ||
+      /^(what|how|when|where|why|which|who|is|are|can|could|do|does|tell me|check|list|show)\b/.test(
+        lowerText,
+      ) ||
+      /\b(available|availability|dates|date|schedule|policy|policies|cancel|cancellation|refund|refunds|lead time|advance|process|steps|fee|fees|cost|price|pricing|rates|rate|pax|guest|menu|dishes|packages|package|difference|options|hours|rules|terms|status)\b/.test(
+        lowerText,
+      );
 
-    if (bookingIntent) {
-      // Show the user's message before routing to the booking flow so it is
-      // never silently swallowed (applies to both logged-in and guest users).
+    const isExplicitBookingCommand =
+      !isQuestionOrInquiry &&
+      (
+        /^(book|reserve)$/i.test(lowerText) ||
+        /^(book now|reserve now)$/i.test(lowerText) ||
+        /^(book an? event|book a package|book table|book private dining)$/i.test(lowerText) ||
+        /^(start booking|start reservation|make a booking|make a reservation|create a booking|create reservation)$/i.test(lowerText) ||
+        /^(i want to book|i'd like to book|i want to make a reservation|i want to reserve|i would like to book|i would like to reserve)/i.test(lowerText) ||
+        /^(let'?s book|proceed to book|proceed with booking|open booking|open wizard)$/i.test(lowerText)
+      );
+
+    if (isExplicitBookingCommand) {
+      // Show the user's message before routing to the booking flow
       setMessages((prev) => [
         ...prev,
         { id: Date.now(), sender: "user", text: text.trim(), time: now },
