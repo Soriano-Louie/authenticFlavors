@@ -5,234 +5,418 @@ import {
   isSensitiveOrPrivacyRequest,
 } from "../services/geminiService.js";
 
-// ─── Knowledge Base Lookup ────────────────────────────────────────────────────
-// Checks the knowledge_base table for FAQ matches before calling Gemini API
-// to reduce API costs and improve response time for common questions.
+// ─── Knowledge Base Lookup & In-Memory Cache ──────────────────────────────────
+// Caches FAQs in memory to avoid remote database round-trips on every message,
+// providing sub-millisecond response times for precoded questions.
 
-/**
- * Normalizes a text string for comparison (lowercase, remove punctuation, extra spaces)
- */
+let cachedKnowledgeBase = null;
+let kbLastFetched = 0;
+const KB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function invalidateKnowledgeBaseCache() {
+  cachedKnowledgeBase = null;
+  kbLastFetched = 0;
+}
+
+const STOP_WORDS = new Set([
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "must", "shall", "can", "need", "to", "of",
+  "in", "for", "on", "with", "at", "by", "from", "as", "into", "through",
+  "during", "before", "after", "above", "below", "between", "out", "off",
+  "over", "under", "again", "further", "then", "once", "here", "there",
+  "when", "where", "why", "how", "all", "both", "each", "few", "more",
+  "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+  "same", "so", "than", "too", "very", "just", "because", "but", "and",
+  "or", "if", "while", "about", "up", "what", "which", "who", "whom",
+  "this", "that", "these", "those", "i", "me", "my", "myself", "we",
+  "our", "ours", "ourselves", "you", "your", "yours", "yourself",
+  "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
+  "herself", "it", "its", "itself", "they", "them", "their", "theirs",
+  "themselves", "tell", "please", "give", "know", "want"
+]);
+
 function normalizeText(text) {
-  return text
+  return (text || "")
     .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/**
- * Calculates a simple match score between user message and FAQ question
- * based on keyword overlap
- */
-function calculateMatchScore(userMessage, faqQuestion) {
-  const normalizedUser = normalizeText(userMessage);
-  const normalizedFAQ = normalizeText(faqQuestion);
-
-  // Extract words (filter out common stop words)
-  const stopWords = new Set([
-    "a",
-    "an",
-    "the",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "could",
-    "should",
-    "may",
-    "might",
-    "must",
-    "shall",
-    "can",
-    "need",
-    "dare",
-    "ought",
-    "used",
-    "to",
-    "of",
-    "in",
-    "for",
-    "on",
-    "with",
-    "at",
-    "by",
-    "from",
-    "as",
-    "into",
-    "through",
-    "during",
-    "before",
-    "after",
-    "above",
-    "below",
-    "between",
-    "out",
-    "off",
-    "over",
-    "under",
-    "again",
-    "further",
-    "then",
-    "once",
-    "here",
-    "there",
-    "when",
-    "where",
-    "why",
-    "how",
-    "all",
-    "both",
-    "each",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "no",
-    "nor",
-    "not",
-    "only",
-    "own",
-    "same",
-    "so",
-    "than",
-    "too",
-    "very",
-    "just",
-    "because",
-    "but",
-    "and",
-    "or",
-    "if",
-    "while",
-    "about",
-    "up",
-    "what",
-    "which",
-    "who",
-    "whom",
-    "this",
-    "that",
-    "these",
-    "those",
-    "i",
-    "me",
-    "my",
-    "myself",
-    "we",
-    "our",
-    "ours",
-    "ourselves",
-    "you",
-    "your",
-    "yours",
-    "yourself",
-    "yourselves",
-    "he",
-    "him",
-    "his",
-    "himself",
-    "she",
-    "her",
-    "hers",
-    "herself",
-    "it",
-    "its",
-    "itself",
-    "they",
-    "them",
-    "their",
-    "theirs",
-    "themselves",
-    "am",
-    "any",
-    "do",
-    "have",
-    "has",
-    "had",
-    "been",
-    "being",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-  ]);
-
-  const userWords = new Set(
-    normalizedUser
-      .split(" ")
-      .filter((word) => word.length > 2 && !stopWords.has(word)),
-  );
-
-  const faqWordSet = new Set(
-    normalizedFAQ
-      .split(" ")
-      .filter((word) => word.length > 2 && !stopWords.has(word)),
-  );
-
-  if (userWords.size === 0 || faqWordSet.size === 0) {
-    return { score: 0, matches: 0 };
-  }
-
-  // Whole-word matches only: partial/substring overlaps cause irrelevant
-  // canned answers (e.g. "pay" silently matching the FAQ word "payment").
-  let matches = 0;
-  userWords.forEach((word) => {
-    if (faqWordSet.has(word)) {
-      matches++;
-    }
-  });
-
-  // Calculate score as percentage of user words matched
-  const score = (matches / userWords.size) * 100;
-
-  return { score, matches };
+function getKeywords(text) {
+  return normalizeText(text)
+    .split(" ")
+    .filter((word) => word.length > 1 && !STOP_WORDS.has(word));
 }
 
-/**
- * Queries the knowledge base for the best matching FAQ answer
- * @param {string} userMessage - The user's question
- * @param {number} [minScore=60] - Minimum match score threshold (0-100)
- * @returns {Promise<{answer: string, category: string, confidence: number}|null}
- */
-export async function findKnowledgeBaseAnswer(userMessage, minScore = 60) {
-  try {
-    // Fetch all active FAQs from knowledge base
-    const [faqs] = await pool.query(
-      `SELECT category, question, answer 
-       FROM knowledge_base 
-       WHERE status = 'Active' 
-       ORDER BY category, question`,
-    );
+// Pre-compiled intent rules mapped to standard questions or keywords
+const INTENT_RULES = [
+  {
+    targetQuestion: "What are your operating hours?",
+    match: (q, norm) => {
+      if (norm.includes("monday") || norm.includes("holiday")) return false;
+      return (
+        norm.includes("operating hour") ||
+        norm.includes("store hour") ||
+        norm.includes("opening hour") ||
+        norm.includes("business hour") ||
+        norm.includes("what time") ||
+        norm.includes("when open") ||
+        norm.includes("open time") ||
+        norm.includes("closing time") ||
+        norm.includes("schedule") ||
+        q.has("hours") ||
+        (q.has("open") && !q.has("holiday")) ||
+        (q.has("time") && (q.has("open") || q.has("close") || q.has("operating")))
+      );
+    },
+  },
+  {
+    targetQuestion: "Where are you located?",
+    match: (q, norm) => {
+      return (
+        norm.includes("location") ||
+        norm.includes("where are you") ||
+        norm.includes("where is") ||
+        norm.includes("address") ||
+        norm.includes("directions") ||
+        norm.includes("taguig") ||
+        norm.includes("ml quezon") ||
+        q.has("location") ||
+        q.has("located") ||
+        q.has("address")
+      );
+    },
+  },
+  {
+    targetQuestion: "Do you have parking available?",
+    match: (q, norm) => {
+      return (
+        q.has("parking") ||
+        q.has("park") ||
+        norm.includes("car park") ||
+        norm.includes("valet")
+      );
+    },
+  },
+  {
+    targetQuestion: "Are you open on holidays?",
+    match: (q, norm) => {
+      return (
+        q.has("holiday") ||
+        q.has("holidays") ||
+        norm.includes("christmas") ||
+        norm.includes("new year")
+      );
+    },
+  },
+  {
+    targetQuestion: "Why are you closed on Mondays?",
+    match: (q) => {
+      return q.has("monday") || q.has("mondays");
+    },
+  },
+  {
+    targetQuestion: "What is your cancellation policy?",
+    match: (q, norm) => {
+      return (
+        norm.includes("cancel") ||
+        norm.includes("cancellation") ||
+        norm.includes("refund") ||
+        norm.includes("resched") ||
+        q.has("cancel") ||
+        q.has("cancellation") ||
+        q.has("refund")
+      );
+    },
+  },
+  {
+    targetQuestion: "Do you accept walk-ins?",
+    match: (q, norm) => {
+      return (
+        norm.includes("walk in") ||
+        norm.includes("walkin") ||
+        norm.includes("walk-in") ||
+        q.has("walkin") ||
+        q.has("walkins")
+      );
+    },
+  },
+  {
+    targetQuestion: "Is there a dress code?",
+    match: (q, norm) => {
+      return (
+        norm.includes("dress code") ||
+        norm.includes("what to wear") ||
+        norm.includes("attire") ||
+        q.has("attire") ||
+        q.has("slippers")
+      );
+    },
+  },
+  {
+    targetQuestion: "What payment methods do you accept?",
+    match: (q, norm) => {
+      if (norm.includes("split")) return false;
+      return (
+        norm.includes("payment method") ||
+        norm.includes("mode of payment") ||
+        norm.includes("how to pay") ||
+        norm.includes("how can i pay") ||
+        q.has("payment") ||
+        q.has("pay") ||
+        q.has("gcash") ||
+        q.has("maya") ||
+        (q.has("bank") && q.has("transfer")) ||
+        q.has("cash")
+      );
+    },
+  },
+  {
+    targetQuestion: "Can I split the bill?",
+    match: (q, norm) => {
+      return (
+        norm.includes("split") ||
+        norm.includes("split bill") ||
+        norm.includes("bill split")
+      );
+    },
+  },
+  {
+    targetQuestion: "Is Wi-Fi available?",
+    match: (q, norm) => {
+      return (
+        norm.includes("wifi") ||
+        norm.includes("wi fi") ||
+        norm.includes("wi-fi") ||
+        norm.includes("internet") ||
+        q.has("wifi")
+      );
+    },
+  },
+  {
+    targetQuestion: "Do you accommodate food allergies?",
+    match: (q, norm) => {
+      return (
+        norm.includes("allerg") ||
+        norm.includes("allergy") ||
+        norm.includes("allergies") ||
+        norm.includes("allergic") ||
+        norm.includes("dietary") ||
+        norm.includes("gluten") ||
+        norm.includes("peanut")
+      );
+    },
+  },
+  {
+    targetQuestion: "Are your dishes halal-certified?",
+    match: (q, norm) => {
+      return q.has("halal") || q.has("kosher") || norm.includes("halal");
+    },
+  },
+  {
+    targetQuestion: "Do you serve alcoholic beverages?",
+    match: (q, norm) => {
+      return (
+        q.has("alcohol") ||
+        q.has("alcoholic") ||
+        q.has("wine") ||
+        q.has("beer") ||
+        q.has("cocktail") ||
+        q.has("cocktails") ||
+        q.has("liquor") ||
+        q.has("drinks") ||
+        norm.includes("beverage")
+      );
+    },
+  },
+  {
+    targetQuestion: "Who is Chef Ramos?",
+    match: (q, norm) => {
+      return (
+        norm.includes("chef ramos") ||
+        norm.includes("chef") ||
+        norm.includes("founder") ||
+        norm.includes("owner")
+      );
+    },
+  },
+  {
+    targetQuestion: "When was the restaurant established?",
+    match: (q, norm) => {
+      return (
+        norm.includes("established") ||
+        norm.includes("when did you open") ||
+        norm.includes("history") ||
+        norm.includes("started") ||
+        norm.includes("founded")
+      );
+    },
+  },
+  {
+    targetQuestion: "What is the venue capacity?",
+    match: (q, norm) => {
+      return (
+        norm.includes("capacity") ||
+        norm.includes("max guests") ||
+        norm.includes("maximum guests") ||
+        norm.includes("how many guests") ||
+        norm.includes("how many people") ||
+        norm.includes("max pax") ||
+        norm.includes("maximum pax") ||
+        q.has("capacity")
+      );
+    },
+  },
+  {
+    targetQuestion: "Can I book the entire restaurant for a private event?",
+    match: (q, norm) => {
+      return (
+        norm.includes("entire restaurant") ||
+        norm.includes("whole venue") ||
+        norm.includes("book the entire") ||
+        norm.includes("private event") ||
+        norm.includes("whole restaurant")
+      );
+    },
+  },
+  {
+    targetQuestion: "How far in advance should I book for an event?",
+    match: (q, norm) => {
+      return (
+        norm.includes("in advance") ||
+        norm.includes("how early") ||
+        norm.includes("lead time") ||
+        norm.includes("how far")
+      );
+    },
+  },
+  {
+    targetQuestion: "Do you provide event setup and decoration?",
+    match: (q, norm) => {
+      return (
+        norm.includes("setup") ||
+        norm.includes("decoration") ||
+        norm.includes("decor") ||
+        norm.includes("styling") ||
+        q.has("decoration") ||
+        q.has("decor")
+      );
+    },
+  },
+  {
+    targetQuestion: "How can I contact the restaurant?",
+    match: (q, norm) => {
+      return (
+        norm.includes("contact") ||
+        norm.includes("email") ||
+        norm.includes("phone") ||
+        norm.includes("call") ||
+        norm.includes("reach you") ||
+        q.has("contact") ||
+        q.has("email") ||
+        q.has("phone")
+      );
+    },
+  },
+  {
+    targetQuestion: "Are you available on social media?",
+    match: (q, norm) => {
+      return (
+        norm.includes("social media") ||
+        norm.includes("facebook") ||
+        norm.includes("instagram") ||
+        norm.includes("fb") ||
+        norm.includes("ig")
+      );
+    },
+  },
+  {
+    targetQuestion: "How do I provide feedback about my experience?",
+    match: (q, norm) => {
+      return (
+        norm.includes("feedback") ||
+        norm.includes("review") ||
+        norm.includes("rating") ||
+        norm.includes("complaint")
+      );
+    },
+  },
+];
 
-    if (faqs.length === 0) {
+/**
+ * Queries the in-memory cached knowledge base for the best matching FAQ answer.
+ * @param {string} userMessage - The user's question
+ * @param {number} [minScore=50] - Minimum match score threshold (0-100)
+ * @returns {Promise<{answer: string, category: string, confidence: number}|null>}
+ */
+export async function findKnowledgeBaseAnswer(userMessage, minScore = 50) {
+  try {
+    const now = Date.now();
+    let faqs = cachedKnowledgeBase;
+
+    // Refresh memory cache if expired or empty
+    if (!faqs || now - kbLastFetched > KB_CACHE_TTL_MS) {
+      const [rows] = await pool.query(
+        `SELECT category, question, answer 
+         FROM knowledge_base 
+         WHERE status = 'Active' 
+         ORDER BY category, question`,
+      );
+      faqs = rows;
+      cachedKnowledgeBase = faqs;
+      kbLastFetched = now;
+    }
+
+    if (!faqs || faqs.length === 0) {
       return null;
     }
 
-    // Find the best match
+    const normalized = normalizeText(userMessage);
+    const words = getKeywords(userMessage);
+    const wordSet = new Set(words);
+
+    // 1. High-precision intent recognition for common restaurant FAQs
+    for (const rule of INTENT_RULES) {
+      if (rule.match(wordSet, normalized)) {
+        const found = faqs.find((f) =>
+          f.question.toLowerCase().includes(rule.targetQuestion.toLowerCase().slice(0, 20)),
+        );
+        if (found) {
+          return {
+            answer: found.answer,
+            category: found.category,
+            confidence: 98,
+            matchedQuestion: found.question,
+          };
+        }
+      }
+    }
+
+    // 2. Token overlap and stem-based fallback for custom/dynamic FAQs
     let bestMatch = null;
     let highestScore = minScore;
 
     for (const faq of faqs) {
-      const { score, matches } = calculateMatchScore(userMessage, faq.question);
+      const faqWords = getKeywords(faq.question);
+      if (faqWords.length === 0 || words.length === 0) continue;
 
-      // A single overlapping word is not enough to answer from the canned
-      // knowledge base — require at least two whole-word matches so an
-      // irrelevant FAQ can never win on a lone word.
-      if (matches >= 2 && score > highestScore) {
+      let matched = 0;
+      for (const w of words) {
+        if (
+          faqWords.some(
+            (fw) =>
+              fw === w || (w.length >= 4 && fw.startsWith(w.slice(0, 4))),
+          )
+        ) {
+          matched++;
+        }
+      }
+
+      const score = (matched / words.length) * 100;
+      if (matched >= 1 && score > highestScore) {
         highestScore = score;
         bestMatch = {
           answer: faq.answer,
@@ -246,14 +430,13 @@ export async function findKnowledgeBaseAnswer(userMessage, minScore = 60) {
     return bestMatch;
   } catch (error) {
     console.error("[ChatbotController] Knowledge base lookup error:", error);
-    // If knowledge base lookup fails, return null to fall back to Gemini
     return null;
   }
 }
 
 // ─── POST /api/chat/message ──────────────────────────────────────────────────
 // Accepts a user message, optionally links to a conversation, stores messages
-// in the database, calls Gemini, and returns the AI reply.
+// in the database, calls Gemini or Knowledge Base, and returns the AI reply.
 export async function sendMessage(req, res) {
   try {
     const { message, conversation_id } = req.body;
@@ -268,7 +451,7 @@ export async function sendMessage(req, res) {
     const trimmedMessage = String(message).trim();
     const userId = req.auth ? Number(req.auth.sub) : null;
     let conversationId = conversation_id ? Number(conversation_id) : null;
-    const startTime = Date.now(); // Track processing time for knowledge base queries
+    const startTime = Date.now();
 
     // ── Resolve or create conversation ──────────────────────────────────
     if (conversationId) {
@@ -305,31 +488,7 @@ export async function sendMessage(req, res) {
       conversationId = result.insertId;
     }
 
-    // ── Load conversation history (last 20 messages for context) ────────
-    let history = [];
-    if (conversationId) {
-      // Load the MOST RECENT 20 messages (old history is irrelevant to the
-      // current topic), then reverse so the model sees them chronologically.
-      const [rows] = await pool.query(
-        `SELECT sender, message_text FROM ai_messages
-         WHERE conversation_id = ?
-         ORDER BY sent_at DESC, message_id DESC
-         LIMIT 20`,
-        [conversationId],
-      );
-      history = rows.reverse();
-    }
-
-    // ── Store user message ──────────────────────────────────────────────
-    if (conversationId) {
-      await pool.query(
-        `INSERT INTO ai_messages (conversation_id, sender, message_text)
-         VALUES (?, 'User', ?)`,
-        [conversationId, trimmedMessage],
-      );
-    }
-
-    // ── Check Knowledge Base First (to reduce API calls) ─────────────────
+    // ── Check Knowledge Base First (to reduce latency & API calls) ──────
     // Sensitive/privacy and off-topic messages are routed straight to the AI
     // path's safety pre-filters and must NEVER be answered from the canned
     // knowledge base — the shortcut would bypass those checks entirely.
@@ -339,38 +498,58 @@ export async function sendMessage(req, res) {
 
     const knowledgeBaseMatch = bypassKnowledgeBase
       ? null
-      : await findKnowledgeBaseAnswer(trimmedMessage, 60);
+      : await findKnowledgeBaseAnswer(trimmedMessage, 50);
 
     if (knowledgeBaseMatch) {
-      // Found a match in knowledge base - return answer without calling Gemini
+      // Found a precoded match in knowledge base - return answer immediately
       const kbReply = knowledgeBaseMatch.answer;
-      const processingTimeMs = Date.now() - startTime; // Approximate time for DB query
+      const processingTimeMs = Date.now() - startTime;
 
-      // Store AI response (from knowledge base)
-      if (conversationId) {
-        await pool.query(
-          `INSERT INTO ai_messages (conversation_id, sender, message_text)
-           VALUES (?, 'AI', ?)`,
-          [conversationId, kbReply],
-        );
-      }
-
-      // Log request as FAQ from knowledge base
-      if (conversationId) {
-        await pool.query(
-          `INSERT INTO ai_requests 
-           (conversation_id, request_type, prompt_text, response_text,
-            processing_time_ms, request_status)
-           VALUES (?, 'FAQ_KB', ?, ?, ?, 'Success')`,
-          [conversationId, trimmedMessage, kbReply, processingTimeMs],
-        );
-      }
-
-      return res.status(200).json({
+      // Send response immediately to minimize client wait time
+      res.status(200).json({
         reply: kbReply,
         conversation_id: conversationId,
         booking_action: null,
       });
+
+      // Asynchronously persist messages and log request without delaying response
+      if (conversationId) {
+        Promise.all([
+          pool.query(
+            `INSERT INTO ai_messages (conversation_id, sender, message_text)
+             VALUES (?, 'User', ?)`,
+            [conversationId, trimmedMessage],
+          ),
+          pool.query(
+            `INSERT INTO ai_messages (conversation_id, sender, message_text)
+             VALUES (?, 'AI', ?)`,
+            [conversationId, kbReply],
+          ),
+          pool.query(
+            `INSERT INTO ai_requests 
+             (conversation_id, request_type, prompt_text, response_text,
+              processing_time_ms, request_status)
+             VALUES (?, 'FAQ_KB', ?, ?, ?, 'Success')`,
+            [conversationId, trimmedMessage, kbReply, processingTimeMs],
+          ),
+        ]).catch((err) => {
+          console.error("[ChatbotController] Async KB logging error:", err);
+        });
+      }
+      return;
+    }
+
+    // ── Load conversation history (last 20 messages for context) ────────
+    let history = [];
+    if (conversationId) {
+      const [rows] = await pool.query(
+        `SELECT sender, message_text FROM ai_messages
+         WHERE conversation_id = ?
+         ORDER BY sent_at DESC, message_id DESC
+         LIMIT 20`,
+        [conversationId],
+      );
+      history = rows.reverse();
     }
 
     // ── Call Gemini with user context & DB validation ──────────────────
@@ -394,40 +573,46 @@ export async function sendMessage(req, res) {
     const { reply, usage, processingTimeMs, action } =
       await generateChatResponse(trimmedMessage, history, userProfile, req);
 
-    // ── Store AI response ───────────────────────────────────────────────
-    if (conversationId) {
-      await pool.query(
-        `INSERT INTO ai_messages (conversation_id, sender, message_text)
-         VALUES (?, 'AI', ?)`,
-        [conversationId, reply],
-      );
-    }
-
-    // ── Log request metadata ────────────────────────────────────────────
-    if (conversationId) {
-      await pool.query(
-        `INSERT INTO ai_requests
-         (conversation_id, request_type, prompt_text, response_text,
-          processing_time_ms, prompt_tokens, completion_tokens, total_tokens,
-          request_status)
-         VALUES (?, 'FAQ', ?, ?, ?, ?, ?, ?, 'Success')`,
-        [
-          conversationId,
-          trimmedMessage,
-          reply,
-          processingTimeMs ?? 0,
-          usage?.promptTokenCount ?? null,
-          usage?.candidatesTokenCount ?? null,
-          usage?.totalTokenCount ?? null,
-        ],
-      );
-    }
-
+    // Send AI response immediately
     res.status(200).json({
       reply,
       conversation_id: conversationId,
       booking_action: action || null,
     });
+
+    // Asynchronously persist messages and log request without delaying response
+    if (conversationId) {
+      Promise.all([
+        pool.query(
+          `INSERT INTO ai_messages (conversation_id, sender, message_text)
+           VALUES (?, 'User', ?)`,
+          [conversationId, trimmedMessage],
+        ),
+        pool.query(
+          `INSERT INTO ai_messages (conversation_id, sender, message_text)
+           VALUES (?, 'AI', ?)`,
+          [conversationId, reply],
+        ),
+        pool.query(
+          `INSERT INTO ai_requests
+           (conversation_id, request_type, prompt_text, response_text,
+            processing_time_ms, prompt_tokens, completion_tokens, total_tokens,
+            request_status)
+           VALUES (?, 'FAQ', ?, ?, ?, ?, ?, ?, 'Success')`,
+          [
+            conversationId,
+            trimmedMessage,
+            reply,
+            processingTimeMs ?? 0,
+            usage?.promptTokenCount ?? null,
+            usage?.candidatesTokenCount ?? null,
+            usage?.totalTokenCount ?? null,
+          ],
+        ),
+      ]).catch((err) => {
+        console.error("[ChatbotController] Async Gemini logging error:", err);
+      });
+    }
   } catch (error) {
     console.error("[ChatbotController] sendMessage error:", error);
     res.status(500).json({

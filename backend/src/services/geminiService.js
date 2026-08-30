@@ -344,9 +344,24 @@ export async function generateContent({
 // ═════════════════════════════════════════════════════════════════════════════
 
 // ─── Database Context Builder ────────────────────────────────────────────────
+// In-memory cache for restaurant context to avoid redundant round-trips
+let cachedRestaurantContext = null;
+let contextLastFetched = 0;
+const CONTEXT_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export function invalidateRestaurantContextCache() {
+  cachedRestaurantContext = null;
+  contextLastFetched = 0;
+}
+
 // Fetches live restaurant data from the database to include in system prompts.
 // This prevents the AI from hallucinating incorrect information.
 async function buildRestaurantContext() {
+  const now = Date.now();
+  if (cachedRestaurantContext && now - contextLastFetched < CONTEXT_CACHE_TTL_MS) {
+    return cachedRestaurantContext;
+  }
+
   const sections = [];
 
   // 1. Business information (static, as it's not stored in DB)
@@ -381,79 +396,190 @@ async function buildRestaurantContext() {
       "Customers should list all allergies during booking.",
   );
 
-  // 4. Live packages from database
-  try {
-    const [packages] = await pool.query(
-      `SELECT package_id, package_name, description, max_pax
-       FROM packages WHERE status = 'Active' ORDER BY package_name`,
-    );
+  // Formats DB dates that may arrive as Date objects or 'YYYY-MM-DD HH:MM:SS' strings.
+  const formatDatePart = (value) => {
+    if (!value) return "N/A";
+    const text = String(value);
+    const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+    const date = new Date(text);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+    return text;
+  };
 
-    if (packages.length > 0) {
+  try {
+    const nowPH = getPhilippineDateTimeString();
+
+    // Fetch live database sections in parallel to avoid sequential network round-trips
+    const [
+      packagesResult,
+      eventTypesResult,
+      setupsResult,
+      menuItemsResult,
+      upcomingEventsResult,
+      occupancyData,
+      announcementsResult,
+    ] = await Promise.all([
+      // 4. Packages and pricing joined in a single query
+      pool
+        .query(
+          `SELECT p.package_id, p.package_name, p.description, p.max_pax,
+                  pp.pax_count, pp.price
+           FROM packages p
+           LEFT JOIN package_pricing pp ON p.package_id = pp.package_id
+           WHERE p.status = 'Active'
+           ORDER BY p.package_name, pp.pax_count ASC`,
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error("[GeminiService] Failed to fetch package data:", err);
+          return [];
+        }),
+
+      // 5. Live event types
+      pool
+        .query(
+          "SELECT type_name FROM event_types WHERE status = 'Active' ORDER BY type_name",
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error("[GeminiService] Failed to fetch event types:", err);
+          return [];
+        }),
+
+      // 6. Live venue setups
+      pool
+        .query(
+          "SELECT setup_name, description FROM venue_setups WHERE status = 'Active' ORDER BY setup_name",
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error("[GeminiService] Failed to fetch venue setups:", err);
+          return [];
+        }),
+
+      // 7. Live menu items
+      pool
+        .query(
+          `SELECT mi.item_name, mi.description, mi.additional_price, mc.category_name
+           FROM menu_items mi
+           JOIN menu_categories mc ON mi.category_id = mc.category_id
+           WHERE mi.availability_status = 'Active' AND mc.status = 'Active'
+           ORDER BY mc.display_order, mc.category_name, mi.item_name
+           LIMIT 60`,
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error("[GeminiService] Failed to fetch menu items:", err);
+          return [];
+        }),
+
+      // 8. Upcoming booked events
+      pool
+        .query(
+          `SELECT
+            DATE_FORMAT(b.event_date, '%Y-%m-%d') as event_date,
+            DATE_FORMAT(b.start_time, '%H:%i') as start_time,
+            b.number_of_pax,
+            p.package_name,
+            et.type_name as event_type,
+            b.booking_status
+           FROM bookings b
+           JOIN packages p ON b.package_id = p.package_id
+           JOIN event_types et ON b.event_type_id = et.event_type_id
+           WHERE b.booking_status IN (?, ?)
+             AND b.event_date >= CURDATE()
+           ORDER BY b.event_date ASC, b.start_time ASC
+           LIMIT 30`,
+          ACTIVE_BOOKING_STATUSES,
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error(
+            "[GeminiService] Failed to fetch upcoming event schedule:",
+            err,
+          );
+          return [];
+        }),
+
+      // Occupancy
+      getDateOccupancy().catch((err) => {
+        console.error("[GeminiService] Failed to fetch occupancy:", err);
+        return { occupiedDays: [] };
+      }),
+
+      // 9. Announcements
+      pool
+        .query(
+          `SELECT title, content, publish_date, expiration_date
+           FROM announcements
+           WHERE status = 'published'
+             AND publish_date <= ?
+             AND (expiration_date IS NULL OR expiration_date >= ?)
+           ORDER BY publish_date DESC
+           LIMIT 10`,
+          [nowPH, nowPH],
+        )
+        .then(([rows]) => rows)
+        .catch((err) => {
+          console.error("[GeminiService] Failed to fetch announcements:", err);
+          return [];
+        }),
+    ]);
+
+    // Format packages
+    if (packagesResult.length > 0) {
+      const packageMap = new Map();
+      for (const row of packagesResult) {
+        if (!packageMap.has(row.package_id)) {
+          packageMap.set(row.package_id, {
+            name: row.package_name,
+            description: row.description ?? "",
+            max_pax: row.max_pax,
+            pricing: [],
+          });
+        }
+        if (row.pax_count != null && row.price != null) {
+          packageMap
+            .get(row.package_id)
+            .pricing.push(
+              `${row.pax_count} pax — ₱${Number(row.price).toLocaleString()}`,
+            );
+        }
+      }
+
       const lines = ["AVAILABLE PACKAGES (from database):"];
-      for (const pkg of packages) {
-        const [pricing] = await pool.query(
-          "SELECT pax_count, price FROM package_pricing WHERE package_id = ? ORDER BY pax_count",
-          [pkg.package_id],
-        );
-        const pricingStr = pricing
-          .map(
-            (p) => `${p.pax_count} pax — ₱${Number(p.price).toLocaleString()}`,
-          )
-          .join(" | ");
+      for (const pkg of packageMap.values()) {
+        const pricingStr = pkg.pricing.join(" | ");
         lines.push(
-          `- ${pkg.package_name}: ${pkg.description ?? ""} ` +
+          `- ${pkg.name}: ${pkg.description} ` +
             `(Max ${pkg.max_pax} pax) ${pricingStr ? `Pricing: ${pricingStr}` : ""}`,
         );
       }
       sections.push(lines.join("\n"));
     }
-  } catch (err) {
-    console.error("[GeminiService] Failed to fetch package data:", err);
-  }
 
-  // 5. Live event types from database
-  try {
-    const [eventTypes] = await pool.query(
-      "SELECT type_name FROM event_types WHERE status = 'Active' ORDER BY type_name",
-    );
-    if (eventTypes.length > 0) {
+    // Format event types
+    if (eventTypesResult.length > 0) {
       sections.push(
-        "EVENT TYPES: " + eventTypes.map((e) => e.type_name).join(", "),
+        "EVENT TYPES: " +
+          eventTypesResult.map((e) => e.type_name).join(", "),
       );
     }
-  } catch (err) {
-    console.error("[GeminiService] Failed to fetch event types:", err);
-  }
 
-  // 6. Live venue setups from database
-  try {
-    const [setups] = await pool.query(
-      "SELECT setup_name, description FROM venue_setups WHERE status = 'Active' ORDER BY setup_name",
-    );
-    if (setups.length > 0) {
+    // Format venue setups
+    if (setupsResult.length > 0) {
       const lines = ["VENUE SETUP OPTIONS:"];
-      for (const s of setups) {
+      for (const s of setupsResult) {
         lines.push(`- ${s.setup_name}: ${s.description ?? ""}`);
       }
       sections.push(lines.join("\n"));
     }
-  } catch (err) {
-    console.error("[GeminiService] Failed to fetch venue setups:", err);
-  }
 
-  // 7. Live menu items from database
-  try {
-    const [menuItems] = await pool.query(
-      `SELECT mi.item_name, mi.description, mi.additional_price, mc.category_name
-       FROM menu_items mi
-       JOIN menu_categories mc ON mi.category_id = mc.category_id
-       WHERE mi.availability_status = 'Active' AND mc.status = 'Active'
-       ORDER BY mc.display_order, mc.category_name, mi.item_name
-       LIMIT 60`,
-    );
-    if (menuItems.length > 0) {
+    // Format menu items
+    if (menuItemsResult.length > 0) {
       const lines = ["MENU SELECTIONS (from database):"];
-      for (const m of menuItems) {
+      for (const m of menuItemsResult) {
         const extra = m.additional_price
           ? ` (+₱${Number(m.additional_price).toLocaleString()})`
           : "";
@@ -465,45 +591,26 @@ async function buildRestaurantContext() {
       }
       sections.push(lines.join("\n"));
     }
-  } catch (err) {
-    console.error("[GeminiService] Failed to fetch menu items:", err);
-  }
 
-  // 8. Live upcoming event schedule (the "Calendar of Private Dining Schedules")
-  // Built from the same availability source as the homepage calendar and the
-  // booking flow, so chatbot answers never contradict the calendar.
-  try {
-    const [upcomingEvents] = await pool.query(
-      `SELECT
-        DATE_FORMAT(b.event_date, '%Y-%m-%d') as event_date,
-        DATE_FORMAT(b.start_time, '%H:%i') as start_time,
-        b.number_of_pax,
-        p.package_name,
-        et.type_name as event_type
-       FROM bookings b
-       JOIN packages p ON b.package_id = p.package_id
-       JOIN event_types et ON b.event_type_id = et.event_type_id
-       WHERE b.booking_status IN (?, ?)
-         AND b.event_date >= CURDATE()
-       ORDER BY b.event_date ASC, b.start_time ASC
-       LIMIT 30`,
-      ACTIVE_BOOKING_STATUSES,
-    );
-    const { occupiedDays } = await getDateOccupancy();
+    // Format calendar availability & upcoming events
+    const occupiedDays = occupancyData?.occupiedDays || [];
     if (occupiedDays.length > 0) {
       const lines = [
         `CURRENT CALENDAR AVAILABILITY (only ${CAPACITY_PER_DAY} booking per day is allowed; dates below are already assigned / FULL and are NOT available for new bookings):`,
       ];
       for (const day of occupiedDays) {
-        lines.push(`- ${day.event_date} (${day.booking_count} booking(s) — FULL)`);
+        lines.push(
+          `- ${day.event_date} (${day.booking_count} booking(s) — FULL)`,
+        );
       }
       sections.push(lines.join("\n"));
     }
-    if (upcomingEvents.length > 0) {
+
+    if (upcomingEventsResult.length > 0) {
       const lines = [
         "UPCOMING EVENT SCHEDULE / PRIVATE DINING CALENDAR (from database):",
       ];
-      for (const ev of upcomingEvents) {
+      for (const ev of upcomingEventsResult) {
         const time = ev.start_time
           ? new Date(`2000-01-01T${ev.start_time}:00`).toLocaleString("en-US", {
               hour: "numeric",
@@ -517,36 +624,11 @@ async function buildRestaurantContext() {
       }
       sections.push(lines.join("\n"));
     }
-  } catch (err) {
-    console.error("[GeminiService] Failed to fetch upcoming event schedule:", err);
-  }
 
-  // 9. Live announcements from database
-  // Formats DB dates that may arrive as Date objects or 'YYYY-MM-DD HH:MM:SS' strings.
-  const formatDatePart = (value) => {
-    if (!value) return "N/A";
-    const text = String(value);
-    const match = text.match(/^\d{4}-\d{2}-\d{2}/);
-    if (match) return match[0];
-    const date = new Date(text);
-    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-    return text;
-  };
-  try {
-    const nowPH = getPhilippineDateTimeString();
-    const [announcements] = await pool.query(
-      `SELECT title, content, publish_date, expiration_date
-       FROM announcements
-       WHERE status = 'published'
-         AND publish_date <= ?
-         AND (expiration_date IS NULL OR expiration_date >= ?)
-       ORDER BY publish_date DESC
-       LIMIT 10`,
-      [nowPH, nowPH],
-    );
-    if (announcements.length > 0) {
+    // Format announcements
+    if (announcementsResult.length > 0) {
       const lines = ["UPCOMING EVENTS & ANNOUNCEMENTS (from database):"];
-      for (const a of announcements) {
+      for (const a of announcementsResult) {
         const published = formatDatePart(a.publish_date);
         const expires = a.expiration_date
           ? ` (until ${formatDatePart(a.expiration_date)})`
@@ -558,10 +640,13 @@ async function buildRestaurantContext() {
       sections.push(lines.join("\n"));
     }
   } catch (err) {
-    console.error("[GeminiService] Failed to fetch announcements:", err);
+    console.error("[GeminiService] Error in buildRestaurantContext:", err);
   }
 
-  return sections.join("\n\n");
+  const result = sections.join("\n\n");
+  cachedRestaurantContext = result;
+  contextLastFetched = Date.now();
+  return result;
 }
 
 // ─── Pre-filter for system-related questions ─────────────────────────────────
