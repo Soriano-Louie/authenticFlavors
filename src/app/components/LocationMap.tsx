@@ -4,15 +4,11 @@ import "leaflet/dist/leaflet.css";
 import {
   MapPin,
   Navigation,
-  Clock,
-  Car,
-  Phone,
-  Mail,
   Compass,
   ExternalLink,
 } from "lucide-react";
 
-// Default coordinates for 35 ML Quezon St., New Lower Bicutan, Taguig City, Philippines
+// Exact coordinates for 35 ML Quezon St., New Lower Bicutan, Taguig City, Philippines
 const DEFAULT_LAT = 14.495;
 const DEFAULT_LNG = 121.063;
 const RESTAURANT_NAME = "Authentic Flavors by Chef Ramos";
@@ -25,52 +21,10 @@ export function LocationMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
-  const [coords, setCoords] = useState<[number, number]>([
+  const [coords] = useState<[number, number]>([
     DEFAULT_LAT,
     DEFAULT_LNG,
   ]);
-  const [isGeocoding, setIsGeocoding] = useState(false);
-
-  // Attempt geocoding on mount with fallback
-  useEffect(() => {
-    let isMounted = true;
-    const fetchCoordinates = async () => {
-      setIsGeocoding(true);
-      try {
-        // Query OpenStreetMap Nominatim for exact address
-        const query = encodeURIComponent(
-          "35 ML Quezon St, Lower Bicutan, Taguig, Philippines",
-        );
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`,
-          {
-            headers: {
-              Accept: "application/json",
-            },
-          },
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && data && data.length > 0) {
-            const lat = parseFloat(data[0].lat);
-            const lon = parseFloat(data[0].lon);
-            if (!isNaN(lat) && !isNaN(lon)) {
-              setCoords([lat, lon]);
-            }
-          }
-        }
-      } catch {
-        // Fallback to verified default coordinates
-      } finally {
-        if (isMounted) setIsGeocoding(false);
-      }
-    };
-
-    fetchCoordinates();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Initialize and update Leaflet Map
   useEffect(() => {
@@ -89,12 +43,16 @@ export function LocationMap() {
       zoomControl: true,
     });
 
-    // High quality OpenStreetMap standard tile layer
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    // High-performance, unrestricted OpenStreetMap CartoDB Voyager tiles (with terrain, roads, buildings)
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {
+        maxZoom: 20,
+        subdomains: "abcd",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>',
+      },
+    ).addTo(map);
 
     // Custom branded pin icon with elegant pulsing ring
     const customIcon = L.divIcon({
@@ -122,7 +80,7 @@ export function LocationMap() {
       <div style="font-family: 'Lato', sans-serif; color: #2C1810; padding: 4px 2px; max-width: 260px;">
         <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
           <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #C8922A;"></span>
-          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #C8922A;">Premium Catering & Dining</span>
+          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #C8922A;">Authentic Flavors</span>
         </div>
         <h3 style="font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; color: #2C1810; margin: 0 0 6px 0; line-height: 1.3;">
           ${RESTAURANT_NAME}
@@ -130,9 +88,6 @@ export function LocationMap() {
         <p style="font-size: 12px; color: #665248; margin: 0 0 10px 0; line-height: 1.4;">
           ${RESTAURANT_ADDRESS}
         </p>
-        <div style="display: flex; gap: 6px; align-items: center; font-size: 11px; color: #2C1810; background: #F5F0E8; padding: 6px 8px; border-radius: 8px; margin-bottom: 10px;">
-          <span>🕒 Tue - Sun: 10:00 AM - 10:00 PM</span>
-        </div>
         <a 
           href="${GOOGLE_MAPS_URL}" 
           target="_blank" 
@@ -154,15 +109,21 @@ export function LocationMap() {
       className: "custom-leaflet-popup",
     });
 
-    // Auto-open the popup after map initialization so guests immediately see the name and address
-    setTimeout(() => {
-      marker.openPopup();
-    }, 400);
+    // Invalidate size on multiple intervals to guarantee tiles load when container layout finishes
+    const timers = [
+      setTimeout(() => map.invalidateSize(), 50),
+      setTimeout(() => map.invalidateSize(), 250),
+      setTimeout(() => {
+        map.invalidateSize();
+        marker.openPopup();
+      }, 500),
+    ];
 
     mapInstanceRef.current = map;
     markerRef.current = marker;
 
     return () => {
+      timers.forEach(clearTimeout);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -172,6 +133,7 @@ export function LocationMap() {
 
   const handleRecenter = () => {
     if (mapInstanceRef.current) {
+      mapInstanceRef.current.invalidateSize();
       mapInstanceRef.current.flyTo(coords, 16, {
         duration: 1.2,
       });
@@ -211,112 +173,58 @@ export function LocationMap() {
           </p>
         </div>
 
-        {/* Map & Information Grid */}
+        {/* Map & Location Card Container */}
         <div className="grid lg:grid-cols-12 gap-8 items-stretch">
-          {/* Left Column: Venue Location Cards */}
-          <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
-            {/* Primary Address Card */}
-            <div className="bg-[#2C1810]/90 backdrop-blur-sm rounded-2xl p-6 border border-[#C8922A]/25 shadow-xl shadow-black/40 relative overflow-hidden">
-              <div className="flex items-start gap-4 mb-5">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-white flex items-center justify-center shrink-0 shadow-md shadow-[#C4541A]/30">
-                  <MapPin size={22} />
+          {/* Left Column: Primary Location Card */}
+          <div className="lg:col-span-5 flex flex-col justify-center">
+            <div className="bg-[#2C1810]/95 backdrop-blur-sm rounded-2xl p-7 border border-[#C8922A]/25 shadow-xl shadow-black/40 relative overflow-hidden">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#C8922A] to-[#C4541A] text-white flex items-center justify-center shrink-0 shadow-lg shadow-[#C4541A]/30">
+                  <MapPin size={26} />
                 </div>
                 <div>
                   <span className="text-[#C8922A] text-xs font-bold font-['Lato'] tracking-wider uppercase">
                     Main Restaurant & Venue
                   </span>
-                  <h3 className="font-['Playfair_Display'] text-[#F5F0E8] text-xl font-bold mt-0.5 leading-snug">
+                  <h3 className="font-['Playfair_Display'] text-[#F5F0E8] text-xl font-bold mt-1 leading-snug">
                     {RESTAURANT_NAME}
                   </h3>
-                  <p className="text-[#F5F0E8]/75 text-sm font-['Lato'] mt-2 leading-relaxed">
+                  <p className="text-[#F5F0E8]/80 text-sm font-['Lato'] mt-2.5 leading-relaxed">
                     {RESTAURANT_ADDRESS}
                   </p>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-4 border-t border-[#C8922A]/20 flex flex-col sm:flex-row gap-3">
+              <div className="pt-5 border-t border-[#C8922A]/20 flex flex-col sm:flex-row gap-3">
                 <a
                   href={GOOGLE_MAPS_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-md shadow-[#C4541A]/20 font-['Lato']"
+                  className="flex-1 py-3.5 px-4 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-md shadow-[#C4541A]/20 font-['Lato']"
                 >
-                  <Navigation size={14} />
+                  <Navigation size={15} />
                   Get Directions
-                  <ExternalLink size={12} className="opacity-80" />
+                  <ExternalLink size={13} className="opacity-80" />
                 </a>
                 <button
                   onClick={handleRecenter}
-                  className="py-3 px-4 bg-white/5 hover:bg-white/10 text-[#F5F0E8] text-xs font-semibold rounded-xl border border-[#C8922A]/30 flex items-center justify-center gap-2 transition-all font-['Lato'] cursor-pointer"
+                  className="py-3.5 px-4 bg-white/5 hover:bg-white/10 text-[#F5F0E8] text-xs font-semibold rounded-xl border border-[#C8922A]/30 flex items-center justify-center gap-2 transition-all font-['Lato'] cursor-pointer"
                 >
-                  <Compass size={14} className="text-[#C8922A]" />
+                  <Compass size={15} className="text-[#C8922A]" />
                   Recenter Map
                 </button>
-              </div>
-            </div>
-
-            {/* Quick Details Highlights */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              {/* Operating Hours */}
-              <div className="bg-[#2C1810]/70 rounded-xl p-4 border border-[#C8922A]/15 flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-[#C8922A]/15 text-[#C8922A] shrink-0 mt-0.5">
-                  <Clock size={16} />
-                </div>
-                <div>
-                  <h4 className="text-[#F5F0E8] text-xs font-bold font-['Lato']">
-                    Operating Hours
-                  </h4>
-                  <p className="text-[#F5F0E8]/60 text-xs font-['Lato'] mt-0.5 leading-snug">
-                    Tue – Sun: 10:00 AM – 10:00 PM
-                  </p>
-                  <span className="inline-block text-[10px] font-semibold text-[#C8922A] mt-1">
-                    Closed on Mondays
-                  </span>
-                </div>
-              </div>
-
-              {/* Parking Availability */}
-              <div className="bg-[#2C1810]/70 rounded-xl p-4 border border-[#C8922A]/15 flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-[#7A8C5C]/20 text-[#7A8C5C] shrink-0 mt-0.5">
-                  <Car size={16} />
-                </div>
-                <div>
-                  <h4 className="text-[#F5F0E8] text-xs font-bold font-['Lato']">
-                    Event Parking
-                  </h4>
-                  <p className="text-[#F5F0E8]/60 text-xs font-['Lato'] mt-0.5 leading-snug">
-                    Dedicated parking slots available for dining & event guests.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Direct Contact Inquiries */}
-            <div className="bg-[#2C1810]/50 rounded-xl p-4 border border-[#C8922A]/10 flex flex-wrap items-center justify-between gap-3 text-xs text-[#F5F0E8]/70 font-['Lato']">
-              <div className="flex items-center gap-2">
-                <Mail size={14} className="text-[#C8922A]" />
-                <a
-                  href="mailto:events@authenticflavors.ph"
-                  className="hover:text-[#C8922A] transition-colors"
-                >
-                  events@authenticflavors.ph
-                </a>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone size={14} className="text-[#C8922A]" />
-                <span>+63 (2) 8888-RAMOS</span>
               </div>
             </div>
           </div>
 
           {/* Right Column: Interactive Leaflet Map Container */}
-          <div className="lg:col-span-7 h-[380px] sm:h-[420px] lg:h-auto min-h-[380px] rounded-2xl overflow-hidden border border-[#C8922A]/30 shadow-2xl relative bg-[#2C1810]">
+          <div className="lg:col-span-7 h-[420px] sm:h-[460px] rounded-2xl overflow-hidden border border-[#C8922A]/30 shadow-2xl relative bg-[#2C1810]">
             {/* Map Canvas */}
             <div
               ref={mapContainerRef}
               className="w-full h-full z-0"
-              style={{ minHeight: "380px" }}
+              style={{ minHeight: "420px" }}
             />
 
             {/* Map Top Badge Overlay */}
