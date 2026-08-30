@@ -75,9 +75,7 @@ export async function seedDatabaseIfEmpty() {
     const discountColumnNames = discountColumns.map((c) => c.COLUMN_NAME);
     const discountAlterations = [];
     if (!discountColumnNames.includes("discount_announcement_id")) {
-      discountAlterations.push(
-        "ADD COLUMN discount_announcement_id INT NULL",
-      );
+      discountAlterations.push("ADD COLUMN discount_announcement_id INT NULL");
     }
     if (!discountColumnNames.includes("discount_amount")) {
       discountAlterations.push(
@@ -85,9 +83,7 @@ export async function seedDatabaseIfEmpty() {
       );
     }
     if (!discountColumnNames.includes("original_total")) {
-      discountAlterations.push(
-        "ADD COLUMN original_total DECIMAL(10,2) NULL",
-      );
+      discountAlterations.push("ADD COLUMN original_total DECIMAL(10,2) NULL");
     }
     if (discountAlterations.length > 0) {
       const alterSql = `ALTER TABLE bookings ${discountAlterations.join(", ")}`;
@@ -207,7 +203,9 @@ export async function seedDatabaseIfEmpty() {
       await connection.query(
         "ALTER TABLE bookings ADD COLUMN custom_event_type VARCHAR(255) DEFAULT NULL AFTER event_type_id",
       );
-      console.log("[MIGRATION] Added custom_event_type column to bookings table.");
+      console.log(
+        "[MIGRATION] Added custom_event_type column to bookings table.",
+      );
     }
 
     // 0.0 Ensure packages table has image column
@@ -430,9 +428,7 @@ export async function seedDatabaseIfEmpty() {
       );
     }
     if (!paymentExtraColumnNames.includes("reminder_sent_at")) {
-      paymentExtraAlterations.push(
-        "ADD COLUMN reminder_sent_at DATETIME NULL",
-      );
+      paymentExtraAlterations.push("ADD COLUMN reminder_sent_at DATETIME NULL");
     }
     if (paymentExtraAlterations.length > 0) {
       const alterSql = `ALTER TABLE payments ${paymentExtraAlterations.join(", ")}`;
@@ -608,14 +604,10 @@ export async function seedDatabaseIfEmpty() {
       );
     }
     if (!announcementDiscountColumnNames.includes("discount_package_id")) {
-      announcementAlterations.push(
-        "ADD COLUMN discount_package_id INT NULL",
-      );
+      announcementAlterations.push("ADD COLUMN discount_package_id INT NULL");
     }
     if (!announcementDiscountColumnNames.includes("discount_pax_count")) {
-      announcementAlterations.push(
-        "ADD COLUMN discount_pax_count INT NULL",
-      );
+      announcementAlterations.push("ADD COLUMN discount_pax_count INT NULL");
     }
     if (announcementAlterations.length > 0) {
       const alterSql = `ALTER TABLE announcements ${announcementAlterations.join(", ")}`;
@@ -1045,7 +1037,7 @@ export async function seedDatabaseIfEmpty() {
         [
           "Hours & Location",
           "Where are you located?",
-          "Authentic Flavors is located at 45 ML Quezon St. New Lower Bicutan, Taguig City, Philippines.",
+          "Authentic Flavors is located at 35 ML Quezon St. New Lower Bicutan, Taguig City, Philippines.",
         ],
         [
           "Hours & Location",

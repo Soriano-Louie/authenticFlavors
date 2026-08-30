@@ -99,7 +99,7 @@ export function Footer() {
             <ul className="space-y-3 font-['Lato'] text-sm">
               <li className="flex items-start gap-2">
                 <MapPin size={15} className="text-[#C8922A] mt-0.5 shrink-0" />
-                <span>45 ML Quezon St. New Lower Bicutan, Taguig City</span>
+                <span>35 ML Quezon St. New Lower Bicutan, Taguig City</span>
               </li>
               <li className="flex items-center gap-2">
                 <a

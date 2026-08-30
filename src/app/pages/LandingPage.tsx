@@ -29,6 +29,7 @@ import {
   getPublicFeedbacks,
   type PublicFeedback,
 } from "../api/publicFeedbackApi";
+import { LocationMap } from "../components/LocationMap";
 
 const CAROUSEL_EVENTS = [
   {
@@ -1203,6 +1204,9 @@ export function LandingPage() {
           )}
         </div>
       </section>
+
+      {/* ─── Interactive Location Map ─── */}
+      <LocationMap />
 
       {/* ─── CTA Section ─── */}
       <section className="relative py-24 overflow-hidden">

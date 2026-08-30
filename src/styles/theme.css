@@ -384,3 +384,37 @@ body {
     min-width: 0;
   }
 }
+
+/* ─── Leaflet Map Theme Customization ─── */
+.custom-leaflet-popup .leaflet-popup-content-wrapper {
+  background: #FAF6F0 !important;
+  color: #2C1810 !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(200, 146, 42, 0.4) !important;
+  box-shadow: 0 10px 25px -5px rgba(44, 24, 16, 0.35) !important;
+  padding: 8px 10px !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-tip {
+  background: #FAF6F0 !important;
+  border-bottom: 1px solid rgba(200, 146, 42, 0.4) !important;
+  border-right: 1px solid rgba(200, 146, 42, 0.4) !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-close-button {
+  color: #8C7569 !important;
+  top: 8px !important;
+  right: 8px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-close-button:hover {
+  color: #C8922A !important;
+}
+
+.custom-leaflet-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
