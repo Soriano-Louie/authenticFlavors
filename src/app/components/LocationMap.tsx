@@ -3,13 +3,13 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapPin, Navigation, Compass, ExternalLink } from "lucide-react";
 
-const DEFAULT_LAT = 14.495;
-const DEFAULT_LNG = 121.063;
+const DEFAULT_LAT = 14.507071738801775;
+const DEFAULT_LNG = 121.06604401778748;
 const RESTAURANT_NAME = "Authentic Flavors by Chef Ramos";
 const RESTAURANT_ADDRESS =
-  "35 ML Quezon St., New Lower Bicutan, Taguig City, Philippines";
+  "35 M. L. Quezon Ave, New Lower Bicutan, Taguig, 1632 Metro Manila";
 const GOOGLE_MAPS_URL =
-  "https://www.google.com/maps/dir/?api=1&destination=35+ML+Quezon+St,+New+Lower+Bicutan,+Taguig+City,+Philippines";
+  "https://www.google.com/maps/dir/?api=1&destination=14.507071738801775,121.06604401778748";
 
 export function LocationMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
