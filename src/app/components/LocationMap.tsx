@@ -7,10 +7,10 @@ const RESTAURANT_ADDRESS =
 const GOOGLE_MAPS_URL =
   "https://www.google.com/maps/dir/?api=1&destination=35+ML+Quezon+St,+New+Lower+Bicutan,+Taguig+City,+Philippines";
 
-// Google Maps Embed — no API key required for basic embed usage
-// Uses the exact coordinates geocoded from the address
+// OpenStreetMap official embed — completely free, no API key, never blocked on localhost or any domain
+// bbox format: lon_min,lat_min,lon_max,lat_max
 const MAP_EMBED_SRC =
-  "https://maps.google.com/maps?q=14.4950,121.0630&z=16&output=embed";
+  "https://www.openstreetmap.org/export/embed.html?bbox=121.0600%2C14.4920%2C121.0660%2C14.4980&layer=mapnik&marker=14.4950%2C121.0630";
 
 export function LocationMap() {
   return (
