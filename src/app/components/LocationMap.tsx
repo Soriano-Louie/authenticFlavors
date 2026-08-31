@@ -31,9 +31,17 @@ export function LocationMap() {
     const map = L.map(container, {
       center: coords,
       zoom: 16,
-      scrollWheelZoom: false,
+      scrollWheelZoom: true,
       zoomControl: true,
     });
+
+    // Prevent page scroll when the pointer is over the map.
+    // The wheel event must be non-passive so we can call preventDefault().
+    const preventPageScroll = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    container.addEventListener("wheel", preventPageScroll, { passive: false });
 
     // Standard OpenStreetMap tiles — truly free, no API key ever needed.
     L.tileLayer(
@@ -105,6 +113,7 @@ export function LocationMap() {
 
     return () => {
       cancelAnimationFrame(rafId);
+      container.removeEventListener("wheel", preventPageScroll);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
