@@ -460,7 +460,7 @@ export function LandingPage() {
                   style={{ aspectRatio: "3/4" }}
                 >
                   <img
-                    src="/mr-ramos.png"
+                    src="/mr-ramosFInal.png"
                     alt="Chef Ramos"
                     className="w-full h-full object-cover"
                   />
