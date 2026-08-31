@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import {
   AlertTriangle,
@@ -147,6 +147,21 @@ export function PackageSelectionPage() {
   const [selectedPackageId, setSelectedPackageId] =
     useState<string>(selectedPackageQuery);
   const [selectedPax, setSelectedPax] = useState<number>(initialPax);
+  const detailsRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSelectPackage = (pkgId: string) => {
+    setSelectedPackageId(pkgId);
+    if (detailsRef.current) {
+      const navOffset = 80;
+      const elementPosition = detailsRef.current.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - navOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth",
+      });
+    }
+  };
   // "Don't show again" is scoped to the current browser session AND the
   // current account, so it is suppressed only for this visit/session — the
   // modal always comes back when a new session starts or another user logs in.
@@ -542,7 +557,7 @@ export function PackageSelectionPage() {
                 <button
                   key={pkg.id}
                   type="button"
-                  onClick={() => setSelectedPackageId(pkg.id)}
+                  onClick={() => handleSelectPackage(pkg.id)}
                   className={`flex h-full flex-col overflow-hidden rounded-3xl border text-left transition-all ${
                     selectedPackageId === pkg.id
                       ? "border-[#C8922A] shadow-lg"
@@ -667,7 +682,7 @@ export function PackageSelectionPage() {
           </>
         )}
 
-        <div className="mt-12 grid gap-10 lg:grid-cols-[2fr_1fr]">
+        <div ref={detailsRef} id="package-details" className="mt-12 grid gap-10 lg:grid-cols-[2fr_1fr] scroll-mt-24">
           <section className="rounded-[32px] bg-white p-8 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
               <div>
