@@ -6,9 +6,11 @@ import {
   getPasswordError,
   isEmailFormatValid,
   isPasswordStrongEnough,
+  validatePhone,
+} from "../utils/registrationValidation.js";
+import {
   normalizeEmail,
   normalizePhone,
-  validatePhone,
 } from "../utils/validators.js";
 
 const VALID_ROLES = ["Admin", "Customer"];

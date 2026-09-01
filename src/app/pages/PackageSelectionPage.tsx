@@ -151,17 +151,23 @@ export function PackageSelectionPage() {
 
   const handleSelectPackage = (pkgId: string) => {
     setSelectedPackageId(pkgId);
-    if (detailsRef.current) {
-      const navOffset = 80;
+    // scroll is handled by the useEffect below
+  };
+
+  // Scroll to the details section whenever a package is selected.
+  // Using requestAnimationFrame ensures React has committed the DOM
+  // before we measure the element position — fixing the "needs a refresh" bug.
+  useEffect(() => {
+    if (loading || !detailsRef.current) return;
+    const navOffset = 80;
+    const raf = requestAnimationFrame(() => {
+      if (!detailsRef.current) return;
       const elementPosition = detailsRef.current.getBoundingClientRect().top;
       const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth",
-      });
-    }
-  };
+      window.scrollTo({ top: offsetPosition, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [selectedPackageId, loading]);
   // "Don't show again" is scoped to the current browser session AND the
   // current account, so it is suppressed only for this visit/session — the
   // modal always comes back when a new session starts or another user logs in.
