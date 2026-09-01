@@ -88,6 +88,29 @@ function getStatusStyle(status: string) {
   }
 }
 
+function getBookingRefundAmount(booking: Booking): number {
+  if (typeof booking.refundable_amount === "number") {
+    return booking.refundable_amount;
+  }
+  if (booking.booking_status !== "Cancelled") {
+    return 0;
+  }
+  const total = Number(booking.total_price || 0);
+  const paid = Number(booking.amount_paid || 0);
+  const policy = booking.cancellation_policy_applied || "standard";
+  let nonRefundable = 0;
+  if (policy === "standard") {
+    nonRefundable = Math.min(5000.0, total);
+  } else if (policy === "5_days_penalty") {
+    nonRefundable = total * 0.5;
+  } else if (policy === "1_day_penalty") {
+    nonRefundable = total;
+  } else {
+    nonRefundable = Math.min(5000.0, total);
+  }
+  return Math.max(0, paid - nonRefundable);
+}
+
 function getPaymentStatusInfo(payment: Payment): {
   label: string;
   colorClass: string;
@@ -915,9 +938,16 @@ export function CustomerDashboard() {
         cancellationReason || undefined,
       );
 
-      toast.success(
-        "Booking cancelled successfully. Check your email for details.",
-      );
+      if (result.refundable_amount && result.refundable_amount > 0) {
+        toast.success(
+          `Booking cancelled. You have an eligible refund of ₱${Number(result.refundable_amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}. Please contact the restaurant or talk to our staff in person to claim your refund.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(
+          "Booking cancelled successfully. Check your email for details.",
+        );
+      }
 
       // Close modal and refresh bookings
       setShowCancellationModal(false);
@@ -2306,6 +2336,19 @@ export function CustomerDashboard() {
                               <span>•</span>
                               <span>👥 {ev.number_of_pax} guests</span>
                             </p>
+                            {isCancelled && (() => {
+                              const refund = getBookingRefundAmount(ev);
+                              if (refund > 0) {
+                                return (
+                                  <div className="pt-1">
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#7A8C5C]/15 text-[#7A8C5C] font-['Lato'] border border-[#7A8C5C]/30">
+                                      💰 ₱{refund.toLocaleString("en-PH", { minimumFractionDigits: 2 })} Refund Due · Contact Restaurant
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           <div className="flex items-center gap-3">
                             <span
@@ -3060,65 +3103,131 @@ export function CustomerDashboard() {
                           </div>
                         );
                       })()}
-                      <div className="space-y-1 text-xs font-['Lato']">
-                        <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">
-                            Total Package Price:
-                          </span>
-                          <span className="font-semibold text-[#2C1810]">
-                            ₱
-                            {Number(
-                              cancellationDetails.total_price,
-                            ).toLocaleString("en-PH", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">
-                            Amount Already Paid:
-                          </span>
-                          <span className="font-semibold text-[#7A8C5C]">
-                            ₱
-                            {Number(
-                              cancellationDetails.amount_already_paid,
-                            ).toLocaleString("en-PH", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#2C1810]/60">
-                            Amount Due on Cancellation:
-                          </span>
-                          <span className="font-semibold text-[#C4541A]">
-                            ₱
-                            {Number(
-                              cancellationDetails.estimated_cancellation
-                                .estimated_amount_due,
-                            ).toLocaleString("en-PH", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-                        {cancellationDetails.estimated_cancellation
-                          .estimated_additional_due > 0 && (
-                          <div className="flex justify-between pt-1 border-t border-[#C8922A]/20">
-                            <span className="text-[#2C1810]/80 font-semibold">
-                              Additional Payment Required:
-                            </span>
-                            <span className="font-bold text-[#C4541A]">
-                              ₱
-                              {Number(
-                                cancellationDetails.estimated_cancellation
-                                  .estimated_additional_due,
-                              ).toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      {(() => {
+                        const estimatedRefundable =
+                          cancellationDetails.estimated_cancellation
+                            ?.estimated_refundable_amount ??
+                          Math.max(
+                            0,
+                            cancellationDetails.amount_already_paid -
+                              (cancellationDetails.estimated_cancellation
+                                ?.policy_would_apply === "5_days_penalty"
+                                ? cancellationDetails.total_price * 0.5
+                                : cancellationDetails.estimated_cancellation
+                                      ?.policy_would_apply === "1_day_penalty"
+                                  ? cancellationDetails.total_price
+                                  : Math.min(
+                                      5000,
+                                      cancellationDetails.total_price,
+                                    )),
+                          );
+
+                        return (
+                          <>
+                            <div className="space-y-1 text-xs font-['Lato']">
+                              <div className="flex justify-between">
+                                <span className="text-[#2C1810]/60">
+                                  Total Package Price:
+                                </span>
+                                <span className="font-semibold text-[#2C1810]">
+                                  ₱
+                                  {Number(
+                                    cancellationDetails.total_price,
+                                  ).toLocaleString("en-PH", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-[#2C1810]/60">
+                                  Amount Already Paid:
+                                </span>
+                                <span className="font-semibold text-[#7A8C5C]">
+                                  ₱
+                                  {Number(
+                                    cancellationDetails.amount_already_paid,
+                                  ).toLocaleString("en-PH", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-[#2C1810]/60">
+                                  Amount Due on Cancellation:
+                                </span>
+                                <span className="font-semibold text-[#C4541A]">
+                                  ₱
+                                  {Number(
+                                    cancellationDetails.estimated_cancellation
+                                      .estimated_amount_due,
+                                  ).toLocaleString("en-PH", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </div>
+                              {cancellationDetails.estimated_cancellation
+                                .estimated_additional_due > 0 && (
+                                <div className="flex justify-between pt-1 border-t border-[#C8922A]/20">
+                                  <span className="text-[#2C1810]/80 font-semibold">
+                                    Additional Payment Required:
+                                  </span>
+                                  <span className="font-bold text-[#C4541A]">
+                                    ₱
+                                    {Number(
+                                      cancellationDetails.estimated_cancellation
+                                        .estimated_additional_due,
+                                    ).toLocaleString("en-PH", {
+                                      minimumFractionDigits: 2,
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                              {estimatedRefundable > 0 && (
+                                <div className="flex justify-between pt-1 border-t border-[#7A8C5C]/30">
+                                  <span className="text-[#2C1810] font-bold">
+                                    Eligible Refund Balance:
+                                  </span>
+                                  <span className="font-bold text-[#7A8C5C] text-sm">
+                                    ₱
+                                    {Number(
+                                      estimatedRefundable,
+                                    ).toLocaleString("en-PH", {
+                                      minimumFractionDigits: 2,
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Prominent Refund Notice if eligible */}
+                            {estimatedRefundable > 0 && (
+                              <div className="mt-3 bg-[#7A8C5C]/15 border border-[#7A8C5C]/40 rounded-xl p-3.5 space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm">💰</span>
+                                  <p className="text-xs font-bold font-['Lato'] text-[#2C1810]">
+                                    Refund Notice (In-Person Settlement)
+                                  </p>
+                                </div>
+                                <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed">
+                                  You are eligible for a refund of{" "}
+                                  <strong className="text-[#7A8C5C]">
+                                    ₱
+                                    {Number(estimatedRefundable).toLocaleString(
+                                      "en-PH",
+                                      { minimumFractionDigits: 2 },
+                                    )}
+                                  </strong>
+                                  . Since automated online refunds are not handled directly through the website, please{" "}
+                                  <strong>
+                                    contact our restaurant staff or visit us personally
+                                  </strong>{" "}
+                                  with your booking reference to claim your refund.
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -3981,6 +4090,59 @@ export function CustomerDashboard() {
                         </p>
                       </div>
                     )}
+
+                    {/* Cancelled banner with refund instructions if applicable */}
+                    {selectedBooking.booking_status === "Cancelled" && (() => {
+                      const refundAmount = getBookingRefundAmount(selectedBooking);
+                      if (refundAmount > 0) {
+                        return (
+                          <div className="bg-[#7A8C5C]/15 border border-[#7A8C5C]/40 rounded-xl p-4 space-y-2.5">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">💰</span>
+                                <span className="font-['Playfair_Display'] font-bold text-sm text-[#2C1810]">
+                                  Eligible Refund to be Claimed
+                                </span>
+                              </div>
+                              <span className="text-sm font-bold text-[#7A8C5C] bg-white px-3 py-1 rounded-full border border-[#7A8C5C]/30 shadow-xs">
+                                ₱
+                                {refundAmount.toLocaleString("en-PH", {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed">
+                              You have an eligible refund balance for this cancelled booking. Since automated online refunds are not handled through our website system, please{" "}
+                              <strong>contact our restaurant staff or visit us personally</strong>{" "}
+                              with your booking reference (
+                              <strong>
+                                {getBookingReference(selectedBooking)}
+                              </strong>
+                              ) to process and claim your refund.
+                            </p>
+                            <div className="pt-1 flex flex-wrap gap-2 text-xs font-['Lato'] text-[#2C1810]/70">
+                              <span className="bg-white/80 px-2.5 py-1 rounded-md border border-[#C8922A]/10 font-medium">
+                                📞 (02) 8123-4567
+                              </span>
+                              <span className="bg-white/80 px-2.5 py-1 rounded-md border border-[#C8922A]/10 font-medium">
+                                📱 +63 917 123 4567
+                              </span>
+                              <span className="bg-white/80 px-2.5 py-1 rounded-md border border-[#C8922A]/10 font-medium">
+                                📍 Authentic Flavors by Chef Ramos
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-3 flex items-center gap-2">
+                          <AlertTriangle size={16} className="text-[#C4541A] shrink-0" />
+                          <p className="text-xs font-['Lato'] text-[#C4541A]">
+                            Booking Cancelled — Non-refundable reservation fee / cancellation policy applied.
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     {/* Payment cards */}
                     {[

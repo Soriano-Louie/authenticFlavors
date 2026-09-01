@@ -501,7 +501,12 @@ export async function sendBookingRejectedEmail(email, firstName, bookingDetails,
 }
 
 export async function sendBookingCancelledEmail(email, firstName, bookingDetails, reason) {
-  const { booking_reference } = bookingDetails;
+  const { booking_reference, refundable_amount } = bookingDetails || {};
+  const hasRefund = Number(refundable_amount) > 0;
+  const formattedRefund = hasRefund
+    ? `₱${Number(refundable_amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+    : "";
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
       <div style="text-align: center; margin-bottom: 20px;">
@@ -514,11 +519,23 @@ export async function sendBookingCancelledEmail(email, firstName, bookingDetails
           Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          Your booking <strong>${booking_reference || ""}</strong> has been cancelled.
+          Your booking <strong>${escapeHtml(booking_reference || "")}</strong> has been cancelled.
         </p>
         ${reason ? `
         <div style="background-color: #F5F0E8; padding: 12px 16px; margin: 16px 0; border-radius: 8px;">
           <p style="font-size: 13px; color: #2C1810; margin: 0;"><strong>Cancellation Details:</strong> ${escapeHtml(reason)}</p>
+        </div>` : ""}
+        ${hasRefund ? `
+        <div style="background-color: #7A8C5C15; border: 1px solid #7A8C5C40; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="font-size: 14px; font-weight: bold; color: #2C1810; margin: 0 0 8px;">
+            💰 Refund Information
+          </p>
+          <p style="font-size: 13px; color: #2C1810; line-height: 1.5; margin: 0 0 8px;">
+            You have an eligible refund amount of <strong style="color: #7A8C5C; font-size: 15px;">${formattedRefund}</strong>.
+          </p>
+          <p style="font-size: 12px; color: #555; line-height: 1.5; margin: 0;">
+            Please note that automated online refunds are not processed within our web system. To claim your refund, please contact our restaurant directly or talk to our staff in person. Please present your booking reference (<strong>${escapeHtml(booking_reference || "")}</strong>).
+          </p>
         </div>` : ""}
         <div style="text-align: center; margin: 24px 0;">
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">

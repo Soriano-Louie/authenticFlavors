@@ -880,10 +880,21 @@ export async function getBookings(req, res) {
       }
     }
 
-    const bookingsWithDetails = bookings.map((booking) => ({
-      ...booking,
-      menu_selections: menuByBooking.get(booking.booking_id) ?? [],
-    }));
+    const bookingsWithDetails = bookings.map((booking) => {
+      const refundInfo =
+        booking.booking_status === "Cancelled"
+          ? calculateCancellationRefund(
+              booking.total_price,
+              booking.amount_paid,
+              booking.cancellation_policy_applied,
+            )
+          : null;
+      return {
+        ...booking,
+        refundable_amount: refundInfo ? refundInfo.refundable_amount : 0,
+        menu_selections: menuByBooking.get(booking.booking_id) ?? [],
+      };
+    });
 
     res.status(200).json({ bookings: bookingsWithDetails });
   } catch (error) {
@@ -1024,10 +1035,21 @@ export async function getAdminBookings(req, res) {
       }
     }
 
-    const bookingsWithDetails = bookings.map((booking) => ({
-      ...booking,
-      menu_selections: menuByBooking.get(booking.booking_id) ?? [],
-    }));
+    const bookingsWithDetails = bookings.map((booking) => {
+      const refundInfo =
+        booking.booking_status === "Cancelled"
+          ? calculateCancellationRefund(
+              booking.total_price,
+              booking.amount_paid,
+              booking.cancellation_policy_applied,
+            )
+          : null;
+      return {
+        ...booking,
+        refundable_amount: refundInfo ? refundInfo.refundable_amount : 0,
+        menu_selections: menuByBooking.get(booking.booking_id) ?? [],
+      };
+    });
 
     res.status(200).json({ bookings: bookingsWithDetails, total, page, limit });
   } catch (error) {
@@ -1536,6 +1558,34 @@ export async function rejectBooking(req, res) {
   }
 }
 
+// Helper to calculate cancellation refund and non-refundable retention
+export function calculateCancellationRefund(totalPrice, amountPaid, policyApplied) {
+  const total = Number(totalPrice || 0);
+  const paid = Number(amountPaid || 0);
+  const policy = policyApplied || "standard";
+
+  let nonRefundableRetention = 0;
+  if (policy === "standard") {
+    // Non-refundable reservation fee is ₱5,000 (or total package price if smaller)
+    nonRefundableRetention = Math.min(5000.0, total);
+  } else if (policy === "5_days_penalty") {
+    // 50% of total package price is charged / retained
+    nonRefundableRetention = total * 0.5;
+  } else if (policy === "1_day_penalty") {
+    // 100% of total package price is charged / retained
+    nonRefundableRetention = total;
+  } else {
+    nonRefundableRetention = Math.min(5000.0, total);
+  }
+
+  const refundableAmount = Math.max(0, paid - nonRefundableRetention);
+  return {
+    refundable_amount: refundableAmount,
+    non_refundable_retention: nonRefundableRetention,
+    has_refund: refundableAmount > 0,
+  };
+}
+
 // ──────────────────────────────────────────
 // Customer: Request booking cancellation
 // ──────────────────────────────────────────
@@ -1657,6 +1707,14 @@ export async function requestCancellation(req, res) {
     const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
     additionalAmountDue = Math.max(0, amountDue - amountAlreadyPaid);
 
+    // Calculate refund if amount paid exceeds non-refundable retention / penalty
+    const refundInfo = calculateCancellationRefund(
+      booking.total_price,
+      amountAlreadyPaid,
+      policyApplied,
+    );
+    const refundableAmount = refundInfo.refundable_amount;
+
     // Update booking with cancellation details (only if not already cancelled)
     const [cancelUpdate] = await connection.query(
       `UPDATE bookings 
@@ -1749,12 +1807,17 @@ export async function requestCancellation(req, res) {
     );
     const user = userRows[0];
 
+    const notificationMessage =
+      refundableAmount > 0
+        ? `Your booking (${refStr}) has been cancelled. You have an eligible refund balance of ₱${refundableAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}. Since automated online refunds are not processed within the system, please contact or visit the restaurant directly to claim your refund.`
+        : `Your booking (${refStr}) has been cancelled.`;
+
     createNotification({
       userId,
       bookingId,
       type: "booking_cancelled",
       title: "Booking Cancelled",
-      message: `Your booking (${refStr}) has been cancelled.`,
+      message: notificationMessage,
       link: `/dashboard?tab=events&bookingId=${bookingId}`,
       sendEmailFn: () =>
         sendBookingCancelledEmail(
@@ -1762,6 +1825,7 @@ export async function requestCancellation(req, res) {
           user?.first_name,
           {
             booking_reference: refStr,
+            refundable_amount: refundableAmount,
           },
           cancellation_reason,
         ),
@@ -1781,6 +1845,8 @@ export async function requestCancellation(req, res) {
       amount_already_paid: amountAlreadyPaid,
       amount_due_on_cancellation: amountDue,
       additional_amount_due: additionalAmountDue,
+      refundable_amount: refundableAmount,
+      non_refundable_retention: refundInfo.non_refundable_retention,
       cancellation_charge_created: additionalAmountDue > 0,
     };
 
@@ -1867,6 +1933,21 @@ export async function getCancellationDetails(req, res) {
       estimatedAmountDue - amountAlreadyPaid,
     );
 
+    const estimatedRefundInfo = calculateCancellationRefund(
+      booking.total_price,
+      amountAlreadyPaid,
+      estimatedPolicy,
+    );
+
+    const cancelledRefundInfo =
+      booking.booking_status === "Cancelled"
+        ? calculateCancellationRefund(
+            booking.total_price,
+            amountAlreadyPaid,
+            booking.cancellation_policy_applied,
+          )
+        : null;
+
     // Get cancellation charge payments if any
     const [cancellationPayments] = await pool.query(
       `SELECT * FROM payments 
@@ -1883,6 +1964,7 @@ export async function getCancellationDetails(req, res) {
       booking_status: booking.booking_status,
       total_price: booking.total_price,
       amount_already_paid: amountAlreadyPaid,
+      refundable_amount: cancelledRefundInfo ? cancelledRefundInfo.refundable_amount : 0,
       days_before_event: daysBeforeEvent,
       is_cancelled:
         booking.booking_status === "Cancelled" ||
@@ -1892,6 +1974,8 @@ export async function getCancellationDetails(req, res) {
           ? {
               policy_applied: booking.cancellation_policy_applied,
               amount_due_on_cancellation: booking.amount_due_on_cancellation,
+              refundable_amount: cancelledRefundInfo.refundable_amount,
+              non_refundable_retention: cancelledRefundInfo.non_refundable_retention,
               cancellation_requested_at: booking.cancellation_requested_at,
               cancellation_processed_at: booking.cancellation_processed_at,
               cancellation_notes: booking.cancellation_notes,
@@ -1904,6 +1988,8 @@ export async function getCancellationDetails(req, res) {
               policy_would_apply: estimatedPolicy,
               estimated_amount_due: estimatedAmountDue,
               estimated_additional_due: estimatedAdditionalDue,
+              estimated_refundable_amount: estimatedRefundInfo.refundable_amount,
+              estimated_non_refundable: estimatedRefundInfo.non_refundable_retention,
               cancellation_charge_would_be_created: estimatedAdditionalDue > 0,
             }
           : null,

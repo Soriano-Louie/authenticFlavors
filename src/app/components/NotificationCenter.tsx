@@ -424,7 +424,7 @@ export function NotificationCenter({
                   const isAdmin = user?.role === "Admin";
 
                   if (onSelectTab) {
-                    onSelectTab(targetTab, selectedNotification.booking_id);
+                    onSelectTab(targetTab, selectedNotification.booking_id ?? undefined);
                   } else {
                     navigate(isAdmin ? "/admin" : "/dashboard", {
                       state: { targetTab },

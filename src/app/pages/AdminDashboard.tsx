@@ -3797,6 +3797,28 @@ function BookingsSection() {
                         </div>
                       </div>
 
+                      {/* Refund notice for cancelled booking if balance is due */}
+                      {booking.booking_status === "Cancelled" &&
+                        Number(booking.refundable_amount || 0) > 0 && (
+                          <div className="bg-[#7A8C5C]/15 border border-[#7A8C5C]/40 rounded-xl p-3.5 mb-5 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">💰</span>
+                              <div>
+                                <p className="text-xs font-bold font-['Lato'] text-[#2C1810]">
+                                  Customer Refund Due:{" "}
+                                  {formatAmount(booking.refundable_amount || 0)}
+                                </p>
+                                <p className="text-[11px] font-['Lato'] text-[#2C1810]/70">
+                                  Online automated refunds are not in system scope. Settle directly with the customer in person or via manual payment.
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-[#7A8C5C] bg-white px-2.5 py-1 rounded-full border border-[#7A8C5C]/30 shadow-xs">
+                              Settle In Person
+                            </span>
+                          </div>
+                        )}
+
                       {/* Payment Timeline */}
                       <h4 className="font-['Playfair_Display'] text-[#2C1810] text-sm mb-3 font-semibold">
                         Payment Timeline
@@ -4813,6 +4835,25 @@ function BookingsSection() {
                       <p className="text-base font-bold text-[#C4541A]">{formatAmount(b.remaining_balance ?? b.total_price)}</p>
                     </div>
                   </div>
+
+                  {b.booking_status === "Cancelled" && Number(b.refundable_amount || 0) > 0 && (
+                    <div className="bg-[#7A8C5C]/15 border border-[#7A8C5C]/40 rounded-xl p-3.5 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">💰</span>
+                        <div>
+                          <p className="text-xs font-bold font-['Lato'] text-[#2C1810]">
+                            Customer Refund Due: {formatAmount(b.refundable_amount || 0)}
+                          </p>
+                          <p className="text-[11px] font-['Lato'] text-[#2C1810]/70">
+                            Automated online refunds are not supported in the system. Settle this refund directly with the customer in person.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-[#7A8C5C] bg-white px-2.5 py-1 rounded-full border border-[#7A8C5C]/30 shadow-xs">
+                        Settle In Person
+                      </span>
+                    </div>
+                  )}
 
                   {payments.length > 0 && (
                     <div className="space-y-2 pt-2">

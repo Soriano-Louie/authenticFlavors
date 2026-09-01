@@ -60,6 +60,9 @@ export interface Booking {
   last_name?: string;
   menu_selections?: BookingMenuSelection[];
   days_until_event?: number | null;
+  cancellation_policy_applied?: string | null;
+  amount_due_on_cancellation?: number | null;
+  refundable_amount?: number;
 }
 
 const API_BASE_URL =
@@ -290,11 +293,14 @@ export interface CancellationDetails {
   booking_status: string;
   total_price: number;
   amount_already_paid: number;
+  refundable_amount?: number;
   days_before_event: number;
   is_cancelled: boolean;
   cancellation_details: {
     policy_applied: string;
     amount_due_on_cancellation: number;
+    refundable_amount?: number;
+    non_refundable_retention?: number;
     cancellation_requested_at: string;
     cancellation_processed_at: string;
     cancellation_notes: string | null;
@@ -303,6 +309,8 @@ export interface CancellationDetails {
     policy_would_apply: string;
     estimated_amount_due: number;
     estimated_additional_due: number;
+    estimated_refundable_amount?: number;
+    estimated_non_refundable?: number;
     cancellation_charge_would_be_created: boolean;
   } | null;
   cancellation_payments: any[];
@@ -321,6 +329,8 @@ export interface CancellationResponse {
   amount_already_paid: number;
   amount_due_on_cancellation: number;
   additional_amount_due: number;
+  refundable_amount?: number;
+  non_refundable_retention?: number;
   cancellation_charge_created: boolean;
 }
 
