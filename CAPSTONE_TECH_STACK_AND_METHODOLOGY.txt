@@ -1,0 +1,145 @@
+================================================================================
+AUTHENTIC FLAVORS CATERING RESERVATION & MANAGEMENT SYSTEM
+CAPSTONE DOCUMENTATION: TECH STACK & METHODOLOGY (EASY TO UNDERSTAND)
+================================================================================
+
+1. WHAT IS THIS SYSTEM?
+--------------------------------------------------------------------------------
+Authentic Flavors is an online catering reservation and management website. 
+It allows customers to browse food packages, customize their menu, book dates, 
+track payments (Reservation, Down Payment, Final Payment), upload receipts, and 
+reschedule events. 
+
+It also provides the restaurant owner and staff (Admins) with a dashboard to approve 
+bookings, verify receipts, manage food items, view sales charts, and receive AI-based 
+feedback analysis.
+
+
+================================================================================
+2. TECHNOLOGIES & FRAMEWORKS USED (AND WHY WE CHOSE THEM)
+================================================================================
+
+--- BACKEND (SERVER & DATABASE) ---
+
+1. Node.js
+   • What is it?
+     It is a tool that allows JavaScript to run on the computer or server, not just 
+     inside a web browser.
+   • Why did we use it?
+     - One Language for Everything: Both the frontend and backend use JavaScript/TypeScript, 
+       making it much easier for the team to write and understand the code.
+     - Fast and Handles Multiple Users: It can handle many customers booking and 
+       checking payments at the same time without freezing or slowing down.
+
+2. Express.js
+   • What is it?
+     A popular, simple web framework for Node.js that helps build web servers and APIs.
+   • Why did we use it?
+     - Easy Endpoint Management: It organizes all server tasks clearly (e.g., login, 
+       saving a booking, verifying a receipt, rescheduling).
+     - Security & Middleware: It makes it simple to protect pages so only logged-in 
+       users or admins can access private data.
+
+3. MySQL Database
+   • What is it?
+     A reliable relational database that stores information in organized tables 
+     (Users, Bookings, Payments, Menu Items).
+   • Why did we use it?
+     - Safe with Money & Dates: It ensures accurate financial tracking (e.g., remaining 
+       balance calculations) and prevents accidental duplicate bookings on the same date.
+     - Organized Relationships: Clearly links each customer to their bookings, payments, 
+       and selected food items.
+
+4. Supporting Tools on the Backend:
+   • JWT & bcryptjs: Encrypts passwords safely and keeps users logged in securely.
+   • Cloudinary: Safely stores uploaded payment receipt images and food photos in the cloud.
+   • Node-Cron: Automatically checks daily if any payment is overdue and sends reminder emails.
+   • Google Gemini AI: An intelligent AI assistant that helps recommend food packages 
+     and analyzes customer reviews.
+
+
+--- FRONTEND (WHAT THE USER SEES) ---
+
+1. React
+   • What is it?
+     A popular library created by Facebook for building user interfaces using reusable 
+     building blocks called "components".
+   • Why did we use it?
+     - Fast and Smooth: When a user clicks or updates something (like picking a food package 
+       or changing guest count), the screen updates immediately without having to refresh 
+       the whole page.
+     - Reusable Code: Buttons, modals, and cards are written once and reused everywhere.
+
+2. TypeScript
+   • What is it?
+     An upgraded version of JavaScript that checks for mistakes before the code is even run.
+   • Why did we use it?
+     - Fewer Bugs: It catches typos and data mistakes early during development.
+     - Clear Structure: It clearly defines what a "Booking", "User", or "Payment" must contain.
+
+3. Vite
+   • What is it?
+     A super fast modern tool used to run and build the frontend project.
+   • Why did we use it?
+     - Saves Time: Code changes appear instantly on screen while developing.
+     - Makes the Website Load Faster for users when deployed online.
+
+4. Tailwind CSS
+   • What is it?
+     A modern styling tool that lets developers design beautiful websites quickly.
+   • Why did we use it?
+     - Looks Great on All Devices: The website automatically adjusts nicely for mobile 
+       phones, tablets, and desktop computers.
+     - Custom Theme: Gives the website a warm, cohesive, and premium restaurant look.
+
+5. Supporting Frontend Libraries:
+   • Recharts: Draws clean, easy-to-read charts on the Admin Dashboard for sales and ratings.
+   • Lucide Icons: Provides clean, modern icons (calendars, clocks, checkmarks, trash cans).
+   • Sonner: Shows smooth popup alert messages (e.g., "Booking Rescheduled Successfully!").
+
+
+================================================================================
+3. WHY DID WE USE THE AGILE METHODOLOGY?
+================================================================================
+
+What is Agile?
+Agile is a way of building software step-by-step in short cycles (sprints), 
+rather than trying to plan and build everything all at once from the start.
+
+Why is Agile the best choice for our Capstone?
+
+1. Easy to Adapt to New Requirements
+   - As we developed the project and gathered feedback from our capstone adviser and users, 
+     we realized we needed extra rules (like a 2-week deadline for rescheduling, requiring 
+     down payments before final approval, and closing on Mondays). Agile made it easy 
+     to add these features smoothly without breaking the system.
+
+2. Continuous Progress & Working Demos
+   - Instead of waiting until the end of the semester to see the working website, we had 
+     working features ready to test and present at every capstone milestone and defense.
+
+3. Early Bug Detection
+   - Because we built and tested small parts continuously, errors were found and fixed 
+     immediately rather than piling up at the end.
+
+4. Team Collaboration
+   - It helped our team divide tasks clearly, stay organized, and always know what to work 
+     on next.
+
+
+================================================================================
+4. SUMMARY FOR CAPSTONE DEFENSE (EASY TALKING POINTS)
+================================================================================
+If the panelists ask:
+- "Why React and Node.js?"
+  -> "Because using JavaScript across both the frontend and backend allows for seamless 
+     communication, fast performance, and a smooth user experience without full page reloads."
+
+- "Why MySQL?"
+  -> "Because catering reservations deal with payments and schedules, so we need a reliable, 
+     strict database that prevents double-booking and keeps financial records accurate."
+
+- "Why Agile?"
+  -> "Because it allowed our team to build features step-by-step, test continuously, and easily 
+     adapt to new business rules and adviser suggestions throughout the semester."
+================================================================================

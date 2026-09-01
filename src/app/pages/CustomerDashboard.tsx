@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ChangeEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { getCustomerBookings, type Booking } from "../api/bookingApi";
@@ -405,38 +405,45 @@ export function CustomerDashboard() {
     setSelectedBooking(null);
   };
 
-  // Fetch bookings
-  useEffect(() => {
+  // Fetch bookings and their payments
+  const fetchCustomerBookings = useCallback(async () => {
     if (!accessToken) {
       setBookingsLoading(false);
       return;
     }
-    getCustomerBookings(accessToken)
-      .then(async (res) => {
-        setBookings(res.bookings);
-        const paymentsMap: Record<number, Payment[]> = {};
-        await Promise.all(
-          res.bookings.map(async (b) => {
-            try {
-              const paymentsRes = await getBookingPayments(
-                accessToken,
-                b.booking_id,
-              );
-              paymentsMap[b.booking_id] = paymentsRes.payments;
-            } catch (err) {
-              console.error(
-                "Failed to load payments for booking:",
-                b.booking_id,
-                err,
-              );
-            }
-          }),
-        );
-        setPaymentsByBooking(paymentsMap);
-      })
-      .catch((err) => console.error("Failed to load bookings:", err))
-      .finally(() => setBookingsLoading(false));
+    try {
+      const res = await getCustomerBookings(accessToken);
+      setBookings(res.bookings);
+      const paymentsMap: Record<number, Payment[]> = {};
+      await Promise.all(
+        res.bookings.map(async (b) => {
+          try {
+            const paymentsRes = await getBookingPayments(
+              accessToken,
+              b.booking_id,
+            );
+            paymentsMap[b.booking_id] = paymentsRes.payments;
+          } catch (err) {
+            console.error(
+              "Failed to load payments for booking:",
+              b.booking_id,
+              err,
+            );
+          }
+        }),
+      );
+      setPaymentsByBooking(paymentsMap);
+      return res.bookings;
+    } catch (err) {
+      console.error("Failed to load bookings:", err);
+    } finally {
+      setBookingsLoading(false);
+    }
   }, [accessToken]);
+
+  useEffect(() => {
+    fetchCustomerBookings();
+  }, [fetchCustomerBookings]);
 
   // Check feedback existence for eligible bookings when bookings data is ready
   useEffect(() => {
@@ -991,9 +998,8 @@ export function CustomerDashboard() {
       setCancellationReason("");
       setCancellationDetails(null);
 
-      // Reload bookings
-      const res = await getCustomerBookings(accessToken);
-      setBookings(res.bookings);
+      // Reload bookings and payments across dashboard
+      await fetchCustomerBookings();
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -1040,11 +1046,12 @@ export function CustomerDashboard() {
       return;
     }
 
+    const targetBookingId = rescheduleBookingTarget.booking_id;
     setSubmittingReschedule(true);
     try {
       const res = await rescheduleBooking(
         accessToken,
-        rescheduleBookingTarget.booking_id,
+        targetBookingId,
         {
           new_event_date: newRescheduleDate,
           new_start_time: newRescheduleTime || undefined,
@@ -1061,30 +1068,17 @@ export function CustomerDashboard() {
       setRescheduleBookingTarget(null);
       setRescheduleDetails(null);
 
-      // Reload bookings and active payments
-      const updated = await getCustomerBookings(accessToken);
-      setBookings(updated.bookings);
+      // Reload bookings and payments across dashboard
+      const updatedBookings = await fetchCustomerBookings();
       if (
+        updatedBookings &&
         selectedBooking &&
-        selectedBooking.booking_id === rescheduleBookingTarget.booking_id
+        selectedBooking.booking_id === targetBookingId
       ) {
-        const match = updated.bookings.find(
-          (b) => b.booking_id === selectedBooking.booking_id,
+        const match = updatedBookings.find(
+          (b: Booking) => b.booking_id === targetBookingId,
         );
         if (match) setSelectedBooking(match);
-        // Refresh payments for the booking that was rescheduled
-        try {
-          const paymentsRes = await getBookingPayments(
-            accessToken!,
-            rescheduleBookingTarget.booking_id,
-          );
-          setPaymentsByBooking((prev) => ({
-            ...prev,
-            [rescheduleBookingTarget.booking_id]: paymentsRes.payments,
-          }));
-        } catch {
-          // non-critical, swallow
-        }
       }
     } catch (err) {
       toast.error(

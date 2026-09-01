@@ -172,6 +172,8 @@ export function NotificationCenter({
       return <Sparkles className="w-4 h-4 text-[#7A8C5C]" />;
     if (type.includes("booking_rejected") || type.includes("cancelled"))
       return <AlertCircle className="w-4 h-4 text-[#C4541A]" />;
+    if (type.includes("reschedule"))
+      return <Calendar className="w-4 h-4 text-[#C8922A]" />;
     if (type.includes("payment"))
       return <CreditCard className="w-4 h-4 text-[#C8922A]" />;
     if (type.includes("event_reminder"))

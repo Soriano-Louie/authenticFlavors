@@ -6,19 +6,23 @@ import { pool } from "../db/pool.js";
  */
 export async function createNotification({
   userId,
-  bookingId = null,
+  user_id,
+  bookingId,
+  booking_id,
   type,
   title,
   message,
   link = null,
   sendEmailFn = null,
 }) {
+  const finalUserId = userId !== undefined ? userId : user_id;
+  const finalBookingId = bookingId !== undefined ? bookingId : (booking_id ?? null);
   try {
     // 1. Insert notification into database
     const [result] = await pool.query(
       `INSERT INTO notifications (user_id, booking_id, type, title, message, link)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, bookingId, type, title, message, link],
+      [finalUserId, finalBookingId, type, title, message, link],
     );
 
     const notificationId = result.insertId;

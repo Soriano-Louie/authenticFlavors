@@ -3143,9 +3143,10 @@ function BookingsSection() {
       toast.error("The store is closed on Mondays.");
       return;
     }
+    const targetBookingId = adminRescheduleBooking.booking_id;
     setSubmittingAdminReschedule(true);
     try {
-      await rescheduleBooking(accessToken, adminRescheduleBooking.booking_id, {
+      await rescheduleBooking(accessToken, targetBookingId, {
         new_event_date: adminNewDate,
         new_start_time: adminNewTime || undefined,
         reschedule_reason: adminRescheduleReason.trim() || undefined,
@@ -3154,9 +3155,25 @@ function BookingsSection() {
       setShowAdminRescheduleModal(false);
       setAdminRescheduleBooking(null);
       setAdminRescheduleDetails(null);
-      fetchBookings();
+      await fetchBookings();
+
+      if (
+        selectedSummaryBooking &&
+        selectedSummaryBooking.booking_id === targetBookingId
+      ) {
+        const res = await getAdminBookings(accessToken, {
+          status: bookingStatus === "All" ? undefined : bookingStatus,
+          search: debouncedSearch.trim() || undefined,
+        });
+        const match = res.bookings.find(
+          (b) => b.booking_id === targetBookingId,
+        );
+        if (match) setSelectedSummaryBooking(match);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reschedule booking.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reschedule booking.",
+      );
     } finally {
       setSubmittingAdminReschedule(false);
     }
@@ -3771,6 +3788,16 @@ function BookingsSection() {
                   booking.booking_status === "Reserved") &&
                 isEventPast(booking.event_date);
 
+              const priorPayments = payments.filter(
+                (p) =>
+                  p.payment_type === "Reservation" ||
+                  p.payment_type === "DownPayment",
+              );
+              const hasDepositOrDownpaymentMade =
+                priorPayments.length > 0
+                  ? priorPayments.some((p) => p.payment_status === "Paid")
+                  : Number(booking.amount_paid || 0) > 0;
+
               return (
                 <div
                   key={booking.booking_id}
@@ -3839,8 +3866,13 @@ function BookingsSection() {
                             e.stopPropagation();
                             handleComplete(booking.booking_id);
                           }}
-                          disabled={isPendingAction}
-                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                          disabled={isPendingAction || !hasDepositOrDownpaymentMade}
+                          title={
+                            !hasDepositOrDownpaymentMade
+                              ? "Cannot mark as completed: No reservation fee or down payment was made."
+                              : undefined
+                          }
+                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                         >
                           {isPendingAction ? "Saving..." : "Mark Completed"}
                         </button>

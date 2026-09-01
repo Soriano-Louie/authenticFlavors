@@ -1115,6 +1115,34 @@ export async function completeBooking(req, res) {
       });
     }
 
+    // Check if at least one reservation fee or down payment was paid (or amount_paid > 0)
+    const [paidDeposits] = await connection.query(
+      `SELECT payment_id FROM payments 
+       WHERE booking_id = ? 
+         AND payment_type IN ('Reservation', 'DownPayment') 
+         AND payment_status = 'Paid' 
+       LIMIT 1`,
+      [bookingId],
+    );
+
+    const [bookingAmountPaid] = await connection.query(
+      "SELECT amount_paid FROM bookings WHERE booking_id = ?",
+      [bookingId],
+    );
+
+    const amountPaid = Number(bookingAmountPaid[0]?.amount_paid || 0);
+
+    if (paidDeposits.length === 0 && amountPaid <= 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "PAYMENT_REQUIRED",
+          message:
+            "Cannot mark booking as completed: No reservation fee or down payment has been paid.",
+        },
+      });
+    }
+
     const [updateResult] = await connection.query(
       "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved')",
       [bookingId],
@@ -2317,28 +2345,32 @@ export async function rescheduleBooking(req, res) {
 
     // Send in-app notification to customer
     createNotification({
-      user_id: booking.user_id,
-      booking_id: booking.booking_id,
+      userId: booking.user_id,
+      bookingId: booking.booking_id,
       type: "booking_rescheduled",
-      title: "Event Rescheduled Successfully",
+      title: userRole === "Admin" ? "Booking Rescheduled by Admin" : "Event Rescheduled Successfully",
       message: `Your booking ${bookingRef} has been rescheduled from ${currentEventDateStr} to ${newEventDate} at ${startTime}. Payment due dates have been adjusted.`,
+      link: `/dashboard`,
     }).catch((err) => console.error("Notification failed (customer reschedule):", err));
 
-    // If customer rescheduled, notify admins
-    if (userRole !== "Admin") {
-      pool.query(
+    // Send in-app notification to all active Admins
+    try {
+      const [admins] = await pool.query(
         "SELECT user_id FROM users WHERE role = 'Admin' AND account_status = 'Active'",
-      ).then(([admins]) => {
-        admins.forEach((admin) => {
-          createNotification({
-            user_id: admin.user_id,
-            booking_id: booking.booking_id,
-            type: "booking_rescheduled",
-            title: "Booking Rescheduled by Customer",
-            message: `${booking.first_name} ${booking.last_name} rescheduled booking ${bookingRef} to ${newEventDate}.`,
-          }).catch((err) => console.error("Admin notification failed:", err));
-        });
-      }).catch((err) => console.error("Failed to query admins for reschedule notification:", err));
+      );
+      for (const admin of admins) {
+        // If an admin performed it, don't notify themselves if they prefer, or notify all admins
+        createNotification({
+          userId: admin.user_id,
+          bookingId: booking.booking_id,
+          type: "booking_rescheduled",
+          title: userRole === "Admin" ? "Booking Rescheduled (Admin)" : "Booking Rescheduled by Customer",
+          message: `${booking.first_name} ${booking.last_name}'s booking ${bookingRef} was rescheduled from ${currentEventDateStr} to ${newEventDate} (${startTime}).`,
+          link: `/admin`,
+        }).catch((err) => console.error("Admin notification failed (reschedule):", err));
+      }
+    } catch (err) {
+      console.error("Failed to query admins for reschedule notification:", err);
     }
 
     // Send confirmation email to customer
