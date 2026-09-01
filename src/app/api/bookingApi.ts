@@ -63,6 +63,10 @@ export interface Booking {
   cancellation_policy_applied?: string | null;
   amount_due_on_cancellation?: number | null;
   refundable_amount?: number;
+  rescheduled_at?: string | null;
+  original_event_date?: string | null;
+  reschedule_count?: number;
+  reschedule_reason?: string | null;
 }
 
 const API_BASE_URL =
@@ -362,3 +366,67 @@ export function getCancellationDetails(
     },
   );
 }
+
+export interface RescheduleDetails {
+  booking_id: number;
+  booking_reference: string | null;
+  package_name: string;
+  current_event_date: string;
+  current_start_time: string;
+  booking_status: string;
+  days_until_event: number;
+  can_reschedule: boolean;
+  restriction_reason: string | null;
+  min_event_date: string;
+  reschedule_count: number;
+  rescheduled_at: string | null;
+  original_event_date: string | null;
+}
+
+export interface RescheduleResponse {
+  message: string;
+  booking: {
+    booking_id: number;
+    booking_reference: string;
+    event_date: string;
+    start_time: string;
+    original_event_date: string;
+    rescheduled_at: string;
+    reschedule_count: number;
+    downpayment_due_date: string;
+  };
+}
+
+export function getRescheduleDetails(
+  accessToken: string,
+  bookingId: number,
+): Promise<RescheduleDetails> {
+  return request<RescheduleDetails>(
+    `/api/bookings/${bookingId}/reschedule-details`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
+export function rescheduleBooking(
+  accessToken: string,
+  bookingId: number,
+  payload: {
+    new_event_date: string;
+    new_start_time?: string;
+    reschedule_reason?: string;
+  },
+): Promise<RescheduleResponse> {
+  return request<RescheduleResponse>(`/api/bookings/${bookingId}/reschedule`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+

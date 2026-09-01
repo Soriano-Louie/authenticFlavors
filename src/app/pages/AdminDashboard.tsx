@@ -4,7 +4,10 @@ import { useAuth } from "../auth/AuthContext";
 import {
   getAdminBookings,
   completeBooking,
+  getRescheduleDetails,
+  rescheduleBooking,
   type Booking,
+  type RescheduleDetails,
 } from "../api/bookingApi";
 import {
   getAdminMenuChangeRequests,
@@ -41,9 +44,17 @@ import {
   getAdminBlockedDates,
   createBlockedDate,
   deleteBlockedDate,
+  getAdminUsers,
+  createAdminUser,
+  updateAdminUser,
+  setAdminUserStatus,
   type AdminStats,
   type AdminActivity,
   type BlockedDate,
+  type AdminUser,
+  type AdminUserStats,
+  type CreateAdminUserPayload,
+  type UpdateAdminUserPayload,
   AdminApiError,
 } from "../api/adminApi";
 import {
@@ -127,6 +138,11 @@ import {
   RotateCcw,
   CalendarX,
   AlertTriangle,
+  UserCheck,
+  UserX,
+  UserPlus,
+  Phone,
+  User,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -150,6 +166,7 @@ const SIDEBAR_LINKS = [
   { key: "menu-management", label: "Menu Management", icon: BookOpen },
   { key: "packages", label: "Food Packages", icon: Package },
   { key: "announcements", label: "Announcements", icon: Megaphone },
+  { key: "users", label: "User Management", icon: Users },
   { key: "activity", label: "Recent Activity", icon: Activity },
   { key: "settings", label: "Settings", icon: Settings },
 ];
@@ -441,6 +458,7 @@ export function AdminDashboard() {
           {activeSection === "menu-management" && <MenuManagementSection />}
           {activeSection === "packages" && <PackagesSection />}
           {activeSection === "announcements" && <AnnouncementsSection />}
+          {activeSection === "users" && <UsersSection />}
           {activeSection === "settings" && <AdminSettingsSection />}
         </div>
       </main>
@@ -3089,6 +3107,61 @@ function BookingsSection() {
   const [menuChangeRejectReason, setMenuChangeRejectReason] = useState("");
   const [submittingMenuChangeReject, setSubmittingMenuChangeReject] = useState(false);
 
+  // Admin Reschedule state
+  const [showAdminRescheduleModal, setShowAdminRescheduleModal] = useState(false);
+  const [adminRescheduleBooking, setAdminRescheduleBooking] = useState<Booking | null>(null);
+  const [adminRescheduleDetails, setAdminRescheduleDetails] = useState<RescheduleDetails | null>(null);
+  const [loadingAdminReschedule, setLoadingAdminReschedule] = useState(false);
+  const [adminNewDate, setAdminNewDate] = useState("");
+  const [adminNewTime, setAdminNewTime] = useState("");
+  const [adminRescheduleReason, setAdminRescheduleReason] = useState("");
+  const [submittingAdminReschedule, setSubmittingAdminReschedule] = useState(false);
+
+  const handleAdminRescheduleOpen = async (booking: Booking) => {
+    if (!accessToken) return;
+    setAdminRescheduleBooking(booking);
+    setAdminNewDate("");
+    setAdminNewTime(booking.start_time || "11:00");
+    setAdminRescheduleReason("");
+    setShowAdminRescheduleModal(true);
+    setLoadingAdminReschedule(true);
+    try {
+      const details = await getRescheduleDetails(accessToken, booking.booking_id);
+      setAdminRescheduleDetails(details);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load reschedule details.");
+    } finally {
+      setLoadingAdminReschedule(false);
+    }
+  };
+
+  const handleAdminRescheduleConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken || !adminRescheduleBooking || !adminNewDate) return;
+    const [y, m, d] = adminNewDate.split("-").map(Number);
+    if (new Date(y, m - 1, d).getDay() === 1) {
+      toast.error("The store is closed on Mondays.");
+      return;
+    }
+    setSubmittingAdminReschedule(true);
+    try {
+      await rescheduleBooking(accessToken, adminRescheduleBooking.booking_id, {
+        new_event_date: adminNewDate,
+        new_start_time: adminNewTime || undefined,
+        reschedule_reason: adminRescheduleReason.trim() || undefined,
+      });
+      toast.success(`Booking rescheduled to ${adminNewDate} successfully.`);
+      setShowAdminRescheduleModal(false);
+      setAdminRescheduleBooking(null);
+      setAdminRescheduleDetails(null);
+      fetchBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reschedule booking.");
+    } finally {
+      setSubmittingAdminReschedule(false);
+    }
+  };
+
   const fetchVenueSetupRequests = useCallback(async (bookingIds: number[]) => {
     if (!accessToken) return;
     const map: Record<number, VenueSetupRequest> = {};
@@ -3749,6 +3822,17 @@ function BookingsSection() {
                       >
                         <Eye size={13} /> View Summary
                       </button>
+                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdminRescheduleOpen(booking);
+                          }}
+                          className="px-3 py-1.5 bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C8922A]/25 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Calendar size={13} className="text-[#C8922A]" /> Reschedule
+                        </button>
+                      )}
                       {canComplete && (
                         <button
                           onClick={(e) => {
@@ -4586,7 +4670,17 @@ function BookingsSection() {
                     </p>
                     <p className="text-[#2C1810]/80">
                       Date: <span className="font-bold">{formatDate(b.event_date)}</span>
+                      {Number((b as any).reschedule_count || 0) > 0 && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30">
+                          📅 Rescheduled ×{(b as any).reschedule_count}
+                        </span>
+                      )}
                     </p>
+                    {Number((b as any).reschedule_count || 0) > 0 && (b as any).original_event_date && (
+                      <p className="text-[#2C1810]/60 text-[10px]">
+                        Originally: <span className="font-medium line-through">{formatDate((b as any).original_event_date)}</span>
+                      </p>
+                    )}
                     <p className="text-[#2C1810]/80">
                       Time: <span className="font-bold">{b.start_time || "TBD"}</span>
                     </p>
@@ -4897,6 +4991,139 @@ function BookingsSection() {
           </div>
         );
       })()}
+
+      {/* Admin Reschedule Booking Modal */}
+      {showAdminRescheduleModal && adminRescheduleBooking && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-xl w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+            <div className="bg-[#2C1810] p-5 rounded-t-3xl flex items-center justify-between">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-lg font-bold text-[#F5F0E8] flex items-center gap-2">
+                  <Calendar className="text-[#C8922A]" size={20} />
+                  Admin — Reschedule Booking
+                </h3>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                  {adminRescheduleBooking.booking_reference || `#BK${String(adminRescheduleBooking.booking_id).padStart(4, "0")}`}
+                  {" · "}{adminRescheduleBooking.first_name} {adminRescheduleBooking.last_name}
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowAdminRescheduleModal(false); setAdminRescheduleBooking(null); setAdminRescheduleDetails(null); }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {loadingAdminReschedule ? (
+                <div className="text-center py-10">
+                  <Loader2 size={30} className="animate-spin text-[#C8922A] mx-auto mb-2" />
+                  <p className="text-xs text-[#2C1810]/60 font-['Lato']">Checking eligibility & availability...</p>
+                </div>
+              ) : adminRescheduleDetails ? (
+                !adminRescheduleDetails.can_reschedule ? (
+                  <div className="space-y-4">
+                    <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-2xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="text-[#C4541A] shrink-0" size={20} />
+                        <p className="font-['Playfair_Display'] font-bold text-[#C4541A] text-sm">2-Week Reschedule Window Closed</p>
+                      </div>
+                      <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed">{adminRescheduleDetails.restriction_reason}</p>
+                    </div>
+                    <div className="bg-white rounded-xl p-3.5 border border-[#C8922A]/15 text-xs font-['Lato'] space-y-1.5">
+                      <div className="flex justify-between"><span className="text-[#2C1810]/60">Current Event Date:</span><span className="font-semibold">{formatDate(adminRescheduleDetails.current_event_date)}</span></div>
+                      <div className="flex justify-between"><span className="text-[#2C1810]/60">Days Until Event:</span><span className="font-bold text-[#C4541A]">{adminRescheduleDetails.days_until_event} days</span></div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button onClick={() => { setShowAdminRescheduleModal(false); setAdminRescheduleBooking(null); setAdminRescheduleDetails(null); }} className="px-5 py-2 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 cursor-pointer">Close</button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAdminRescheduleConfirm} className="space-y-4">
+                    <div className="bg-white rounded-xl p-4 border border-[#C8922A]/15 text-xs font-['Lato'] space-y-2">
+                      <p className="font-bold text-[#2C1810] font-['Playfair_Display'] text-sm mb-2">Current Schedule</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><span className="text-[#2C1810]/50 block">Event Date</span><span className="font-semibold">{formatDate(adminRescheduleDetails.current_event_date)}</span></div>
+                        <div><span className="text-[#2C1810]/50 block">Start Time</span><span className="font-semibold">{adminRescheduleDetails.current_start_time}</span></div>
+                        <div><span className="text-[#2C1810]/50 block">Days Until Event</span><span className="font-semibold text-[#7A8C5C]">{adminRescheduleDetails.days_until_event} days (Eligible)</span></div>
+                        <div><span className="text-[#2C1810]/50 block">Times Rescheduled</span><span className="font-semibold">{adminRescheduleDetails.reschedule_count}×</span></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-1.5">
+                        New Event Date <span className="text-[#C4541A]">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        min={adminRescheduleDetails.min_event_date}
+                        value={adminNewDate}
+                        onChange={(e) => setAdminNewDate(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A]"
+                      />
+                      <p className="text-[10px] text-[#2C1810]/50 mt-1 font-['Lato']">Earliest: {formatDate(adminRescheduleDetails.min_event_date)} · Mondays excluded.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-1.5">
+                        Start Time <span className="text-[#C4541A]">*</span>
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        min="11:00"
+                        max="22:00"
+                        value={adminNewTime}
+                        onChange={(e) => setAdminNewTime(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-1.5">Reason / Admin Notes (Optional)</label>
+                      <textarea
+                        rows={3}
+                        value={adminRescheduleReason}
+                        onChange={(e) => setAdminRescheduleReason(e.target.value)}
+                        placeholder="e.g. Client request, operational adjustment..."
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A] resize-none"
+                      />
+                    </div>
+
+                    {adminNewDate && (() => {
+                      const [y, m, d] = adminNewDate.split("-").map(Number);
+                      const dp = new Date(y, m - 1, d);
+                      dp.setDate(dp.getDate() - 14);
+                      return (
+                        <div className="bg-white rounded-xl p-3.5 border border-[#C8922A]/15 text-xs font-['Lato'] space-y-1.5">
+                          <p className="font-bold text-[#2C1810] mb-1">Updated Payment Timeline Preview</p>
+                          <div className="flex justify-between"><span className="text-[#2C1810]/60">50% Down Payment Due:</span><span className="font-semibold text-[#C8922A]">{formatDate(dp.toISOString().split("T")[0])} (–14 days)</span></div>
+                          <div className="flex justify-between"><span className="text-[#2C1810]/60">50% Final Balance Due:</span><span className="font-semibold text-[#7A8C5C]">{formatDate(adminNewDate)} (event date)</span></div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#C8922A]/15">
+                      <button type="button" onClick={() => { setShowAdminRescheduleModal(false); setAdminRescheduleBooking(null); setAdminRescheduleDetails(null); }} disabled={submittingAdminReschedule} className="px-5 py-2 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] cursor-pointer">Cancel</button>
+                      <button type="submit" disabled={submittingAdminReschedule || !adminNewDate} className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-50 shadow-md cursor-pointer">
+                        {submittingAdminReschedule && <Loader2 size={14} className="animate-spin" />}
+                        {submittingAdminReschedule ? "Rescheduling..." : "Confirm Reschedule"}
+                      </button>
+                    </div>
+                  </form>
+                )
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-xs text-[#2C1810]/50 font-['Lato']">Failed to load reschedule details.</p>
+                  <button onClick={() => { setShowAdminRescheduleModal(false); setAdminRescheduleBooking(null); }} className="mt-3 px-4 py-2 bg-[#C8922A] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 cursor-pointer">Close</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject Menu Change Confirmation Modal */}
       {rejectingMenuChangeReq && (
@@ -7818,3 +8045,1095 @@ function MenuChangeRequestsSection() {
     </div>
   );
 }
+
+// ─── Users Management Section ───────────────────────────────────────────
+const emptyAddUserForm: CreateAdminUserPayload = {
+  first_name: "",
+  middle_name: "",
+  last_name: "",
+  email: "",
+  phone_number: "",
+  password: "",
+  role: "Customer",
+  account_status: "Active",
+};
+
+function getUserStatusBadge(status: string) {
+  switch (status) {
+    case "Active":
+      return {
+        bg: "bg-[#7A8C5C]/15 text-[#7A8C5C] border-[#7A8C5C]/30",
+        dot: "bg-[#7A8C5C]",
+        label: "Active",
+      };
+    case "Inactive":
+      return {
+        bg: "bg-[#2C1810]/10 text-[#2C1810]/70 border-[#2C1810]/20",
+        dot: "bg-[#2C1810]/50",
+        label: "Inactive",
+      };
+    case "Suspended":
+      return {
+        bg: "bg-[#C4541A]/15 text-[#C4541A] border-[#C4541A]/30",
+        dot: "bg-[#C4541A]",
+        label: "Suspended",
+      };
+    case "Pending":
+      return {
+        bg: "bg-[#C8922A]/15 text-[#C8922A] border-[#C8922A]/30",
+        dot: "bg-[#C8922A]",
+        label: "Pending",
+      };
+    default:
+      return {
+        bg: "bg-[#2C1810]/10 text-[#2C1810]/70 border-[#2C1810]/20",
+        dot: "bg-[#2C1810]/50",
+        label: status,
+      };
+  }
+}
+
+function UsersSection() {
+  const { accessToken, user: currentUser } = useAuth();
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [stats, setStats] = useState<AdminUserStats>({
+    totalUsers: 0,
+    activeUsers: 0,
+    inactiveUsers: 0,
+    pendingUsers: 0,
+    adminUsers: 0,
+    customerUsers: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Filters & Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterRole, setFilterRole] = useState("All");
+  const [filterStatus, setFilterStatus] = useState("All");
+
+  // Modals
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addFormData, setAddFormData] = useState<CreateAdminUserPayload>(emptyAddUserForm);
+  const [showAddPassword, setShowAddPassword] = useState(false);
+  const [submittingAdd, setSubmittingAdd] = useState(false);
+  const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
+
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [editFormData, setEditFormData] = useState<UpdateAdminUserPayload>({});
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
+
+  // Status Change Dialog
+  const [statusDialogUser, setStatusDialogUser] = useState<AdminUser | null>(null);
+  const [targetStatus, setTargetStatus] = useState<"Active" | "Inactive" | "Suspended">("Inactive");
+  const [submittingStatus, setSubmittingStatus] = useState(false);
+
+  const fetchUsers = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const res = await getAdminUsers(accessToken, {
+        role: filterRole,
+        status: filterStatus,
+        search: searchQuery,
+      });
+      setUsers(res.users);
+      setStats(res.stats);
+    } catch (err) {
+      console.error("Failed to load users:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to load users list.");
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, filterRole, filterStatus, searchQuery]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  // Open Add Modal
+  const handleOpenAddModal = () => {
+    setAddFormData(emptyAddUserForm);
+    setShowAddPassword(false);
+    setAddFormErrors({});
+    setShowAddModal(true);
+  };
+
+  // Submit Add User
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken) return;
+
+    setSubmittingAdd(true);
+    setAddFormErrors({});
+
+    try {
+      const res = await createAdminUser(accessToken, addFormData);
+      toast.success(res.message || "User created successfully!");
+      setShowAddModal(false);
+      fetchUsers();
+    } catch (err: any) {
+      console.error("Failed to create user:", err);
+      if (err.payload?.error?.fieldErrors) {
+        setAddFormErrors(err.payload.error.fieldErrors);
+      }
+      toast.error(err.message || "Failed to create user.");
+    } finally {
+      setSubmittingAdd(false);
+    }
+  };
+
+  // Open Edit Modal
+  const handleOpenEditModal = (u: AdminUser) => {
+    setEditingUser(u);
+    setEditFormData({
+      first_name: u.first_name,
+      middle_name: u.middle_name || "",
+      last_name: u.last_name,
+      email: u.email,
+      phone_number: u.phone_number || "",
+      role: u.role,
+      account_status: u.account_status,
+      password: "",
+    });
+    setShowEditPassword(false);
+    setEditFormErrors({});
+  };
+
+  // Submit Edit User
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken || !editingUser) return;
+
+    setSubmittingEdit(true);
+    setEditFormErrors({});
+
+    try {
+      const payload: UpdateAdminUserPayload = {
+        first_name: editFormData.first_name,
+        middle_name: editFormData.middle_name || undefined,
+        last_name: editFormData.last_name,
+        email: editFormData.email,
+        phone_number: editFormData.phone_number || undefined,
+        role: editFormData.role,
+        account_status: editFormData.account_status,
+      };
+
+      if (editFormData.password && editFormData.password.trim()) {
+        payload.password = editFormData.password.trim();
+      }
+
+      const res = await updateAdminUser(accessToken, editingUser.user_id, payload);
+      toast.success(res.message || "User updated successfully!");
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err: any) {
+      console.error("Failed to update user:", err);
+      if (err.payload?.error?.fieldErrors) {
+        setEditFormErrors(err.payload.error.fieldErrors);
+      }
+      toast.error(err.message || "Failed to update user.");
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  // Open Status Confirmation Dialog
+  const handleOpenStatusDialog = (u: AdminUser, newStatus: "Active" | "Inactive" | "Suspended") => {
+    setStatusDialogUser(u);
+    setTargetStatus(newStatus);
+  };
+
+  // Confirm Status Change
+  const handleConfirmStatusChange = async () => {
+    if (!accessToken || !statusDialogUser) return;
+
+    setSubmittingStatus(true);
+    try {
+      const res = await setAdminUserStatus(accessToken, statusDialogUser.user_id, targetStatus);
+      toast.success(res.message || `Account status updated to ${targetStatus}.`);
+      setStatusDialogUser(null);
+      fetchUsers();
+    } catch (err: any) {
+      console.error("Failed to update user status:", err);
+      toast.error(err.message || "Failed to update account status.");
+    } finally {
+      setSubmittingStatus(false);
+    }
+  };
+
+  const isCurrentLoggedInUser = (userId: number) => {
+    return Number(currentUser?.user_id) === Number(userId);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header Banner & Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-[#2C1810] via-[#3D2217] to-[#2C1810] p-6 rounded-2xl text-white shadow-md">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="text-[#C8922A]" size={24} />
+            <h2 className="font-['Playfair_Display'] text-2xl font-bold text-[#F5F0E8]">
+              User Management
+            </h2>
+          </div>
+          <p className="text-xs sm:text-sm font-['Lato'] text-[#F5F0E8]/70">
+            View registered users, create and edit accounts, and manage active status.
+          </p>
+        </div>
+        <button
+          onClick={handleOpenAddModal}
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity shadow-sm cursor-pointer shrink-0"
+        >
+          <UserPlus size={16} />
+          <span>Add New User</span>
+        </button>
+      </div>
+
+      {/* Summary Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="bg-white p-4 rounded-xl border border-[#C8922A]/15 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#2C1810]/50 uppercase tracking-wider font-semibold">
+            Total Users
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#2C1810] mt-1">
+            {stats.totalUsers}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-[#7A8C5C]/25 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#7A8C5C] uppercase tracking-wider font-semibold">
+            Active Accounts
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#7A8C5C] mt-1">
+            {stats.activeUsers}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-[#C8922A]/20 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#C8922A] uppercase tracking-wider font-semibold">
+            Customers
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#C8922A] mt-1">
+            {stats.customerUsers}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-[#2C1810]/15 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#2C1810]/70 uppercase tracking-wider font-semibold">
+            Administrators
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#2C1810] mt-1">
+            {stats.adminUsers}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-[#C4541A]/20 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#C4541A] uppercase tracking-wider font-semibold">
+            Inactive / Suspended
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#C4541A] mt-1">
+            {stats.inactiveUsers}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-[#C8922A]/15 shadow-xs">
+          <p className="text-[11px] font-['Lato'] text-[#C8922A]/80 uppercase tracking-wider font-semibold">
+            Pending Email
+          </p>
+          <p className="text-xl sm:text-2xl font-bold font-['Playfair_Display'] text-[#C8922A] mt-1">
+            {stats.pendingUsers}
+          </p>
+        </div>
+      </div>
+
+      {/* Search & Filter Controls */}
+      <div className="bg-white p-4 rounded-2xl border border-[#C8922A]/15 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search
+              size={18}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#2C1810]/40"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, email, phone, or User ID..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/40 text-[#2C1810] outline-none focus:border-[#C8922A] text-xs sm:text-sm font-['Lato']"
+            />
+          </div>
+
+          {/* Role Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-[#2C1810]/60 font-['Lato'] whitespace-nowrap">
+              Role:
+            </label>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="px-3 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/40 text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] cursor-pointer"
+            >
+              <option value="All">All Roles</option>
+              <option value="Customer">Customer</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-[#2C1810]/60 font-['Lato'] whitespace-nowrap">
+              Status:
+            </label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/40 text-[#2C1810] outline-none focus:border-[#C8922A] text-xs font-['Lato'] cursor-pointer"
+            >
+              <option value="All">All Statuses</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Suspended">Suspended</option>
+              <option value="Pending">Pending</option>
+            </select>
+          </div>
+
+          {/* Refresh Button */}
+          <button
+            onClick={() => fetchUsers()}
+            disabled={loading}
+            className="px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/40 text-[#2C1810] hover:bg-[#F5F0E8] text-xs font-['Lato'] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            title="Refresh list"
+          >
+            <RotateCcw size={14} className={loading ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Users List / Table */}
+      <div className="bg-white rounded-2xl border border-[#C8922A]/15 shadow-xs overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center">
+            <Loader2 size={32} className="animate-spin text-[#C8922A] mx-auto mb-3" />
+            <p className="text-sm font-['Lato'] text-[#2C1810]/60">
+              Loading users...
+            </p>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-12 h-12 rounded-full bg-[#F5F0E8] flex items-center justify-center mx-auto mb-3 text-[#2C1810]/40">
+              <Users size={24} />
+            </div>
+            <h3 className="font-['Playfair_Display'] text-lg font-bold text-[#2C1810]">
+              No users found
+            </h3>
+            <p className="text-xs font-['Lato'] text-[#2C1810]/60 mt-1 max-w-sm mx-auto">
+              {searchQuery || filterRole !== "All" || filterStatus !== "All"
+                ? "Try adjusting your search query or filter criteria."
+                : "No registered accounts found in the database."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[#F5F0E8]/60 border-b border-[#2C1810]/10 text-[11px] font-bold font-['Lato'] text-[#2C1810]/60 uppercase tracking-wider">
+                  <th className="py-3.5 px-4">User</th>
+                  <th className="py-3.5 px-4">Contact Info</th>
+                  <th className="py-3.5 px-4">Role</th>
+                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4">Bookings</th>
+                  <th className="py-3.5 px-4">Registered</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#2C1810]/5 text-xs font-['Lato'] text-[#2C1810]">
+                {users.map((u) => {
+                  const statusInfo = getUserStatusBadge(u.account_status);
+                  const isSelf = isCurrentLoggedInUser(u.user_id);
+                  const initials = `${(u.first_name?.[0] || "").toUpperCase()}${(u.last_name?.[0] || "").toUpperCase()}` || "U";
+
+                  return (
+                    <tr
+                      key={u.user_id}
+                      className="hover:bg-[#F5F0E8]/30 transition-colors"
+                    >
+                      {/* User Column */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-[#2C1810] text-[#F5F0E8] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                            {u.profile_photo_url ? (
+                              <img
+                                src={u.profile_photo_url}
+                                alt={u.first_name}
+                                className="w-full h-full rounded-full object-cover"
+                              />
+                            ) : (
+                              initials
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[#2C1810] text-sm">
+                                {u.first_name} {u.middle_name ? `${u.middle_name} ` : ""}{u.last_name}
+                              </span>
+                              {isSelf && (
+                                <span className="px-1.5 py-0.5 rounded bg-[#C8922A]/15 text-[#C8922A] text-[10px] font-bold">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-[#2C1810]/40 font-mono">
+                              #USR{String(u.user_id).padStart(4, "0")}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Contact Info Column */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5 text-[#2C1810]/80">
+                            <Mail size={12} className="text-[#C8922A] shrink-0" />
+                            <span>{u.email}</span>
+                          </div>
+                          {u.phone_number ? (
+                            <div className="flex items-center gap-1.5 text-[#2C1810]/60">
+                              <Phone size={12} className="text-[#7A8C5C] shrink-0" />
+                              <span>{u.phone_number}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[#2C1810]/30 italic text-[11px]">
+                              No phone number
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Role Column */}
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            u.role === "Admin"
+                              ? "bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/40"
+                              : "bg-[#EDE8DF] text-[#2C1810]/80 border border-[#2C1810]/10"
+                          }`}
+                        >
+                          {u.role === "Admin" ? (
+                            <Shield size={12} className="text-[#C8922A]" />
+                          ) : (
+                            <User size={12} className="text-[#2C1810]/60" />
+                          )}
+                          {u.role}
+                        </span>
+                      </td>
+
+                      {/* Status Column */}
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${statusInfo.bg}`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`}
+                          />
+                          {statusInfo.label}
+                        </span>
+                      </td>
+
+                      {/* Bookings Column */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-semibold text-[#2C1810]">
+                          {u.total_bookings}
+                        </span>{" "}
+                        <span className="text-[#2C1810]/50 text-[11px]">
+                          {u.total_bookings === 1 ? "event" : "events"}
+                        </span>
+                      </td>
+
+                      {/* Registered Date Column */}
+                      <td className="py-3.5 px-4 text-[#2C1810]/60 text-xs">
+                        {u.created_at
+                          ? new Date(u.created_at).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })
+                          : "—"}
+                      </td>
+
+                      {/* Actions Column */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => handleOpenEditModal(u)}
+                            className="p-1.5 rounded-lg text-[#2C1810]/70 hover:text-[#2C1810] hover:bg-[#F5F0E8] transition-colors cursor-pointer"
+                            title="Edit user details"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+
+                          {/* Activate / Deactivate Toggle Button */}
+                          {u.account_status === "Active" ? (
+                            <button
+                              onClick={() => handleOpenStatusDialog(u, "Inactive")}
+                              disabled={isSelf}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                isSelf
+                                  ? "text-[#2C1810]/20 cursor-not-allowed"
+                                  : "text-[#C4541A] hover:bg-[#C4541A]/10"
+                              }`}
+                              title={
+                                isSelf
+                                  ? "You cannot deactivate your own account"
+                                  : "Deactivate account"
+                              }
+                            >
+                              <UserX size={15} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenStatusDialog(u, "Active")}
+                              className="p-1.5 rounded-lg text-[#7A8C5C] hover:bg-[#7A8C5C]/10 transition-colors cursor-pointer"
+                              title="Activate account"
+                            >
+                              <UserCheck size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ─── ADD USER MODAL ────────────────────────────────────────────── */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#C8922A]/20 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-[#2C1810]/10 mb-5">
+              <div className="flex items-center gap-2">
+                <UserPlus size={20} className="text-[#C8922A]" />
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#2C1810]">
+                  Create New User
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="w-8 h-8 rounded-full bg-[#F5F0E8] hover:bg-[#EDE8DF] flex items-center justify-center text-[#2C1810]/60 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddSubmit} className="space-y-4 font-['Lato'] text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* First Name */}
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    First Name <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addFormData.first_name}
+                    onChange={(e) =>
+                      setAddFormData({ ...addFormData, first_name: e.target.value })
+                    }
+                    placeholder="e.g. Juan"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  {addFormErrors.first_name && (
+                    <p className="text-[#C4541A] text-[10px] mt-1">
+                      {addFormErrors.first_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Last Name <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addFormData.last_name}
+                    onChange={(e) =>
+                      setAddFormData({ ...addFormData, last_name: e.target.value })
+                    }
+                    placeholder="e.g. Dela Cruz"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  {addFormErrors.last_name && (
+                    <p className="text-[#C4541A] text-[10px] mt-1">
+                      {addFormErrors.last_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Middle Name */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Middle Name <span className="text-[#2C1810]/40 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={addFormData.middle_name || ""}
+                  onChange={(e) =>
+                    setAddFormData({ ...addFormData, middle_name: e.target.value })
+                  }
+                  placeholder="e.g. Santos"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Email Address <span className="text-[#C4541A]">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={addFormData.email}
+                  onChange={(e) =>
+                    setAddFormData({ ...addFormData, email: e.target.value })
+                  }
+                  placeholder="name@example.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+                {addFormErrors.email && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {addFormErrors.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Phone Number */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Phone Number <span className="text-[#2C1810]/40 font-normal">(e.g. 09171234567)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={addFormData.phone_number || ""}
+                  onChange={(e) =>
+                    setAddFormData({ ...addFormData, phone_number: e.target.value })
+                  }
+                  placeholder="09XXXXXXXXX"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+                {addFormErrors.phone_number && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {addFormErrors.phone_number}
+                  </p>
+                )}
+              </div>
+
+              {/* Initial Password */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Initial Password <span className="text-[#C4541A]">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAddPassword ? "text" : "password"}
+                    required
+                    value={addFormData.password}
+                    onChange={(e) =>
+                      setAddFormData({ ...addFormData, password: e.target.value })
+                    }
+                    placeholder="Min. 8 characters"
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword(!showAddPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] cursor-pointer"
+                  >
+                    {showAddPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {addFormErrors.password && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {addFormErrors.password}
+                  </p>
+                )}
+              </div>
+
+              {/* Role & Initial Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Role <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <select
+                    value={addFormData.role}
+                    onChange={(e) =>
+                      setAddFormData({
+                        ...addFormData,
+                        role: e.target.value as "Customer" | "Admin",
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A] cursor-pointer"
+                  >
+                    <option value="Customer">Customer</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Initial Status <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <select
+                    value={addFormData.account_status}
+                    onChange={(e) =>
+                      setAddFormData({
+                        ...addFormData,
+                        account_status: e.target.value as
+                          | "Active"
+                          | "Inactive"
+                          | "Suspended"
+                          | "Pending",
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A] cursor-pointer"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#2C1810]/10">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  disabled={submittingAdd}
+                  className="px-4 py-2.5 rounded-full text-xs font-semibold text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAdd}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-semibold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {submittingAdd && <Loader2 size={14} className="animate-spin" />}
+                  {submittingAdd ? "Creating User..." : "Create User"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── EDIT USER MODAL ───────────────────────────────────────────── */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#C8922A]/20 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-[#2C1810]/10 mb-5">
+              <div className="flex items-center gap-2">
+                <Edit3 size={20} className="text-[#C8922A]" />
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#2C1810]">
+                  Edit User Account
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="w-8 h-8 rounded-full bg-[#F5F0E8] hover:bg-[#EDE8DF] flex items-center justify-center text-[#2C1810]/60 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 font-['Lato'] text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* First Name */}
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    First Name <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.first_name || ""}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, first_name: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  {editFormErrors.first_name && (
+                    <p className="text-[#C4541A] text-[10px] mt-1">
+                      {editFormErrors.first_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Last Name <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.last_name || ""}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, last_name: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  {editFormErrors.last_name && (
+                    <p className="text-[#C4541A] text-[10px] mt-1">
+                      {editFormErrors.last_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Middle Name */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Middle Name <span className="text-[#2C1810]/40 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.middle_name || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, middle_name: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Email Address <span className="text-[#C4541A]">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editFormData.email || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, email: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+                {editFormErrors.email && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {editFormErrors.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Phone Number */}
+              <div>
+                <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                  Phone Number <span className="text-[#2C1810]/40 font-normal">(e.g. 09171234567)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={editFormData.phone_number || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, phone_number: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A]"
+                />
+                {editFormErrors.phone_number && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {editFormErrors.phone_number}
+                  </p>
+                )}
+              </div>
+
+              {/* Reset Password (Optional) */}
+              <div className="bg-[#F5F0E8]/40 p-3.5 rounded-xl border border-[#C8922A]/10 space-y-2">
+                <label className="block text-[#2C1810]/70 font-semibold">
+                  Reset Password <span className="text-[#2C1810]/40 font-normal">(Leave empty to keep current)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? "text" : "password"}
+                    value={editFormData.password || ""}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, password: e.target.value })
+                    }
+                    placeholder="New password (optional)"
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#2C1810]/40 hover:text-[#2C1810] cursor-pointer"
+                  >
+                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {editFormErrors.password && (
+                  <p className="text-[#C4541A] text-[10px] mt-1">
+                    {editFormErrors.password}
+                  </p>
+                )}
+              </div>
+
+              {/* Role & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Role
+                  </label>
+                  <select
+                    value={editFormData.role}
+                    disabled={isCurrentLoggedInUser(editingUser.user_id)}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        role: e.target.value as "Customer" | "Admin",
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A] disabled:opacity-50 cursor-pointer"
+                  >
+                    <option value="Customer">Customer</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                  {isCurrentLoggedInUser(editingUser.user_id) && (
+                    <p className="text-[10px] text-[#2C1810]/40 mt-1">
+                      You cannot demote your own admin account.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[#2C1810]/70 font-semibold mb-1">
+                    Account Status
+                  </label>
+                  <select
+                    value={editFormData.account_status}
+                    disabled={isCurrentLoggedInUser(editingUser.user_id)}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        account_status: e.target.value as
+                          | "Active"
+                          | "Inactive"
+                          | "Suspended"
+                          | "Pending",
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-[#2C1810] outline-none focus:border-[#C8922A] disabled:opacity-50 cursor-pointer"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="Suspended">Suspended</option>
+                    <option value="Pending">Pending</option>
+                  </select>
+                  {isCurrentLoggedInUser(editingUser.user_id) && (
+                    <p className="text-[10px] text-[#2C1810]/40 mt-1">
+                      You cannot deactivate your own account.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#2C1810]/10">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  disabled={submittingEdit}
+                  className="px-4 py-2.5 rounded-full text-xs font-semibold text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEdit}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-semibold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {submittingEdit && <Loader2 size={14} className="animate-spin" />}
+                  {submittingEdit ? "Saving Changes..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── STATUS CHANGE CONFIRMATION MODAL ─────────────────────────── */}
+      {statusDialogUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#C8922A]/20">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  targetStatus === "Active"
+                    ? "bg-[#7A8C5C]/15 text-[#7A8C5C]"
+                    : "bg-[#C4541A]/15 text-[#C4541A]"
+                }`}
+              >
+                {targetStatus === "Active" ? <UserCheck size={20} /> : <UserX size={20} />}
+              </div>
+              <div>
+                <h3 className="font-['Playfair_Display'] text-lg font-bold text-[#2C1810]">
+                  {targetStatus === "Active" ? "Activate User Account" : "Deactivate User Account"}
+                </h3>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/60">
+                  {statusDialogUser.email}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed bg-[#F5F0E8] p-3.5 rounded-xl mb-5">
+              {targetStatus === "Active" ? (
+                <>
+                  Activating <strong>{statusDialogUser.first_name} {statusDialogUser.last_name}</strong> will restore full access to their account immediately.
+                </>
+              ) : (
+                <>
+                  Deactivating <strong>{statusDialogUser.first_name} {statusDialogUser.last_name}</strong> will immediately terminate all their active login sessions and prevent them from signing in until reactivated.
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setStatusDialogUser(null)}
+                disabled={submittingStatus}
+                className="px-4 py-2 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmStatusChange}
+                disabled={submittingStatus}
+                className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-['Lato'] font-semibold text-white transition-opacity disabled:opacity-50 cursor-pointer ${
+                  targetStatus === "Active"
+                    ? "bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] hover:opacity-90"
+                    : "bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] hover:opacity-90"
+                }`}
+              >
+                {submittingStatus && <Loader2 size={14} className="animate-spin" />}
+                {submittingStatus
+                  ? "Updating..."
+                  : targetStatus === "Active"
+                    ? "Confirm Activation"
+                    : "Confirm Deactivation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -13,7 +13,10 @@ import { checkFeedbackExists } from "../api/feedbackApi";
 import {
   requestCancellation,
   getCancellationDetails,
+  getRescheduleDetails,
+  rescheduleBooking,
   type CancellationDetails,
+  type RescheduleDetails,
 } from "../api/bookingApi";
 import {
   submitMenuChangeRequest,
@@ -820,6 +823,19 @@ export function CustomerDashboard() {
     useState(false);
   const [processingCancellation, setProcessingCancellation] = useState(false);
 
+  // Reschedule state
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleBookingTarget, setRescheduleBookingTarget] =
+    useState<Booking | null>(null);
+  const [rescheduleDetails, setRescheduleDetails] =
+    useState<RescheduleDetails | null>(null);
+  const [loadingRescheduleDetails, setLoadingRescheduleDetails] =
+    useState(false);
+  const [newRescheduleDate, setNewRescheduleDate] = useState("");
+  const [newRescheduleTime, setNewRescheduleTime] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [submittingReschedule, setSubmittingReschedule] = useState(false);
+
   // Receipts are shown in the same window via the ReceiptViewer lightbox
 
   // Logout state
@@ -842,6 +858,7 @@ export function CustomerDashboard() {
       showBookingDetailsModal ||
       showMenuChangeModal ||
       showCancellationModal ||
+      showRescheduleModal ||
       showLogoutConfirm;
 
     if (isModalOpen) {
@@ -857,6 +874,7 @@ export function CustomerDashboard() {
     showBookingDetailsModal,
     showMenuChangeModal,
     showCancellationModal,
+    showRescheduleModal,
     showLogoutConfirm,
   ]);
 
@@ -966,6 +984,98 @@ export function CustomerDashboard() {
       );
     } finally {
       setProcessingCancellation(false);
+    }
+  };
+
+  const handleOpenRescheduleModal = async (booking: Booking) => {
+    if (!accessToken) return;
+    setRescheduleBookingTarget(booking);
+    setNewRescheduleDate("");
+    setNewRescheduleTime(booking.start_time || "11:00");
+    setRescheduleReason("");
+    setShowRescheduleModal(true);
+    setLoadingRescheduleDetails(true);
+
+    try {
+      const details = await getRescheduleDetails(accessToken, booking.booking_id);
+      setRescheduleDetails(details);
+    } catch (err) {
+      console.error("Failed to load reschedule details:", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to load reschedule details. Please try again.",
+      );
+    } finally {
+      setLoadingRescheduleDetails(false);
+    }
+  };
+
+  const handleConfirmReschedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken || !rescheduleBookingTarget || !newRescheduleDate) return;
+
+    // Check Monday closure on client side
+    const [y, m, d] = newRescheduleDate.split("-").map(Number);
+    if (new Date(y, m - 1, d).getDay() === 1) {
+      toast.error("The store is closed on Mondays. Please choose a Tuesday through Sunday date.");
+      return;
+    }
+
+    setSubmittingReschedule(true);
+    try {
+      const res = await rescheduleBooking(
+        accessToken,
+        rescheduleBookingTarget.booking_id,
+        {
+          new_event_date: newRescheduleDate,
+          new_start_time: newRescheduleTime || undefined,
+          reschedule_reason: rescheduleReason.trim() || undefined,
+        },
+      );
+
+      toast.success(
+        `Event successfully rescheduled to ${newRescheduleDate}. Your payment schedule has been updated.`,
+        { duration: 7000 },
+      );
+
+      setShowRescheduleModal(false);
+      setRescheduleBookingTarget(null);
+      setRescheduleDetails(null);
+
+      // Reload bookings and active payments
+      const updated = await getCustomerBookings(accessToken);
+      setBookings(updated.bookings);
+      if (
+        selectedBooking &&
+        selectedBooking.booking_id === rescheduleBookingTarget.booking_id
+      ) {
+        const match = updated.bookings.find(
+          (b) => b.booking_id === selectedBooking.booking_id,
+        );
+        if (match) setSelectedBooking(match);
+        // Refresh payments for the booking that was rescheduled
+        try {
+          const paymentsRes = await getBookingPayments(
+            accessToken!,
+            rescheduleBookingTarget.booking_id,
+          );
+          setPaymentsByBooking((prev) => ({
+            ...prev,
+            [rescheduleBookingTarget.booking_id]: paymentsRes.payments,
+          }));
+        } catch {
+          // non-critical, swallow
+        }
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to reschedule booking. Please try again.",
+      );
+    } finally {
+      setSubmittingReschedule(false);
     }
   };
 
@@ -1760,6 +1870,50 @@ export function CustomerDashboard() {
                       </div>
                     );
                   })()}
+              </div>
+            );
+          })()}
+
+          {/* Reschedule Event Button */}
+          {["Pending", "Reserved", "Confirmed"].includes(
+            booking.booking_status,
+          ) && (() => {
+            const daysUntil =
+              booking.days_until_event != null
+                ? Number(booking.days_until_event)
+                : null;
+            const isEligibleToReschedule =
+              daysUntil != null && daysUntil >= 14;
+
+            return (
+              <div className="mt-3 pt-3 border-t border-[#C8922A]/10">
+                <button
+                  onClick={() =>
+                    isEligibleToReschedule &&
+                    handleOpenRescheduleModal(booking)
+                  }
+                  disabled={!isEligibleToReschedule}
+                  className={`w-full px-4 py-2.5 rounded-full text-xs font-['Lato'] font-semibold transition-all flex items-center justify-center gap-2 ${
+                    isEligibleToReschedule
+                      ? "bg-[#C8922A]/15 text-[#2C1810] hover:bg-[#C8922A]/25 border border-[#C8922A]/30 cursor-pointer shadow-xs"
+                      : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+                  }`}
+                >
+                  <Calendar
+                    size={16}
+                    className={
+                      isEligibleToReschedule
+                        ? "text-[#C8922A]"
+                        : "text-gray-400"
+                    }
+                  />
+                  <span>Reschedule Event</span>
+                </button>
+                {!isEligibleToReschedule && (
+                  <p className="text-[11px] font-['Lato'] text-[#C4541A] mt-1.5 text-center italic">
+                    Rescheduling is only allowed at least 14 days (2 weeks) prior to your event date.
+                  </p>
+                )}
               </div>
             );
           })()}
@@ -3320,6 +3474,283 @@ export function CustomerDashboard() {
         </div>
       )}
 
+      {/* Reschedule Booking Modal */}
+      {showRescheduleModal && rescheduleBookingTarget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+            {/* Modal Header */}
+            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl flex items-center justify-between">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8] flex items-center gap-2">
+                  <Calendar className="text-[#C8922A]" size={22} />
+                  Reschedule Event
+                </h3>
+                <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
+                  Booking Reference:{" "}
+                  {rescheduleBookingTarget.booking_reference ||
+                    `#BK${String(rescheduleBookingTarget.booking_id).padStart(4, "0")}`}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowRescheduleModal(false);
+                  setRescheduleBookingTarget(null);
+                  setRescheduleDetails(null);
+                }}
+                className="text-[#F5F0E8]/50 hover:text-[#F5F0E8] transition-colors p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              {loadingRescheduleDetails ? (
+                <div className="text-center py-12">
+                  <Loader2
+                    size={32}
+                    className="animate-spin text-[#C8922A] mx-auto mb-2"
+                  />
+                  <p className="text-[#2C1810]/60 font-['Lato'] text-sm">
+                    Checking reschedule eligibility & availability...
+                  </p>
+                </div>
+              ) : rescheduleDetails ? (
+                <div>
+                  {!rescheduleDetails.can_reschedule ? (
+                    <div className="space-y-4">
+                      <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-2">
+                          <AlertTriangle className="text-[#C4541A] shrink-0" size={24} />
+                          <h4 className="font-['Playfair_Display'] font-bold text-[#C4541A] text-base">
+                            Rescheduling Window Closed
+                          </h4>
+                        </div>
+                        <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed">
+                          {rescheduleDetails.restriction_reason ||
+                            "Rescheduling is only permitted at least 14 days (2 weeks) prior to your scheduled event date."}
+                        </p>
+                      </div>
+
+                      <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/15 space-y-2 text-xs font-['Lato']">
+                        <div className="flex justify-between">
+                          <span className="text-[#2C1810]/60">Current Scheduled Date:</span>
+                          <span className="font-semibold text-[#2C1810]">
+                            {formatDate(rescheduleDetails.current_event_date)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#2C1810]/60">Days Until Event:</span>
+                          <span className="font-bold text-[#C4541A]">
+                            {rescheduleDetails.days_until_event} day(s) remaining
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs font-['Lato'] text-[#2C1810]/70 italic text-center">
+                        Need urgent adjustments? Please contact Chef Ramos at <strong>contact@authenticflavors.com</strong> or call <strong>0917-123-4567</strong>.
+                      </p>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRescheduleModal(false);
+                            setRescheduleBookingTarget(null);
+                            setRescheduleDetails(null);
+                          }}
+                          className="px-6 py-2.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3a241a] transition-all cursor-pointer"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleConfirmReschedule} className="space-y-5">
+                      {/* Current Schedule Summary */}
+                      <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/20">
+                        <h4 className="font-['Playfair_Display'] text-xs font-bold uppercase tracking-wider text-[#C8922A] mb-2.5">
+                          Current Event Schedule
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-['Lato']">
+                          <div>
+                            <span className="text-[#2C1810]/50 block">Scheduled Date</span>
+                            <span className="font-semibold text-[#2C1810]">
+                              {formatDate(rescheduleDetails.current_event_date)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[#2C1810]/50 block">Start Time</span>
+                            <span className="font-semibold text-[#2C1810]">
+                              {formatTime(rescheduleDetails.current_start_time)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[#2C1810]/50 block">Package</span>
+                            <span className="font-semibold text-[#2C1810]">
+                              {rescheduleDetails.package_name}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[#2C1810]/50 block">Notice Window</span>
+                            <span className="font-semibold text-[#7A8C5C]">
+                              {rescheduleDetails.days_until_event} days until event (Eligible)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Policy Banner */}
+                      <div className="bg-[#7A8C5C]/10 border border-[#7A8C5C]/30 rounded-2xl p-3.5 flex items-start gap-2.5">
+                        <CheckCircle size={18} className="text-[#7A8C5C] shrink-0 mt-0.5" />
+                        <div className="text-[11px] font-['Lato'] text-[#2C1810]/80 leading-relaxed space-y-1">
+                          <p className="font-semibold text-[#2C1810]">
+                            Rescheduling Guidelines:
+                          </p>
+                          <ul className="list-disc list-inside space-y-0.5 text-[#2C1810]/70">
+                            <li>New event date must be scheduled at least <strong>14 days in advance</strong>.</li>
+                            <li>The store is <strong>closed on Mondays</strong> (Tue–Sun events only).</li>
+                            <li>Operating hours are <strong>11:00 AM – 10:00 PM</strong>.</li>
+                            <li>Your down payment and final balance due dates will automatically adjust to match your new date.</li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* New Date & Time Pickers */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-[#2C1810] mb-1.5 font-['Lato']">
+                            Select New Event Date <span className="text-[#C4541A]">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            min={rescheduleDetails.min_event_date}
+                            value={newRescheduleDate}
+                            onChange={(e) => {
+                              setNewRescheduleDate(e.target.value);
+                            }}
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A]"
+                          />
+                          <p className="text-[10px] text-[#2C1810]/50 mt-1 font-['Lato']">
+                            Earliest available date: {formatDate(rescheduleDetails.min_event_date)} (Mondays excluded).
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-[#2C1810] mb-1.5 font-['Lato']">
+                            Start Time <span className="text-[#C4541A]">*</span>
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            min="11:00"
+                            max="22:00"
+                            value={newRescheduleTime}
+                            onChange={(e) => setNewRescheduleTime(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A]"
+                          />
+                          <p className="text-[10px] text-[#2C1810]/50 mt-1 font-['Lato']">
+                            Operating hours: 11:00 AM to 10:00 PM.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-[#2C1810] mb-1.5 font-['Lato']">
+                            Reason for Rescheduling <span className="text-[#2C1810]/40 font-normal">(Optional)</span>
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={rescheduleReason}
+                            onChange={(e) => setRescheduleReason(e.target.value)}
+                            placeholder="e.g. Venue availability conflict, schedule change..."
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C8922A] resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Payment Timeline Preview */}
+                      {newRescheduleDate && (
+                        <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/20">
+                          <h5 className="font-['Playfair_Display'] text-xs font-bold text-[#2C1810] mb-2">
+                            Updated Payment Timeline Preview
+                          </h5>
+                          <div className="space-y-1.5 text-xs font-['Lato']">
+                            {(() => {
+                              const [y, m, d] = newRescheduleDate.split("-").map(Number);
+                              const newDateObj = new Date(y, m - 1, d);
+                              const dpDate = new Date(newDateObj);
+                              dpDate.setDate(dpDate.getDate() - 14);
+                              return (
+                                <>
+                                  <div className="flex justify-between text-[#2C1810]/80">
+                                    <span>50% Down Payment Due:</span>
+                                    <span className="font-semibold text-[#C8922A]">
+                                      {formatDate(dpDate.toISOString().split("T")[0])} (2 weeks before event)
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between text-[#2C1810]/80">
+                                    <span>Remaining 50% Balance Due:</span>
+                                    <span className="font-semibold text-[#7A8C5C]">
+                                      {formatDate(newRescheduleDate)} (On the event date)
+                                    </span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modal Footer Buttons */}
+                      <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#C8922A]/15">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRescheduleModal(false);
+                            setRescheduleBookingTarget(null);
+                            setRescheduleDetails(null);
+                          }}
+                          disabled={submittingReschedule}
+                          className="px-5 py-2.5 rounded-full text-xs font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={submittingReschedule || !newRescheduleDate}
+                          className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                        >
+                          {submittingReschedule && (
+                            <Loader2 size={16} className="animate-spin" />
+                          )}
+                          {submittingReschedule ? "Rescheduling..." : "Confirm Reschedule"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-[#2C1810]/50 font-['Lato'] text-sm">
+                    Failed to load reschedule details.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowRescheduleModal(false);
+                      setRescheduleBookingTarget(null);
+                    }}
+                    className="mt-3 px-4 py-2 bg-[#C8922A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] hover:opacity-90 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Menu Change Request Modal */}
       {showMenuChangeModal && menuChangeBooking && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -3825,6 +4256,15 @@ export function CustomerDashboard() {
                       {formatTime(selectedBooking.start_time)}
                     </span>
                   </div>
+                  {Number(selectedBooking.reschedule_count || 0) > 0 &&
+                    selectedBooking.original_event_date && (
+                      <div className="sm:col-span-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30">
+                          📅 Rescheduled from{" "}
+                          {formatDate(selectedBooking.original_event_date)}
+                        </span>
+                      </div>
+                    )}
                   <div>
                     <span className="text-[#2C1810]/50 block text-xs">
                       Number of Guests

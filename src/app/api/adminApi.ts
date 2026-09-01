@@ -415,3 +415,131 @@ export function deleteBlockedDate(
     },
   );
 }
+
+export interface AdminUser {
+  user_id: number;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  email: string;
+  phone_number: string | null;
+  role: "Admin" | "Customer";
+  account_status: "Active" | "Inactive" | "Suspended" | "Pending";
+  profile_photo_url?: string | null;
+  created_at: string;
+  updated_at?: string;
+  total_bookings: number;
+}
+
+export interface AdminUserStats {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  pendingUsers: number;
+  adminUsers: number;
+  customerUsers: number;
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+  stats: AdminUserStats;
+}
+
+export interface CreateAdminUserPayload {
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  email: string;
+  phone_number?: string;
+  password: string;
+  role: "Admin" | "Customer";
+  account_status?: "Active" | "Inactive" | "Suspended" | "Pending";
+}
+
+export interface UpdateAdminUserPayload {
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+  password?: string;
+  role?: "Admin" | "Customer";
+  account_status?: "Active" | "Inactive" | "Suspended" | "Pending";
+}
+
+export function getAdminUsers(
+  accessToken: string,
+  params?: {
+    role?: string;
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+): Promise<AdminUsersResponse> {
+  const query = new URLSearchParams();
+  if (params?.role && params.role !== "All") query.set("role", params.role);
+  if (params?.status && params.status !== "All") query.set("status", params.status);
+  if (params?.search) query.set("search", params.search);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+
+  const qs = query.toString() ? `?${query.toString()}` : "";
+  return request<AdminUsersResponse>(`/api/admin/users${qs}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export function createAdminUser(
+  accessToken: string,
+  payload: CreateAdminUserPayload,
+): Promise<{ message: string; user: AdminUser }> {
+  return request<{ message: string; user: AdminUser }>("/api/admin/users", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateAdminUser(
+  accessToken: string,
+  userId: number,
+  payload: UpdateAdminUserPayload,
+): Promise<{ message: string; user: Partial<AdminUser> }> {
+  return request<{ message: string; user: Partial<AdminUser> }>(
+    `/api/admin/users/${userId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function setAdminUserStatus(
+  accessToken: string,
+  userId: number,
+  account_status: "Active" | "Inactive" | "Suspended" | "Pending",
+): Promise<{ message: string; user_id: number; account_status: string }> {
+  return request<{ message: string; user_id: number; account_status: string }>(
+    `/api/admin/users/${userId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ account_status }),
+    },
+  );
+}
+

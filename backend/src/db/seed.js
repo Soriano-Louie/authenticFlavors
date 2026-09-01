@@ -64,6 +64,36 @@ export async function seedDatabaseIfEmpty() {
       );
     }
 
+    // 0.6c Add reschedule tracking columns to bookings table
+    const [rescheduleColumns] = await connection.query(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings'",
+      [connection.config.database],
+    );
+    const rescheduleColumnNames = rescheduleColumns.map((c) => c.COLUMN_NAME);
+    const rescheduleAlterations = [];
+    if (!rescheduleColumnNames.includes("rescheduled_at")) {
+      rescheduleAlterations.push("ADD COLUMN rescheduled_at DATETIME NULL");
+    }
+    if (!rescheduleColumnNames.includes("original_event_date")) {
+      rescheduleAlterations.push("ADD COLUMN original_event_date DATE NULL");
+    }
+    if (!rescheduleColumnNames.includes("reschedule_count")) {
+      rescheduleAlterations.push(
+        "ADD COLUMN reschedule_count INT NOT NULL DEFAULT 0",
+      );
+    }
+    if (!rescheduleColumnNames.includes("reschedule_reason")) {
+      rescheduleAlterations.push("ADD COLUMN reschedule_reason TEXT NULL");
+    }
+    if (rescheduleAlterations.length > 0) {
+      const alterSql = `ALTER TABLE bookings ${rescheduleAlterations.join(", ")}`;
+      await connection.query(alterSql);
+      console.log(
+        "[MIGRATION] Added reschedule tracking columns to bookings table:",
+        rescheduleAlterations.join(", "),
+      );
+    }
+
     // 0.6b Add discount tracking columns to bookings table so a booking keeps a
     // record of the promotion it was created under (auditable, and survives the
     // promo's expiration). total_price stays the customer-facing price; the

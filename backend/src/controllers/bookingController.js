@@ -18,6 +18,7 @@ import {
   sendBookingConfirmedEmail,
   sendBookingRejectedEmail,
   sendBookingCancelledEmail,
+  sendBookingRescheduledEmail,
   sendNewBookingAdminEmail,
 } from "../services/emailService.js";
 import {
@@ -2005,3 +2006,377 @@ export async function getCancellationDetails(req, res) {
     });
   }
 }
+
+/**
+ * Fetch reschedule eligibility and constraints for a booking.
+ */
+export async function getRescheduleDetails(req, res) {
+  try {
+    const bookingId = Number(req.params.id);
+    const userId = Number(req.auth.sub);
+    const userRole = req.auth.role;
+
+    if (!bookingId || isNaN(bookingId)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Invalid booking ID." },
+      });
+    }
+
+    const todayStr = getPhilippineDateString();
+
+    const [rows] = await pool.query(
+      `SELECT b.*, p.package_name, et.type_name, vs.setup_name,
+              u.email AS user_email, u.first_name, u.last_name,
+              DATEDIFF(b.event_date, ?) AS days_until_event
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN event_types et ON b.event_type_id = et.event_type_id
+       JOIN venue_setups vs ON b.venue_setup_id = vs.venue_setup_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE b.booking_id = ?
+       LIMIT 1`,
+      [todayStr, bookingId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = rows[0];
+
+    // Authorization: customer can only inspect their own booking; admin can inspect any
+    if (userRole !== "Admin" && booking.user_id !== userId) {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "You are not authorized to view this booking." },
+      });
+    }
+
+    const daysUntilEvent = Number(booking.days_until_event);
+    const minLeadTimeDate = getMinimumEventDate(MIN_EVENT_LEAD_DAYS);
+
+    // Rule 1: Booking status must be active (Pending, Reserved, Confirmed)
+    const isStatusEligible = ["Pending", "Reserved", "Confirmed"].includes(
+      booking.booking_status,
+    );
+
+    // Rule 2: 2-Week Window Rule (at least 14 days before current event date)
+    const isLeadTimeEligible = daysUntilEvent >= 14;
+
+    let canReschedule = isStatusEligible && isLeadTimeEligible;
+    let restrictionReason = null;
+
+    if (!isStatusEligible) {
+      restrictionReason = `Bookings with status "${booking.booking_status}" cannot be rescheduled.`;
+    } else if (!isLeadTimeEligible) {
+      restrictionReason =
+        daysUntilEvent <= 0
+          ? "This event date has already arrived or passed and cannot be rescheduled."
+          : `Rescheduling is only permitted at least 14 days (2 weeks) prior to your event date. Since your event is in ${daysUntilEvent} day(s), rescheduling is locked. Please contact our restaurant staff directly for special assistance.`;
+    }
+
+    res.status(200).json({
+      booking_id: booking.booking_id,
+      booking_reference: booking.booking_reference,
+      package_name: booking.package_name,
+      current_event_date: toPhilippineDateString(booking.event_date),
+      current_start_time: booking.start_time,
+      booking_status: booking.booking_status,
+      days_until_event: daysUntilEvent,
+      can_reschedule: canReschedule,
+      restriction_reason: restrictionReason,
+      min_event_date: minLeadTimeDate,
+      reschedule_count: Number(booking.reschedule_count || 0),
+      rescheduled_at: booking.rescheduled_at,
+      original_event_date: booking.original_event_date
+        ? toPhilippineDateString(booking.original_event_date)
+        : null,
+    });
+  } catch (error) {
+    console.error("Error fetching reschedule details:", error);
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Failed to fetch reschedule details." },
+    });
+  }
+}
+
+/**
+ * Execute booking reschedule inside an atomic transaction.
+ */
+export async function rescheduleBooking(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const bookingId = Number(req.params.id);
+    const userId = Number(req.auth.sub);
+    const userRole = req.auth.role;
+    const { new_event_date, new_start_time, reschedule_reason } = req.body;
+
+    if (!bookingId || isNaN(bookingId)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Invalid booking ID." },
+      });
+    }
+
+    const todayStr = getPhilippineDateString();
+    const minLeadTimeStr = getMinimumEventDate(MIN_EVENT_LEAD_DAYS);
+
+    // Validate new event date presence and format
+    const newEventDate = String(new_event_date || "").trim();
+    if (!newEventDate) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Please select a new event date." },
+      });
+    }
+
+    if (newEventDate < todayStr) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Event date cannot be in the past." },
+      });
+    }
+
+    if (newEventDate < minLeadTimeStr) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message:
+            "Rescheduled event date must be scheduled at least 14 days (two weeks) in advance to allow time for the down payment and preparation.",
+        },
+      });
+    }
+
+    // Check store operating days (closed Mondays)
+    const [year, month, day] = newEventDate.split("-").map(Number);
+    const eventDay = new Date(year, month - 1, day).getDay();
+    if (eventDay === 1) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "The store is closed on Mondays. Please choose another date.",
+        },
+      });
+    }
+
+    // Begin atomic transaction
+    await connection.beginTransaction();
+
+    // Fetch booking with locking read
+    const [bookingRows] = await connection.query(
+      `SELECT b.*, p.package_name, u.email, u.first_name, u.last_name,
+              DATEDIFF(b.event_date, ?) AS days_until_event
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE b.booking_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [todayStr, bookingId],
+    );
+
+    if (bookingRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookingRows[0];
+
+    // Authorization check
+    if (userRole !== "Admin" && booking.user_id !== userId) {
+      await connection.rollback();
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "You are not authorized to reschedule this booking." },
+      });
+    }
+
+    // Status check
+    if (!["Pending", "Reserved", "Confirmed"].includes(booking.booking_status)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATUS",
+          message: `Cannot reschedule a booking with status "${booking.booking_status}".`,
+        },
+      });
+    }
+
+    // 2-Week Window Rule on the currently scheduled event date
+    const daysUntilCurrentEvent = Number(booking.days_until_event);
+    if (daysUntilCurrentEvent < 14) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "RESCHEDULE_WINDOW_CLOSED",
+          message:
+            "Rescheduling is only allowed at least 14 days (2 weeks) prior to your event date. Please contact the restaurant staff for assistance.",
+        },
+      });
+    }
+
+    const currentEventDateStr = toPhilippineDateString(booking.event_date);
+    if (newEventDate === currentEventDateStr) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "The new event date must be different from the currently scheduled date.",
+        },
+      });
+    }
+
+    // Validate start time if provided or preserve current
+    const startTime = (new_start_time || booking.start_time || "").trim();
+    if (startTime && !isWithinOperatingHours(startTime)) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: getOperatingHoursMessage(),
+        },
+      });
+    }
+
+    // Check date availability (locking read on target date)
+    if (await isDateUnavailableForUpdate(connection, newEventDate, booking.booking_id)) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "DATE_UNAVAILABLE",
+          message: "The selected date is no longer available. Please choose another date.",
+        },
+      });
+    }
+
+    // Determine original_event_date to record
+    const originalDate = booking.original_event_date
+      ? toPhilippineDateString(booking.original_event_date)
+      : currentEventDateStr;
+
+    // Update booking event date and reschedule metadata
+    await connection.query(
+      `UPDATE bookings SET
+        event_date = ?,
+        start_time = ?,
+        original_event_date = ?,
+        rescheduled_at = CURRENT_TIMESTAMP,
+        reschedule_count = reschedule_count + 1,
+        reschedule_reason = ?,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ?`,
+      [
+        newEventDate,
+        startTime,
+        originalDate,
+        reschedule_reason ? String(reschedule_reason).trim() : null,
+        bookingId,
+      ],
+    );
+
+    // Calculate updated down payment due date (14 days before the new event date)
+    const newDateObj = new Date(year, month - 1, day);
+    const downPaymentDueDateObj = new Date(newDateObj);
+    downPaymentDueDateObj.setDate(downPaymentDueDateObj.getDate() - 14);
+
+    let downPaymentDueDateStr = toPhilippineDateString(downPaymentDueDateObj);
+    if (downPaymentDueDateStr < todayStr) {
+      downPaymentDueDateStr = todayStr;
+    }
+
+    // Synchronize unpaid downpayment due date & reset overdue status if now future
+    await connection.query(
+      `UPDATE payments SET
+        due_date = ?,
+        payment_status = CASE WHEN payment_status = 'Overdue' AND ? >= ? THEN 'Pending' ELSE payment_status END,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND payment_type = 'DownPayment' AND payment_status != 'Paid'`,
+      [downPaymentDueDateStr, downPaymentDueDateStr, todayStr, bookingId],
+    );
+
+    // Synchronize unpaid final payment due date to the new event date
+    await connection.query(
+      `UPDATE payments SET
+        due_date = ?,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND payment_type = 'FinalPayment' AND payment_status != 'Paid'`,
+      [newEventDate, bookingId],
+    );
+
+    await connection.commit();
+
+    const bookingRef =
+      booking.booking_reference || `#BK${String(booking.booking_id).padStart(4, "0")}`;
+
+    // Log admin / customer activity
+    logActivity({
+      actorUserId: userId,
+      actorRole: userRole,
+      activityType: "booking_rescheduled",
+      action: `rescheduled booking ${bookingRef} from ${currentEventDateStr} to ${newEventDate} (${startTime})`,
+    }).catch((err) => console.error("Activity log failed (reschedule):", err));
+
+    // Send in-app notification to customer
+    createNotification({
+      user_id: booking.user_id,
+      booking_id: booking.booking_id,
+      type: "booking_rescheduled",
+      title: "Event Rescheduled Successfully",
+      message: `Your booking ${bookingRef} has been rescheduled from ${currentEventDateStr} to ${newEventDate} at ${startTime}. Payment due dates have been adjusted.`,
+    }).catch((err) => console.error("Notification failed (customer reschedule):", err));
+
+    // If customer rescheduled, notify admins
+    if (userRole !== "Admin") {
+      pool.query(
+        "SELECT user_id FROM users WHERE role = 'Admin' AND account_status = 'Active'",
+      ).then(([admins]) => {
+        admins.forEach((admin) => {
+          createNotification({
+            user_id: admin.user_id,
+            booking_id: booking.booking_id,
+            type: "booking_rescheduled",
+            title: "Booking Rescheduled by Customer",
+            message: `${booking.first_name} ${booking.last_name} rescheduled booking ${bookingRef} to ${newEventDate}.`,
+          }).catch((err) => console.error("Admin notification failed:", err));
+        });
+      }).catch((err) => console.error("Failed to query admins for reschedule notification:", err));
+    }
+
+    // Send confirmation email to customer
+    sendBookingRescheduledEmail(
+      booking.email,
+      booking.first_name,
+      {
+        booking_reference: bookingRef,
+        package_name: booking.package_name,
+        start_time: startTime,
+        downpayment_due_date: downPaymentDueDateStr,
+      },
+      currentEventDateStr,
+      newEventDate,
+      reschedule_reason || null,
+    ).catch((err) => console.error("Reschedule email failed:", err));
+
+    res.status(200).json({
+      message: "Event rescheduled successfully.",
+      booking: {
+        booking_id: bookingId,
+        booking_reference: bookingRef,
+        event_date: newEventDate,
+        start_time: startTime,
+        original_event_date: originalDate,
+        rescheduled_at: new Date().toISOString(),
+        reschedule_count: Number(booking.reschedule_count || 0) + 1,
+        downpayment_due_date: downPaymentDueDateStr,
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error rescheduling booking:", error);
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Failed to reschedule booking." },
+    });
+  } finally {
+    connection.release();
+  }
+}
+

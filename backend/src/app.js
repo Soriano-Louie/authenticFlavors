@@ -14,6 +14,7 @@ import { menuChangeRouter } from "./routes/menuChangeRoutes.js";
 import { menuRouter } from "./routes/menuRoutes.js";
 import { venueSetupRouter } from "./routes/venueSetupRoutes.js";
 import { blockedDateRouter } from "./routes/blockedDateRoutes.js";
+import { userRouter } from "./routes/userRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -80,6 +81,7 @@ export function createApp() {
   app.use("/api", menuRouter);
   app.use("/api", venueSetupRouter);
   app.use("/api", blockedDateRouter);
+  app.use("/api", userRouter);
 
   app.use((err, _req, res, _next) => {
     const status = err.status || err.statusCode || 500;

@@ -10,6 +10,8 @@ import {
   rejectBooking,
   requestCancellation,
   getCancellationDetails,
+  getRescheduleDetails,
+  rescheduleBooking,
   getDateAvailability,
   getBookingConfig,
 } from "../controllers/bookingController.js";
@@ -26,6 +28,14 @@ bookingRouter.get("/config", getBookingConfig);
 // Customer booking endpoints
 bookingRouter.post("/bookings", requireAuth, createBooking);
 bookingRouter.get("/bookings", requireAuth, getBookings);
+
+// Reschedule endpoints (Customer & Admin)
+bookingRouter.get(
+  "/bookings/:id/reschedule-details",
+  requireAuth,
+  getRescheduleDetails,
+);
+bookingRouter.post("/bookings/:id/reschedule", requireAuth, rescheduleBooking);
 
 // Customer cancellation endpoints
 bookingRouter.post("/bookings/:id/cancel", requireAuth, requestCancellation);

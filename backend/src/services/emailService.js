@@ -552,6 +552,81 @@ export async function sendBookingCancelledEmail(email, firstName, bookingDetails
   return sendBrevoEmail(email, `Booking Cancelled (${booking_reference || "Authentic Flavors"})`, html);
 }
 
+export async function sendBookingRescheduledEmail(
+  email,
+  firstName,
+  bookingDetails,
+  oldEventDate,
+  newEventDate,
+  reason,
+) {
+  const {
+    booking_reference,
+    package_name,
+    start_time,
+    downpayment_due_date,
+  } = bookingDetails;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 22px; margin: 0;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0;">by Chef Ramos</p>
+      </div>
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <span style="display: inline-block; background-color: #7A8C5C; color: #ffffff; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Event Rescheduled</span>
+        </div>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Booking Rescheduled Successfully</h2>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.5; margin: 0 0 16px;">
+          Hello ${firstName || "Valued Client"},
+        </p>
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.5; margin: 0 0 16px;">
+          Your catering booking (<strong>${booking_reference || "Authentic Flavors"}</strong>) has been successfully rescheduled.
+        </p>
+
+        <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <p style="color: #2C1810; font-size: 13px; margin: 0 0 8px;"><strong>Package:</strong> ${package_name || "Event Package"}</p>
+          <p style="color: #C4541A; font-size: 13px; margin: 0 0 8px; text-decoration: line-through;"><strong>Previous Date:</strong> ${oldEventDate}</p>
+          <p style="color: #7A8C5C; font-size: 14px; margin: 0 0 8px; font-weight: bold;"><strong>New Event Date:</strong> ${newEventDate}</p>
+          <p style="color: #2C1810; font-size: 13px; margin: 0 0 8px;"><strong>Start Time:</strong> ${start_time || "TBD"}</p>
+          ${
+            downpayment_due_date
+              ? `<p style="color: #2C1810; font-size: 13px; margin: 0 0 8px;"><strong>Updated Down Payment Due Date:</strong> ${downpayment_due_date}</p>`
+              : ""
+          }
+          ${
+            reason
+              ? `<p style="color: #2C1810; font-size: 13px; margin: 0;"><strong>Reason:</strong> ${reason}</p>`
+              : ""
+          }
+        </div>
+
+        <div style="background-color: #7A8C5C15; border-left: 4px solid #7A8C5C; padding: 12px; border-radius: 4px; margin-bottom: 20px;">
+          <p style="color: #2C1810; font-size: 12px; margin: 0; line-height: 1.4;">
+            <strong>Important Policy Note:</strong> The 50% down payment must be settled at least 2 weeks before your new event date (${newEventDate}), and the remaining 50% balance on the event date itself.
+          </p>
+        </div>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Booking in Dashboard
+          </a>
+        </div>
+      </div>
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(
+    email,
+    `Event Rescheduled: ${booking_reference || "Authentic Flavors"} (${newEventDate})`,
+    html,
+  );
+}
+
 export async function sendPaymentApprovedEmail(email, firstName, paymentDetails) {
   const { payment_type, amount, booking_reference } = paymentDetails;
   const formattedAmount = `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
