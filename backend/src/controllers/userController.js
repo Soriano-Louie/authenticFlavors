@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { pool } from "../db/pool.js";
 import { logActivity } from "../services/activityService.js";
 import {
