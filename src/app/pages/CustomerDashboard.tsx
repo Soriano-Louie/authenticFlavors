@@ -852,7 +852,10 @@ export function CustomerDashboard() {
   const [expandedOverviewBookingId, setExpandedOverviewBookingId] = useState<number | null>(null);
   const [expandedEventsBookingId, setExpandedEventsBookingId] = useState<number | null>(null);
 
-  // Lock background scrolling while any modal is open
+  // Lock background scrolling while any modal is open.
+  // We use position:fixed + top offset instead of overflow:hidden alone
+  // because overflow:hidden resets scrollY to 0 in some browsers,
+  // causing the page to jump to the top when a modal closes.
   useEffect(() => {
     const isModalOpen =
       showBookingDetailsModal ||
@@ -862,13 +865,28 @@ export function CustomerDashboard() {
       showLogoutConfirm;
 
     if (isModalOpen) {
-      document.body.style.overflow = "hidden";
+      const scrollY = window.scrollY;
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = "100%";
     } else {
-      document.body.style.overflow = "";
+      const top = document.body.style.top;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.width = "";
+      if (top) {
+        window.scrollTo({ top: parseInt(top || "0", 10) * -1, behavior: "instant" });
+      }
     }
 
     return () => {
-      document.body.style.overflow = "";
+      const top = document.body.style.top;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.width = "";
+      if (top) {
+        window.scrollTo({ top: parseInt(top || "0", 10) * -1, behavior: "instant" });
+      }
     };
   }, [
     showBookingDetailsModal,

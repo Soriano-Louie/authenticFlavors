@@ -4059,24 +4059,48 @@ function BookingsSection() {
                                       {payment.payment_type === "FinalPayment" &&
                                         !payment.receipt_url &&
                                         (payment.payment_status === "Pending" ||
-                                          payment.payment_status === "Overdue") && (
-                                          <div className="flex items-center gap-2 mt-2">
-                                            <button
-                                              onClick={() =>
-                                                handleOpenApproveWithoutReceiptDialog(
-                                                  booking,
-                                                  payment,
+                                          payment.payment_status === "Overdue") && (() => {
+                                          const priorPayments = payments.filter(
+                                            (p) =>
+                                              p.payment_type === "Reservation" ||
+                                              p.payment_type === "DownPayment",
+                                          );
+                                          const hasPreviousPaymentsMade =
+                                            priorPayments.length > 0
+                                              ? priorPayments.every(
+                                                  (p) => p.payment_status === "Paid",
                                                 )
-                                              }
-                                              disabled={isActioning}
-                                              className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-50 transition-opacity"
-                                            >
-                                              {isActioning
-                                                ? "Saving..."
-                                                : "Approve Without Receipt"}
-                                            </button>
-                                          </div>
-                                        )}
+                                              : Number(booking.amount_paid || 0) > 0;
+
+                                          return (
+                                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                              <button
+                                                onClick={() =>
+                                                  handleOpenApproveWithoutReceiptDialog(
+                                                    booking,
+                                                    payment,
+                                                  )
+                                                }
+                                                disabled={isActioning || !hasPreviousPaymentsMade}
+                                                title={
+                                                  !hasPreviousPaymentsMade
+                                                    ? "Cannot approve Final Payment without receipt: previous payment (Down Payment / Reservation) must be paid first."
+                                                    : undefined
+                                                }
+                                                className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-[10px] font-['Lato'] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity cursor-pointer"
+                                              >
+                                                {isActioning
+                                                  ? "Saving..."
+                                                  : "Approve Without Receipt"}
+                                              </button>
+                                              {!hasPreviousPaymentsMade && (
+                                                <span className="text-[10px] text-[#C4541A] font-['Lato'] italic">
+                                                  (Requires previous payments to be paid first)
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       {payment.payment_type ===
                                         "CancellationCharge" &&
                                         (payment.payment_status ===

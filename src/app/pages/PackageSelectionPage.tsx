@@ -154,6 +154,30 @@ export function PackageSelectionPage() {
     // scroll is handled by the useEffect below
   };
 
+  // Search and pagination state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(6);
+
+  // Data fetching state
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [items, setItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // "Don't show again" is scoped to the current browser session AND the
+  // current account, so it is suppressed only for this visit/session — the
+  // modal always comes back when a new session starts or another user logs in.
+  const dismissStorageKey = `af-booking-rules-dismissed-${user?.user_id ?? "guest"}`;
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(true);
+  // Tracks whether the modal was opened by tapping the "Booking Policies &
+  // Rules" button (manual) vs. shown automatically on page load. The "Don't
+  // show again" checkbox only applies to the automatic popup.
+  const [rulesOpenedManually, setRulesOpenedManually] = useState(false);
+  const [canContinueBooking, setCanContinueBooking] = useState(false);
+
   // Scroll to the details section whenever a package is selected.
   // Using requestAnimationFrame ensures React has committed the DOM
   // before we measure the element position — fixing the "needs a refresh" bug.
@@ -168,29 +192,6 @@ export function PackageSelectionPage() {
     });
     return () => cancelAnimationFrame(raf);
   }, [selectedPackageId, loading]);
-  // "Don't show again" is scoped to the current browser session AND the
-  // current account, so it is suppressed only for this visit/session — the
-  // modal always comes back when a new session starts or another user logs in.
-  const dismissStorageKey = `af-booking-rules-dismissed-${user?.user_id ?? "guest"}`;
-  const [dontShowAgain, setDontShowAgain] = useState(false);
-  const [showRulesModal, setShowRulesModal] = useState(true);
-  // Tracks whether the modal was opened by tapping the "Booking Policies &
-  // Rules" button (manual) vs. shown automatically on page load. The "Don't
-  // show again" checkbox only applies to the automatic popup.
-  const [rulesOpenedManually, setRulesOpenedManually] = useState(false);
-  const [canContinueBooking, setCanContinueBooking] = useState(false);
-
-  // Search and pagination state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(6);
-
-  // Data fetching state
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [categories, setCategories] = useState<MenuCategory[]>([]);
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Fetch data on mount
   useEffect(() => {

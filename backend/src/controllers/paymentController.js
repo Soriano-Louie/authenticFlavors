@@ -545,6 +545,30 @@ export async function verifyReceipt(req, res) {
           },
         });
       }
+
+      // Check if previous payments (Reservation or DownPayment) exist and are paid
+      const [previousPayments] = await connection.query(
+        `SELECT payment_type, payment_status 
+         FROM payments 
+         WHERE booking_id = ? AND payment_type IN ('Reservation', 'DownPayment')`,
+        [payment.booking_id],
+      );
+
+      if (previousPayments.length > 0) {
+        const hasUnpaidPrevious = previousPayments.some(
+          (p) => p.payment_status !== "Paid",
+        );
+        if (hasUnpaidPrevious) {
+          await connection.rollback();
+          return res.status(400).json({
+            error: {
+              code: "PREVIOUS_PAYMENTS_REQUIRED",
+              message:
+                "Final Payment cannot be approved without receipt because previous payments (Down Payment / Reservation) have not been paid yet.",
+            },
+          });
+        }
+      }
     } else {
       if (
         !payment.receipt_url ||
