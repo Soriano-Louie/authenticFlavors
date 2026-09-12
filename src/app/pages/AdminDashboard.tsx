@@ -4421,16 +4421,37 @@ function BookingsSection() {
                               </div>
                             )}
                             {(venueReq.status === "Pending" ||
-                              venueReq.status === "Changes_Requested") && (
-                              <button
-                                onClick={() =>
-                                  handleOpenVenueSetupReview(venueReq)
-                                }
-                                className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity"
-                              >
-                                Review Venue Setup
-                              </button>
-                            )}
+                              venueReq.status === "Changes_Requested") && (() => {
+                              const isBookingClosed =
+                                booking.booking_status === "Completed" ||
+                                booking.booking_status === "Cancelled" ||
+                                booking.booking_status === "Rejected" ||
+                                isEventPast(booking.event_date);
+
+                              return isBookingClosed ? (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <button
+                                    disabled
+                                    className="px-4 py-2 bg-gray-200 text-gray-400 rounded-full text-xs font-['Lato'] font-semibold cursor-not-allowed border border-gray-300"
+                                    title="This booking is closed (completed, cancelled, or past event date). Venue setup cannot be reviewed."
+                                  >
+                                    Review Venue Setup (Booking Closed)
+                                  </button>
+                                  <span className="text-xs text-[#2C1810]/50 font-['Lato'] italic">
+                                    Booking is {booking.booking_status === "Cancelled" ? "cancelled" : "completed"}
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() =>
+                                    handleOpenVenueSetupReview(venueReq)
+                                  }
+                                  className="px-4 py-2 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                                >
+                                  Review Venue Setup
+                                </button>
+                              );
+                            })()}
                           </div>
                         );
                       })()}
@@ -4445,9 +4466,25 @@ function BookingsSection() {
 
       {/* Venue Setup Review Modal */}
       {reviewingVenueSetup && (() => {
+        const relatedBooking = bookings.find(
+          (b) => b.booking_id === reviewingVenueSetup.booking_id,
+        );
+        const isBookingClosed = relatedBooking
+          ? relatedBooking.booking_status === "Completed" ||
+            relatedBooking.booking_status === "Cancelled" ||
+            relatedBooking.booking_status === "Rejected" ||
+            isEventPast(relatedBooking.event_date)
+          : (reviewingVenueSetup as any).booking_status === "Completed" ||
+            (reviewingVenueSetup as any).booking_status === "Cancelled" ||
+            (reviewingVenueSetup as any).booking_status === "Rejected" ||
+            ((reviewingVenueSetup as any).event_date
+              ? isEventPast((reviewingVenueSetup as any).event_date)
+              : false);
+
         const isFinalized =
           reviewingVenueSetup.status === "Approved" ||
-          reviewingVenueSetup.status === "Declined";
+          reviewingVenueSetup.status === "Declined" ||
+          isBookingClosed;
 
         return (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
@@ -4464,7 +4501,15 @@ function BookingsSection() {
                 </p>
               </div>
               <div className="p-6 space-y-4">
-                {isFinalized && (
+                {isBookingClosed && (
+                  <div className="p-3.5 rounded-xl border border-[#C4541A]/30 bg-[#C4541A]/10 text-xs font-['Lato'] flex items-center gap-2 text-[#C4541A]">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>
+                      This booking is closed (completed, cancelled, or past event date). Venue setup review cannot be modified.
+                    </span>
+                  </div>
+                )}
+                {!isBookingClosed && isFinalized && (
                   <div
                     className={`p-3.5 rounded-xl border text-xs font-['Lato'] flex items-center gap-2 ${
                       reviewingVenueSetup.status === "Approved"
@@ -4968,28 +5013,47 @@ function BookingsSection() {
                     )}
 
                     {/* Inline Actions for Pending Menu Change Request */}
-                    {mcReq.status === "Pending" && (
-                      <div className="flex items-center gap-3 pt-1">
-                        <button
-                          onClick={() => handleApproveMenuChangeInline(mcReq.request_id)}
-                          disabled={approvingMenuChangeId === mcReq.request_id}
-                          className="px-4 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer shadow-xs"
-                        >
-                          {approvingMenuChangeId === mcReq.request_id
-                            ? "Approving..."
-                            : "Approve Menu Change"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setRejectingMenuChangeReq(mcReq);
-                            setMenuChangeRejectReason("");
-                          }}
-                          className="px-4 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
-                        >
-                          Reject Request
-                        </button>
-                      </div>
-                    )}
+                    {mcReq.status === "Pending" && (() => {
+                      const isBookingClosed =
+                        b.booking_status === "Completed" ||
+                        b.booking_status === "Cancelled" ||
+                        b.booking_status === "Rejected" ||
+                        isEventPast(b.event_date);
+
+                      return (
+                        <div className="flex items-center gap-3 pt-1 flex-wrap">
+                          {isBookingClosed ? (
+                            <div className="flex items-center gap-2 p-2.5 bg-gray-100 rounded-xl border border-gray-200 text-xs font-['Lato'] text-gray-500 italic w-full">
+                              <AlertCircle size={14} className="text-gray-400 shrink-0" />
+                              <span>
+                                Menu change actions are unavailable: this booking is {b.booking_status === "Cancelled" ? "cancelled" : "completed / past the scheduled event date"}.
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleApproveMenuChangeInline(mcReq.request_id)}
+                                disabled={approvingMenuChangeId === mcReq.request_id}
+                                className="px-4 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer shadow-xs"
+                              >
+                                {approvingMenuChangeId === mcReq.request_id
+                                  ? "Approving..."
+                                  : "Approve Menu Change"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRejectingMenuChangeReq(mcReq);
+                                  setMenuChangeRejectReason("");
+                                }}
+                                className="px-4 py-1.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                              >
+                                Reject Request
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -5062,26 +5126,43 @@ function BookingsSection() {
                 )}
 
                 {/* Venue Setup Review Section (if available) */}
-                {venueReq && (
-                  <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/10 space-y-2 shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-[#2C1810] font-['Lato'] uppercase tracking-wider">
-                        Venue Setup Request ({venueReq.status.replace("_", " ")})
+                {venueReq && (() => {
+                  const isBookingClosed =
+                    b.booking_status === "Completed" ||
+                    b.booking_status === "Cancelled" ||
+                    b.booking_status === "Rejected" ||
+                    isEventPast(b.event_date);
+
+                  return (
+                    <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/10 space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-[#2C1810] font-['Lato'] uppercase tracking-wider">
+                          Venue Setup Request ({venueReq.status.replace("_", " ")})
+                        </p>
+                        {isBookingClosed ? (
+                          <span
+                            className="text-xs font-['Lato'] text-[#2C1810]/40 cursor-not-allowed font-medium italic"
+                            title="Booking is completed, cancelled, or past the event date."
+                          >
+                            Review Unavailable (Booking Closed)
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              handleOpenVenueSetupReview(venueReq);
+                            }}
+                            className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                          >
+                            Review Venue Setup
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#2C1810]/80 font-['Lato'] leading-relaxed bg-[#F5F0E8] p-3 rounded-xl">
+                        {venueReq.venue_setup_notes}
                       </p>
-                      <button
-                        onClick={() => {
-                          handleOpenVenueSetupReview(venueReq);
-                        }}
-                        className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
-                      >
-                        Review Venue Setup
-                      </button>
                     </div>
-                    <p className="text-xs text-[#2C1810]/80 font-['Lato'] leading-relaxed bg-[#F5F0E8] p-3 rounded-xl">
-                      {venueReq.venue_setup_notes}
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Financial Summary & Payment Breakdown */}
                 <div className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 space-y-4 shadow-xs">
@@ -8210,32 +8291,77 @@ function MenuChangeRequestsSection() {
                 </div>
 
                 {/* Card Actions — only for pending requests */}
-                {req.status === "Pending" && (
-                  <div className="px-4 sm:px-6 py-4 border-t border-[#C8922A]/10 flex flex-wrap items-center justify-end gap-3 bg-[#2C1810]/5">
-                    <button
-                      onClick={() => handleOpenRejectModal(req)}
-                      disabled={approvingId === req.request_id}
-                      className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <XCircle size={16} />
-                      Reject
-                    </button>
-                    <button
-                      onClick={() => handleApprove(req.request_id)}
-                      disabled={approvingId === req.request_id}
-                      className="flex items-center gap-2 px-5 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-gradient-to-r from-[#7A8C5C] to-[#5E6E43] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
-                    >
-                      {approvingId === req.request_id ? (
-                        <Loader2 size={13} className="animate-spin" />
+                {req.status === "Pending" && (() => {
+                  const isBookingClosed =
+                    req.booking_status === "Completed" ||
+                    req.booking_status === "Cancelled" ||
+                    req.booking_status === "Rejected" ||
+                    (req.event_date ? isEventPast(req.event_date) : false);
+
+                  return (
+                    <div className="px-4 sm:px-6 py-4 border-t border-[#C8922A]/10 flex flex-wrap items-center justify-between gap-3 bg-[#2C1810]/5">
+                      {isBookingClosed ? (
+                        <div className="w-full flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 text-xs font-['Lato'] text-[#C4541A] font-medium bg-[#C4541A]/10 px-3.5 py-2 rounded-xl border border-[#C4541A]/20">
+                            <AlertCircle size={15} className="shrink-0 text-[#C4541A]" />
+                            <span>
+                              Actions unavailable: Associated booking is{" "}
+                              {req.booking_status === "Cancelled"
+                                ? "Cancelled"
+                                : req.booking_status === "Completed"
+                                  ? "Completed"
+                                  : "Closed (Past Event Date)"}
+                              .
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              disabled
+                              className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                              title="Associated booking is closed (completed, cancelled, or past event date)."
+                            >
+                              <XCircle size={16} />
+                              Reject (Disabled)
+                            </button>
+                            <button
+                              disabled
+                              className="flex items-center gap-2 px-5 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                              title="Associated booking is closed (completed, cancelled, or past event date)."
+                            >
+                              <CheckCircle size={13} />
+                              Approve (Disabled)
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <CheckCircle size={13} />
+                        <div className="w-full flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => handleOpenRejectModal(req)}
+                            disabled={approvingId === req.request_id}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-[#C4541A]/10 text-[#C4541A] hover:bg-[#C4541A]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            <XCircle size={16} />
+                            Reject
+                          </button>
+                          <button
+                            onClick={() => handleApprove(req.request_id)}
+                            disabled={approvingId === req.request_id}
+                            className="flex items-center gap-2 px-5 py-2 rounded-full text-xs font-['Lato'] font-semibold bg-gradient-to-r from-[#7A8C5C] to-[#5E6E43] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                          >
+                            {approvingId === req.request_id ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <CheckCircle size={13} />
+                            )}
+                            {approvingId === req.request_id
+                              ? "Approving..."
+                              : "Approve"}
+                          </button>
+                        </div>
                       )}
-                      {approvingId === req.request_id
-                        ? "Approving..."
-                        : "Approve"}
-                    </button>
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -8243,63 +8369,90 @@ function MenuChangeRequestsSection() {
       )}
 
       {/* Reject Modal */}
-      {rejectingRequest && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
-            <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
-              <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
-                <XCircle className="text-[#C4541A]" size={20} />
-                Reject Menu Change Request
-              </h3>
-              <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
-                Booking{" "}
-                {rejectingRequest.booking_reference ||
-                  `#${rejectingRequest.booking_id}`}
-              </p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
-                  Rejection Reason <span className="text-[#C4541A]">*</span>
-                </label>
-                <textarea
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="Please explain why this menu change cannot be accommodated..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none"
-                />
-                <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
-                  This reason will be sent to the customer via notification and
-                  email.
+      {rejectingRequest && (() => {
+        const isBookingClosed =
+          rejectingRequest.booking_status === "Completed" ||
+          rejectingRequest.booking_status === "Cancelled" ||
+          rejectingRequest.booking_status === "Rejected" ||
+          (rejectingRequest.event_date
+            ? isEventPast(rejectingRequest.event_date)
+            : false);
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-[#F5F0E8] rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C8922A]/20">
+              <div className="bg-[#2C1810] p-6 text-[#F5F0E8] rounded-t-3xl">
+                <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                  <XCircle className="text-[#C4541A]" size={20} />
+                  Reject Menu Change Request
+                </h3>
+                <p className="text-xs text-[#C8922A]/70 mt-1 font-['Lato']">
+                  Booking{" "}
+                  {rejectingRequest.booking_reference ||
+                    `#${rejectingRequest.booking_id}`}
                 </p>
               </div>
-            </div>
-            <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
-              <button
-                onClick={() => {
-                  setRejectingRequest(null);
-                  setRejectionReason("");
-                }}
-                disabled={submittingRejection}
-                className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmReject}
-                disabled={submittingRejection || !rejectionReason.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {submittingRejection && (
-                  <Loader2 size={16} className="animate-spin" />
+              <div className="p-6 space-y-4">
+                {isBookingClosed && (
+                  <div className="p-3 bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl text-xs font-['Lato'] text-[#C4541A] flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>
+                      This booking is already{" "}
+                      {rejectingRequest.booking_status === "Cancelled"
+                        ? "cancelled"
+                        : "completed / closed"}
+                      . Rejection cannot be processed.
+                    </span>
+                  </div>
                 )}
-                {submittingRejection ? "Submitting..." : "Confirm Rejection"}
-              </button>
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-2">
+                    Rejection Reason <span className="text-[#C4541A]">*</span>
+                  </label>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    disabled={isBookingClosed}
+                    placeholder="Please explain why this menu change cannot be accommodated..."
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/15 bg-white text-[#2C1810] outline-none focus:border-[#C8922A] text-sm font-['Lato'] placeholder-[#2C1810]/30 resize-none disabled:bg-gray-100 disabled:opacity-75"
+                  />
+                  <p className="text-[10px] text-[#2C1810]/40 font-['Lato'] mt-1">
+                    This reason will be sent to the customer via notification and
+                    email.
+                  </p>
+                </div>
+              </div>
+              <div className="p-6 border-t border-[#2C1810]/10 flex items-center justify-end gap-3 bg-[#2C1810]/5 rounded-b-3xl">
+                <button
+                  onClick={() => {
+                    setRejectingRequest(null);
+                    setRejectionReason("");
+                  }}
+                  disabled={submittingRejection}
+                  className="px-5 py-2.5 rounded-full text-sm font-['Lato'] text-[#2C1810]/70 hover:text-[#2C1810] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmReject}
+                  disabled={
+                    isBookingClosed ||
+                    submittingRejection ||
+                    !rejectionReason.trim()
+                  }
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {submittingRejection && (
+                    <Loader2 size={16} className="animate-spin" />
+                  )}
+                  {submittingRejection ? "Submitting..." : "Confirm Rejection"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
