@@ -94,6 +94,22 @@ import {
 import { toast } from "sonner";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { ReceiptViewer } from "../components/ReceiptViewer";
+import { ExportDropdown } from "../components/ExportDropdown";
+import {
+  exportToCSV,
+  exportToJSON,
+  transformFeedbackForExport,
+  transformMenuChangeRequestsForExport,
+  transformBookingsForExport,
+  transformOverduePaymentsForExport,
+  transformVenueSetupRequestsForExport,
+  transformUsersForExport,
+  transformPackagesForExport,
+  transformMenuItemsForExport,
+  transformBlockedDatesForExport,
+  transformAnnouncementsForExport,
+  transformActivityForExport,
+} from "../utils/exportUtils";
 import {
   BarChart2,
   Users,
@@ -1631,11 +1647,25 @@ function MenuManagementSection() {
     }
   };
 
+  const handleExportMenuCSV = () => {
+    const { headers, rows } = transformMenuItemsForExport(categories, items);
+    exportToCSV("Menu_Dishes_Catalog", headers, rows);
+    toast.success(`Exported ${rows.length} dishes across ${categories.length} categories to CSV.`);
+  };
+
+  const handleExportMenuJSON = () => {
+    exportToJSON("Menu_Dishes_Catalog", {
+      categories,
+      items,
+    });
+    toast.success(`Exported menu catalog data to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
               Menu Management
@@ -1644,6 +1674,14 @@ function MenuManagementSection() {
               Manage menu categories and items available for packages.
             </p>
           </div>
+          <ExportDropdown
+            label="Export Menu Catalog"
+            count={items.length}
+            disabled={loading || items.length === 0}
+            variant="secondary"
+            onExportCSV={handleExportMenuCSV}
+            onExportJSON={handleExportMenuJSON}
+          />
         </div>
 
         {/* Tabs */}
@@ -2477,19 +2515,40 @@ function RecentActivityList({
     ? filteredActivities.slice(0, limit)
     : filteredActivities;
 
+  const handleExportActivityCSV = () => {
+    const { headers, rows } = transformActivityForExport(filteredActivities);
+    exportToCSV("Recent_Activity_Audit_Log", headers, rows);
+    toast.success(`Exported ${rows.length} activity entries to CSV.`);
+  };
+
+  const handleExportActivityJSON = () => {
+    exportToJSON("Recent_Activity_Audit_Log", filteredActivities);
+    toast.success(`Exported ${filteredActivities.length} activity entries to JSON.`);
+  };
+
   return (
     <div className="space-y-3">
       {showSearch && (
-        <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
-          />
-          <input
-            value={activitySearch}
-            onChange={(e) => setActivitySearch(e.target.value)}
-            placeholder="Search activity by name or action..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
+          <div className="relative flex-1 min-w-0">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2C1810]/30"
+            />
+            <input
+              value={activitySearch}
+              onChange={(e) => setActivitySearch(e.target.value)}
+              placeholder="Search activity by name, action, details, or date..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#2C1810]/15 bg-[#F5F0E8]/30 text-sm font-['Lato'] text-[#2C1810] outline-none focus:border-[#C8922A] placeholder-[#2C1810]/30"
+            />
+          </div>
+          <ExportDropdown
+            label="Export Activity"
+            count={filteredActivities.length}
+            disabled={filteredActivities.length === 0}
+            variant="secondary"
+            onExportCSV={handleExportActivityCSV}
+            onExportJSON={handleExportActivityJSON}
           />
         </div>
       )}
@@ -2635,6 +2694,27 @@ function FeedbackSection({
     return matchesSentiment && matchesSearch;
   });
 
+  const handleExportCSV = () => {
+    const items = filteredFeedbacks.length > 0 ? filteredFeedbacks : (data?.feedbacks || []);
+    const { headers, rows } = transformFeedbackForExport(items);
+    exportToCSV("AI_Feedback_Analysis_Report", headers, rows);
+    toast.success(`Exported ${rows.length} feedback records to CSV.`);
+  };
+
+  const handleExportJSON = () => {
+    const items = filteredFeedbacks.length > 0 ? filteredFeedbacks : (data?.feedbacks || []);
+    exportToJSON("AI_Feedback_Analysis_Report", {
+      summary: {
+        totalFeedback: data?.totalFeedback,
+        overallSummary: data?.overallSummary,
+        sentimentBreakdown: data?.sentimentBreakdown,
+        keyTopics: data?.keyTopics,
+      },
+      feedbacks: items,
+    });
+    toast.success(`Exported ${items.length} feedback records to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Refresh & Download Buttons */}
@@ -2662,16 +2742,14 @@ function FeedbackSection({
             )}
             {reanalyzingAll ? "Analyzing All..." : "Re-analyze All"}
           </button>
-          <button
-            onClick={onGenerateReport}
-            disabled={
-              isGenerating || loading || !data || data.totalFeedback === 0
-            }
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            <Download size={18} />
-            {isGenerating ? "Generating..." : "Export Report"}
-          </button>
+          <ExportDropdown
+            label="Export Report"
+            count={filteredFeedbacks.length}
+            disabled={loading || !data || data.totalFeedback === 0}
+            variant="primary"
+            onExportCSV={handleExportCSV}
+            onExportJSON={handleExportJSON}
+          />
         </div>
       </div>
 
@@ -3612,23 +3690,55 @@ function BookingsSection() {
     return `#${String(booking.booking_id).padStart(4, "0")}`;
   };
 
+  const handleExportBookingsCSV = () => {
+    const { headers, rows } = transformBookingsForExport(bookings);
+    exportToCSV(`Bookings_Report_${bookingStatus}`, headers, rows);
+    toast.success(`Exported ${rows.length} bookings to CSV.`);
+  };
+
+  const handleExportBookingsJSON = () => {
+    exportToJSON(`Bookings_Report_${bookingStatus}`, bookings);
+    toast.success(`Exported ${bookings.length} bookings to JSON.`);
+  };
+
+  const handleExportOverdueCSV = () => {
+    const { headers, rows } = transformOverduePaymentsForExport(overduePayments);
+    exportToCSV("Overdue_Payments_Report", headers, rows);
+    toast.success(`Exported ${rows.length} overdue payments to CSV.`);
+  };
+
+  const handleExportOverdueJSON = () => {
+    exportToJSON("Overdue_Payments_Report", overduePayments);
+    toast.success(`Exported ${overduePayments.length} overdue payments to JSON.`);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
             Manage Bookings
           </h2>
-          <button
-            onClick={() => {
-              fetchBookings();
-              fetchOverduePayments();
-            }}
-            className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <ExportDropdown
+              label="Export Bookings"
+              count={bookings.length}
+              disabled={loading || bookings.length === 0}
+              variant="primary"
+              onExportCSV={handleExportBookingsCSV}
+              onExportJSON={handleExportBookingsJSON}
+            />
+            <button
+              onClick={() => {
+                fetchBookings();
+                fetchOverduePayments();
+              }}
+              className="text-xs font-['Lato'] text-[#C8922A] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Search + Status Filter toolbar */}
@@ -3681,7 +3791,7 @@ function BookingsSection() {
                 setBookingStatus("All");
                 setBookingSearch("");
               }}
-              className="shrink-0 self-start sm:self-center text-xs font-['Lato'] text-[#C8922A] hover:underline inline-flex items-center gap-1 py-2.5"
+              className="shrink-0 self-start sm:self-center text-xs font-['Lato'] text-[#C8922A] hover:underline inline-flex items-center gap-1 py-2.5 cursor-pointer"
             >
               <RotateCcw size={14} /> Reset filters
             </button>
@@ -3691,7 +3801,7 @@ function BookingsSection() {
         {/* Overdue Payments Alert */}
         {overduePayments.length > 0 && (
           <div className="bg-[#C4541A]/10 border border-[#C4541A]/30 rounded-xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <AlertCircle size={20} className="text-[#C4541A]" />
                 <p className="text-sm font-['Lato'] text-[#C4541A] font-semibold">
@@ -3699,6 +3809,14 @@ function BookingsSection() {
                   attention
                 </p>
               </div>
+              <ExportDropdown
+                label="Export Overdue"
+                count={overduePayments.length}
+                size="sm"
+                variant="outline"
+                onExportCSV={handleExportOverdueCSV}
+                onExportJSON={handleExportOverdueJSON}
+              />
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {overduePayments.slice(0, 10).map((payment) => (
@@ -5560,11 +5678,22 @@ function PackagesSection() {
   const formatPrice = (price: number) =>
     `₱${Number(price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
+  const handleExportPackagesCSV = () => {
+    const { headers, rows } = transformPackagesForExport(packages);
+    exportToCSV("Food_Packages_Catalog", headers, rows);
+    toast.success(`Exported ${rows.length} packages to CSV.`);
+  };
+
+  const handleExportPackagesJSON = () => {
+    exportToJSON("Food_Packages_Catalog", packages);
+    toast.success(`Exported ${packages.length} packages to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h2 className="text-2xl font-['Playfair_Display'] text-[#2C1810]">
               Food Packages Management
@@ -5573,13 +5702,23 @@ function PackagesSection() {
               Create, edit, and manage catering packages
             </p>
           </div>
-          <button
-            onClick={handleAdd}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity"
-          >
-            <Plus size={18} />
-            Add Package
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <ExportDropdown
+              label="Export Packages"
+              count={packages.length}
+              disabled={loading || packages.length === 0}
+              variant="secondary"
+              onExportCSV={handleExportPackagesCSV}
+              onExportJSON={handleExportPackagesJSON}
+            />
+            <button
+              onClick={handleAdd}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              <Plus size={18} />
+              Add Package
+            </button>
+          </div>
         </div>
 
         {/* Package List */}
@@ -6200,17 +6339,38 @@ function CalendarAvailabilitySection() {
     }
   };
 
+  const handleExportBlockedCSV = () => {
+    const { headers, rows } = transformBlockedDatesForExport(blockedDates);
+    exportToCSV("Blocked_Dates_Schedule", headers, rows);
+    toast.success(`Exported ${rows.length} blocked dates to CSV.`);
+  };
+
+  const handleExportBlockedJSON = () => {
+    exportToJSON("Blocked_Dates_Schedule", blockedDates);
+    toast.success(`Exported ${blockedDates.length} blocked dates to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-['Playfair_Display'] font-semibold text-[#2C1810]">
-          Calendar Availability
-        </h2>
-        <p className="text-sm text-[#2C1810]/60 font-['Lato'] mt-1">
-          Mark a day as unavailable for your own reason (e.g. a rest day after
-          an event). Blocked dates are hidden from the booking calendar and
-          cannot be booked through the chatbot or manual form.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-['Playfair_Display'] font-semibold text-[#2C1810]">
+            Calendar Availability
+          </h2>
+          <p className="text-sm text-[#2C1810]/60 font-['Lato'] mt-1">
+            Mark a day as unavailable for your own reason (e.g. a rest day after
+            an event). Blocked dates are hidden from the booking calendar and
+            cannot be booked through the chatbot or manual form.
+          </p>
+        </div>
+        <ExportDropdown
+          label="Export Blocked Dates"
+          count={blockedDates.length}
+          disabled={loading || blockedDates.length === 0}
+          variant="secondary"
+          onExportCSV={handleExportBlockedCSV}
+          onExportJSON={handleExportBlockedJSON}
+        />
       </div>
 
       <div className="bg-white rounded-2xl border border-[#C8922A]/20 p-5">
@@ -6740,6 +6900,17 @@ function AnnouncementsSection() {
     setDateTo("");
   };
 
+  const handleExportAnnouncementsCSV = () => {
+    const { headers, rows } = transformAnnouncementsForExport(filteredAnnouncements);
+    exportToCSV(`Announcements_Report_${filterStatus}`, headers, rows);
+    toast.success(`Exported ${rows.length} announcements to CSV.`);
+  };
+
+  const handleExportAnnouncementsJSON = () => {
+    exportToJSON(`Announcements_Report_${filterStatus}`, filteredAnnouncements);
+    toast.success(`Exported ${filteredAnnouncements.length} announcements to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header bar */}
@@ -6760,13 +6931,23 @@ function AnnouncementsSection() {
             </span>
           </div>
         </div>
-        <button
-          onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shadow-lg shadow-[#C8922A]/20"
-        >
-          <Plus size={18} />
-          New Announcement
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <ExportDropdown
+            label="Export Announcements"
+            count={filteredAnnouncements.length}
+            disabled={loading || filteredAnnouncements.length === 0}
+            variant="secondary"
+            onExportCSV={handleExportAnnouncementsCSV}
+            onExportJSON={handleExportAnnouncementsJSON}
+          />
+          <button
+            onClick={handleAdd}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-white rounded-xl text-sm font-['Lato'] hover:opacity-90 transition-opacity shadow-lg shadow-[#C8922A]/20 cursor-pointer"
+          >
+            <Plus size={18} />
+            New Announcement
+          </button>
+        </div>
       </div>
 
       {/* Filter tabs */}
@@ -7798,6 +7979,17 @@ function MenuChangeRequestsSection() {
     return "bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30";
   };
 
+  const handleExportCSV = () => {
+    const { headers, rows } = transformMenuChangeRequestsForExport(filtered);
+    exportToCSV(`Menu_Change_Requests_${filterStatus}`, headers, rows);
+    toast.success(`Exported ${rows.length} menu change requests to CSV.`);
+  };
+
+  const handleExportJSON = () => {
+    exportToJSON(`Menu_Change_Requests_${filterStatus}`, filtered);
+    toast.success(`Exported ${filtered.length} menu change requests to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -7810,14 +8002,24 @@ function MenuChangeRequestsSection() {
             Review and process customer menu change requests
           </p>
         </div>
-        {pendingCount > 0 && (
-          <div className="flex items-center gap-2 bg-[#C8922A]/10 border border-[#C8922A]/30 px-4 py-2 rounded-full">
-            <Clock size={16} className="text-[#C8922A]" />
-            <span className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
-              {pendingCount} pending review
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {pendingCount > 0 && (
+            <div className="flex items-center gap-2 bg-[#C8922A]/10 border border-[#C8922A]/30 px-4 py-2 rounded-full">
+              <Clock size={16} className="text-[#C8922A]" />
+              <span className="text-xs font-['Lato'] font-semibold text-[#C8922A]">
+                {pendingCount} pending review
+              </span>
+            </div>
+          )}
+          <ExportDropdown
+            label="Export Requests"
+            count={filtered.length}
+            disabled={loading || filtered.length === 0}
+            variant="primary"
+            onExportCSV={handleExportCSV}
+            onExportJSON={handleExportJSON}
+          />
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -8323,6 +8525,17 @@ function UsersSection() {
     return Number(currentUser?.user_id) === Number(userId);
   };
 
+  const handleExportUsersCSV = () => {
+    const { headers, rows } = transformUsersForExport(users);
+    exportToCSV(`Users_Export_${filterRole}_${filterStatus}`, headers, rows);
+    toast.success(`Exported ${rows.length} users to CSV.`);
+  };
+
+  const handleExportUsersJSON = () => {
+    exportToJSON(`Users_Export_${filterRole}_${filterStatus}`, users);
+    toast.success(`Exported ${users.length} users to JSON.`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Banner & Title */}
@@ -8338,13 +8551,24 @@ function UsersSection() {
             View registered users, create and edit accounts, and manage active status.
           </p>
         </div>
-        <button
-          onClick={handleOpenAddModal}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity shadow-sm cursor-pointer shrink-0"
-        >
-          <UserPlus size={16} />
-          <span>Add New User</span>
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <ExportDropdown
+            label="Export Users"
+            count={users.length}
+            disabled={loading || users.length === 0}
+            variant="outline"
+            className="[&_button]:text-[#F5F0E8] [&_button]:border-white/30 [&_button]:hover:border-white [&_button]:hover:bg-white/10"
+            onExportCSV={handleExportUsersCSV}
+            onExportJSON={handleExportUsersJSON}
+          />
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C8922A] to-[#C4541A] text-[#F5F0E8] rounded-full text-sm font-['Lato'] font-semibold hover:opacity-90 transition-opacity shadow-sm cursor-pointer shrink-0"
+          >
+            <UserPlus size={16} />
+            <span>Add New User</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary Metric Cards */}
