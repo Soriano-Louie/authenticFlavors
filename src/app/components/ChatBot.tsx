@@ -202,7 +202,7 @@ const initialMessages: Message[] = [
   {
     id: 0,
     sender: "bot",
-    text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm your AI event planning assistant. Would you like to **Book an Event** or ask a question?",
+    text: "Welcome to Authentic Flavors by Chef Ramos! 🍽️ I'm **Chef RamBot**, your AI event planning assistant. Would you like to **Book an Event** or ask a question?",
     time: new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -991,7 +991,7 @@ export function ChatBot() {
               </div>
               <div className="min-w-0">
                 <p className="text-[#F5F0E8] text-sm font-['Playfair_Display'] font-semibold truncate">
-                  Chef Ramos Booking Assistant
+                  Chef RamBot
                 </p>
                 <p className="text-[#C8922A] text-xs flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse" />
