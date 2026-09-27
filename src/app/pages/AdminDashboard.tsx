@@ -3627,6 +3627,28 @@ function BookingsSection() {
     }
   };
 
+  // Is event date today (in Philippine timezone)?
+  const isEventToday = (eventDate: string) => {
+    if (!eventDate) return false;
+    try {
+      const phFormatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const todayPh = phFormatter.format(new Date());
+      const eventPh = eventDate.includes("T")
+        ? phFormatter.format(new Date(eventDate))
+        : eventDate.slice(0, 10);
+      return eventPh === todayPh;
+    } catch {
+      const today = new Date().toISOString().split("T")[0];
+      const eDate = new Date(eventDate).toISOString().split("T")[0];
+      return eDate === today;
+    }
+  };
+
   const handleSendReminder = async (paymentId: number) => {
     if (!accessToken) return;
     setRemindingId(paymentId);
@@ -3992,10 +4014,10 @@ function BookingsSection() {
               const isExpanded = expandedBookingId === booking.booking_id;
               const isPendingAction = actioningId === booking.booking_id;
               const canComplete =
-                (booking.booking_status === "Confirmed" ||
-                  booking.booking_status === "Reserved" ||
-                  booking.booking_status === "Pending") &&
-                isEventPast(booking.event_date);
+                booking.booking_status === "Confirmed" ||
+                booking.booking_status === "Reserved" ||
+                booking.booking_status === "Pending";
+              const isToday = isEventToday(booking.event_date);
 
               const priorPayments = payments.filter(
                 (p) =>
@@ -4093,11 +4115,17 @@ function BookingsSection() {
                             e.stopPropagation();
                             handleComplete(booking.booking_id);
                           }}
-                          disabled={isPendingAction || !hasDepositOrDownpaymentMade}
-                          title={
+                          disabled={
+                            isPendingAction ||
+                            !isToday ||
                             !hasDepositOrDownpaymentMade
-                              ? "Cannot mark as completed: No reservation fee or down payment was made."
-                              : undefined
+                          }
+                          title={
+                            !isToday
+                              ? "Cannot mark as completed: Event date is not today."
+                              : !hasDepositOrDownpaymentMade
+                                ? "Cannot mark as completed: No reservation fee or down payment was made."
+                                : "Mark this event as completed"
                           }
                           className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity cursor-pointer"
                         >
