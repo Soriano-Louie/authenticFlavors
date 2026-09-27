@@ -18,6 +18,7 @@ import {
   sendBookingConfirmedEmail,
   sendBookingRejectedEmail,
   sendBookingCancelledEmail,
+  sendAdminEventDayCancelledEmail,
   sendBookingRescheduledEmail,
   sendNewBookingAdminEmail,
 } from "../services/emailService.js";
@@ -628,7 +629,7 @@ async function generateUniqueBookingReference(connection, kind) {
   throw new Error("Unable to generate a unique booking reference.");
 }
 
-// Auto-complete past confirmed/reserved bookings
+// Auto-complete past confirmed/reserved/pending-with-receipt bookings
 // Uses the Philippine calendar day so events are only completed once the
 // Manila date has actually passed (MySQL CURDATE() runs on the session/UTC
 // clock, which can be a day behind/ahead).
@@ -637,10 +638,21 @@ export async function autoCompletePastBookings() {
 
   // Skip the UPDATE entirely (and its table scan) when nothing is due.
   const [due] = await pool.query(
-    `SELECT booking_id FROM bookings
-     WHERE booking_status IN (?, ?) AND event_date < ?
+    `SELECT b.booking_id FROM bookings b
+     WHERE b.event_date < ?
+       AND (
+         b.booking_status IN (?, ?)
+         OR (
+           b.booking_status = 'Pending'
+           AND EXISTS (
+             SELECT 1 FROM payments p
+             WHERE p.booking_id = b.booking_id
+               AND p.payment_status IN ('Paid', 'For_Verification')
+           )
+         )
+       )
      LIMIT 1`,
-    [...ACTIVE_BOOKING_STATUSES, todayStr],
+    [todayStr, ...ACTIVE_BOOKING_STATUSES],
   );
   if (due.length === 0) return;
 
@@ -654,17 +666,39 @@ export async function autoCompletePastBookings() {
     `UPDATE payments p
      JOIN bookings b ON p.booking_id = b.booking_id
      SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
-     WHERE b.booking_status IN (?, ?)
-       AND b.event_date < ?
+     WHERE b.event_date < ?
+       AND (
+         b.booking_status IN (?, ?)
+         OR (
+           b.booking_status = 'Pending'
+           AND EXISTS (
+             SELECT 1 FROM payments p2
+             WHERE p2.booking_id = b.booking_id
+               AND p2.payment_status IN ('Paid', 'For_Verification')
+           )
+         )
+       )
        AND p.payment_status IN ('Pending', 'Overdue')
        AND p.payment_type != 'CancellationCharge'`,
-    [...ACTIVE_BOOKING_STATUSES, todayStr],
+    [todayStr, ...ACTIVE_BOOKING_STATUSES],
   );
 
   await pool.query(
-    `UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
-     WHERE booking_status IN (?, ?) AND event_date < ?`,
-    [...ACTIVE_BOOKING_STATUSES, todayStr],
+    `UPDATE bookings b
+     SET b.booking_status = 'Completed', b.updated_at = CURRENT_TIMESTAMP
+     WHERE b.event_date < ?
+       AND (
+         b.booking_status IN (?, ?)
+         OR (
+           b.booking_status = 'Pending'
+           AND EXISTS (
+             SELECT 1 FROM payments p
+             WHERE p.booking_id = b.booking_id
+               AND p.payment_status IN ('Paid', 'For_Verification')
+           )
+         )
+       )`,
+    [todayStr, ...ACTIVE_BOOKING_STATUSES],
   );
 }
 
@@ -1103,24 +1137,25 @@ export async function completeBooking(req, res) {
 
     if (
       booking.booking_status !== "Confirmed" &&
-      booking.booking_status !== "Reserved"
+      booking.booking_status !== "Reserved" &&
+      booking.booking_status !== "Pending"
     ) {
       await connection.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
           message:
-            "Only reserved or confirmed bookings can be marked as completed.",
+            "Only pending, reserved, or confirmed bookings can be marked as completed.",
         },
       });
     }
 
-    // Check if at least one reservation fee or down payment was paid (or amount_paid > 0)
+    // Check if at least one reservation fee or down payment was paid or submitted for verification (or amount_paid > 0)
     const [paidDeposits] = await connection.query(
       `SELECT payment_id FROM payments 
        WHERE booking_id = ? 
          AND payment_type IN ('Reservation', 'DownPayment') 
-         AND payment_status = 'Paid' 
+         AND payment_status IN ('Paid', 'For_Verification') 
        LIMIT 1`,
       [bookingId],
     );
@@ -1138,13 +1173,13 @@ export async function completeBooking(req, res) {
         error: {
           code: "PAYMENT_REQUIRED",
           message:
-            "Cannot mark booking as completed: No reservation fee or down payment has been paid.",
+            "Cannot mark booking as completed: No reservation fee or down payment has been paid or submitted.",
         },
       });
     }
 
     const [updateResult] = await connection.query(
-      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved')",
+      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved', 'Pending')",
       [bookingId],
     );
 
@@ -1594,7 +1629,13 @@ export function calculateCancellationRefund(totalPrice, amountPaid, policyApplie
   const policy = policyApplied || "standard";
 
   let nonRefundableRetention = 0;
-  if (policy === "standard") {
+  if (
+    policy === "admin_event_day_cancellation" ||
+    policy === "full_refund"
+  ) {
+    // 100% full refund of all amounts paid (retention = 0)
+    nonRefundableRetention = 0;
+  } else if (policy === "standard") {
     // Non-refundable reservation fee is ₱5,000 (or total package price if smaller)
     nonRefundableRetention = Math.min(5000.0, total);
   } else if (policy === "5_days_penalty") {
@@ -2332,6 +2373,21 @@ export async function rescheduleBooking(req, res) {
 
     await connection.commit();
 
+    // Auto-complete or auto-cancel if the new event date has already passed
+    await autoCompletePastBookings().catch((err) =>
+      console.error("autoCompletePastBookings failed post-reschedule:", err),
+    );
+    await autoCancelUnpaidPastBookings().catch((err) =>
+      console.error("autoCancelUnpaidPastBookings failed post-reschedule:", err),
+    );
+
+    const [updatedStatusRows] = await pool.query(
+      "SELECT booking_status FROM bookings WHERE booking_id = ?",
+      [bookingId],
+    );
+    const finalBookingStatus =
+      updatedStatusRows[0]?.booking_status || booking.booking_status;
+
     const bookingRef =
       booking.booking_reference || `#BK${String(booking.booking_id).padStart(4, "0")}`;
 
@@ -2393,6 +2449,7 @@ export async function rescheduleBooking(req, res) {
       booking: {
         booking_id: bookingId,
         booking_reference: bookingRef,
+        booking_status: finalBookingStatus,
         event_date: newEventDate,
         start_time: startTime,
         original_event_date: originalDate,
@@ -2411,4 +2468,175 @@ export async function rescheduleBooking(req, res) {
     connection.release();
   }
 }
+
+// ──────────────────────────────────────────
+// Admin: Cancel booking on event day with 100% full refund & venue recommendations
+// ──────────────────────────────────────────
+export async function adminCancelEventDayBooking(req, res) {
+  const connection = await pool.getConnection();
+  try {
+    const bookingId = Number(req.params.id);
+    const { cancellation_reason } = req.body;
+
+    if (!cancellation_reason || !cancellation_reason.trim()) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Cancellation reason is required for event-day cancellation.",
+        },
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const [bookings] = await connection.query(
+      `SELECT b.*, p.package_name, u.email, u.first_name, u.last_name
+       FROM bookings b
+       JOIN packages p ON b.package_id = p.package_id
+       JOIN users u ON b.user_id = u.user_id
+       WHERE b.booking_id = ? LIMIT 1
+       FOR UPDATE`,
+      [bookingId],
+    );
+
+    if (bookings.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Booking not found." },
+      });
+    }
+
+    const booking = bookings[0];
+
+    if (
+      booking.booking_status === "Cancelled" ||
+      booking.booking_status === "Completed" ||
+      booking.booking_status === "Rejected"
+    ) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_STATE",
+          message: `Cannot cancel a booking that is already ${booking.booking_status.toLowerCase()}.`,
+        },
+      });
+    }
+
+    const eventDateStr = toPhilippineDateString(booking.event_date);
+    const todayStr = getPhilippineDateString();
+
+    // Verify it is on or after the event date in Philippine time
+    if (eventDateStr > todayStr) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "INVALID_DATE",
+          message: "Same-day event cancellation is only allowed on or after the event day.",
+        },
+      });
+    }
+
+    const policyApplied = "admin_event_day_cancellation";
+    const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
+    const refundableAmount = amountAlreadyPaid; // 100% full refund
+    const amountDue = 0; // No penalty or additional charge for client
+
+    // Update booking status
+    const [cancelUpdate] = await connection.query(
+      `UPDATE bookings 
+       SET booking_status = 'Cancelled',
+           cancellation_requested_at = CURRENT_TIMESTAMP,
+           cancellation_processed_at = CURRENT_TIMESTAMP,
+           cancellation_policy_applied = ?,
+           amount_due_on_cancellation = ?,
+           cancellation_notes = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
+      [policyApplied, amountDue, cancellation_reason.trim(), bookingId],
+    );
+
+    if (cancelUpdate.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: "Booking has already been processed by another request.",
+        },
+      });
+    }
+
+    // Cancel all unsettled/pending/overdue payments for this booking
+    await connection.query(
+      `UPDATE payments 
+       SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+       WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
+      [bookingId],
+    );
+
+    await connection.commit();
+
+    const refStr =
+      booking.booking_reference ||
+      `#BK${String(booking.booking_id).padStart(4, "0")}`;
+
+    logActivity({
+      actorUserId: Number(req.auth?.sub) || null,
+      actorRole: "Admin",
+      activityType: "booking_cancelled_admin_event_day",
+      action: `cancelled Booking #${refStr.replace(/^#/, "")} on event day (100% full refund)`,
+      bookingId: booking.booking_id,
+    }).catch((err) =>
+      console.error("Activity logging failed (booking_cancelled_admin_event_day):", err),
+    );
+
+    const formattedRefund = `₱${refundableAmount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+    })}`;
+
+    // Create in-site notification for the customer
+    createNotification({
+      userId: booking.user_id,
+      bookingId: booking.booking_id,
+      type: "booking_cancelled_admin_event_day",
+      title: "Event Cancelled by Admin",
+      message: `Your booking (${refStr}) scheduled for today has been cancelled by the administrator. You are entitled to a full 100% refund of ${formattedRefund} (settled directly with the owner). Please check your email for a list of recommended alternative venues.`,
+      link: `/dashboard?tab=events&bookingId=${booking.booking_id}`,
+      sendEmailFn: () =>
+        sendAdminEventDayCancelledEmail(
+          booking.email,
+          booking.first_name,
+          {
+            booking_reference: refStr,
+            event_date: eventDateStr,
+            package_name: booking.package_name,
+            amount_paid: amountAlreadyPaid,
+          },
+          cancellation_reason.trim(),
+        ),
+    }).catch((err) =>
+      console.error(
+        "Notification creation failed (booking_cancelled_admin_event_day):",
+        err,
+      ),
+    );
+
+    res.status(200).json({
+      message: "Event-day booking cancelled successfully. Full refund marked for offline settlement and alternative venue recommendations emailed to customer.",
+      booking_status: "Cancelled",
+      refundable_amount: refundableAmount,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Admin event-day cancellation failed:", error);
+    res.status(500).json({
+      error: {
+        code: "SERVER_ERROR",
+        message: "Failed to process event-day cancellation.",
+      },
+    });
+  } finally {
+    connection.release();
+  }
+}
+
 

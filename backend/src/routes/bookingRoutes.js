@@ -8,6 +8,7 @@ import {
   completeBooking,
   verifyBooking,
   rejectBooking,
+  adminCancelEventDayBooking,
   requestCancellation,
   getCancellationDetails,
   getRescheduleDetails,
@@ -81,4 +82,10 @@ bookingRouter.post(
   requireAuth,
   requireRole("Admin"),
   rejectBooking,
+);
+bookingRouter.post(
+  "/admin/bookings/:id/cancel-event-day",
+  requireAuth,
+  requireRole("Admin"),
+  adminCancelEventDayBooking,
 );

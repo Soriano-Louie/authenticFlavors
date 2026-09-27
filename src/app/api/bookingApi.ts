@@ -285,6 +285,28 @@ export function rejectBooking(
   );
 }
 
+export function adminCancelEventDayBooking(
+  accessToken: string,
+  bookingId: number,
+  cancellationReason: string,
+): Promise<{
+  message: string;
+  booking_status: string;
+  refundable_amount: number;
+}> {
+  return request<{
+    message: string;
+    booking_status: string;
+    refundable_amount: number;
+  }>(`/api/admin/bookings/${bookingId}/cancel-event-day`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ cancellation_reason: cancellationReason }),
+  });
+}
+
 // ──────────────────────────────────────────
 // Cancellation API functions
 // ──────────────────────────────────────────

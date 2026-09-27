@@ -6,6 +6,7 @@ import {
   completeBooking,
   getRescheduleDetails,
   rescheduleBooking,
+  adminCancelEventDayBooking,
   type Booking,
   type RescheduleDetails,
 } from "../api/bookingApi";
@@ -3257,6 +3258,59 @@ function BookingsSection() {
     }
   };
 
+  // Admin Event-Day Cancellation state & handlers
+  const [adminCancelEventDayTarget, setAdminCancelEventDayTarget] =
+    useState<Booking | null>(null);
+  const [adminEventDayCancelReason, setAdminEventDayCancelReason] =
+    useState("");
+  const [submittingAdminEventDayCancel, setSubmittingAdminEventDayCancel] =
+    useState(false);
+
+  const handleOpenAdminCancelEventDay = (booking: Booking) => {
+    setAdminCancelEventDayTarget(booking);
+    setAdminEventDayCancelReason("");
+  };
+
+  const handleCloseAdminCancelEventDay = () => {
+    setAdminCancelEventDayTarget(null);
+    setAdminEventDayCancelReason("");
+  };
+
+  const handleConfirmAdminCancelEventDay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken || !adminCancelEventDayTarget) return;
+    if (!adminEventDayCancelReason.trim()) {
+      toast.error("Please provide a reason for cancelling this event.");
+      return;
+    }
+
+    setSubmittingAdminEventDayCancel(true);
+    try {
+      const res = await adminCancelEventDayBooking(
+        accessToken,
+        adminCancelEventDayTarget.booking_id,
+        adminEventDayCancelReason.trim(),
+      );
+      toast.success(res.message || "Event cancelled successfully.");
+      handleCloseAdminCancelEventDay();
+      await fetchBookings();
+      await fetchOverduePayments();
+
+      if (
+        selectedSummaryBooking &&
+        selectedSummaryBooking.booking_id === adminCancelEventDayTarget.booking_id
+      ) {
+        setSelectedSummaryBooking(null);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to cancel event.",
+      );
+    } finally {
+      setSubmittingAdminEventDayCancel(false);
+    }
+  };
+
   const fetchVenueSetupRequests = useCallback(async (bookingIds: number[]) => {
     if (!accessToken) return;
     const map: Record<number, VenueSetupRequest> = {};
@@ -3535,6 +3589,28 @@ function BookingsSection() {
     const today = new Date().toISOString().split("T")[0];
     const eDate = new Date(eventDate).toISOString().split("T")[0];
     return eDate <= today;
+  };
+
+  // Is event date today or in the past (in Philippine timezone)?
+  const isEventTodayOrPast = (eventDate: string) => {
+    if (!eventDate) return false;
+    try {
+      const phFormatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const todayPh = phFormatter.format(new Date());
+      const eventPh = eventDate.includes("T")
+        ? phFormatter.format(new Date(eventDate))
+        : eventDate.slice(0, 10);
+      return eventPh <= todayPh;
+    } catch {
+      const today = new Date().toISOString().split("T")[0];
+      const eDate = new Date(eventDate).toISOString().split("T")[0];
+      return eDate <= today;
+    }
   };
 
   const handleSendReminder = async (paymentId: number) => {
@@ -3903,7 +3979,8 @@ function BookingsSection() {
               const isPendingAction = actioningId === booking.booking_id;
               const canComplete =
                 (booking.booking_status === "Confirmed" ||
-                  booking.booking_status === "Reserved") &&
+                  booking.booking_status === "Reserved" ||
+                  booking.booking_status === "Pending") &&
                 isEventPast(booking.event_date);
 
               const priorPayments = payments.filter(
@@ -3913,7 +3990,11 @@ function BookingsSection() {
               );
               const hasDepositOrDownpaymentMade =
                 priorPayments.length > 0
-                  ? priorPayments.some((p) => p.payment_status === "Paid")
+                  ? priorPayments.some(
+                      (p) =>
+                        p.payment_status === "Paid" ||
+                        p.payment_status === "For_Verification",
+                    )
                   : Number(booking.amount_paid || 0) > 0;
 
               return (
@@ -3978,6 +4059,19 @@ function BookingsSection() {
                           <Calendar size={13} className="text-[#C8922A]" /> Reschedule
                         </button>
                       )}
+                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
+                        isEventTodayOrPast(booking.event_date) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenAdminCancelEventDay(booking);
+                            }}
+                            title="Cancel this event on the scheduled date with 100% full refund"
+                            className="px-3 py-1.5 bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C4541A]/20 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <XCircle size={13} className="text-[#C4541A]" /> Cancel Event (Today)
+                          </button>
+                        )}
                       {canComplete && (
                         <button
                           onClick={(e) => {
@@ -5234,7 +5328,20 @@ function BookingsSection() {
               </div>
 
               {/* Modal Footer */}
-              <div className="bg-white p-4 border-t border-[#C8922A]/10 rounded-b-3xl flex justify-end">
+              <div className="bg-white p-4 border-t border-[#C8922A]/10 rounded-b-3xl flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  {["Pending", "Reserved", "Confirmed"].includes(b.booking_status) &&
+                    isEventTodayOrPast(b.event_date) && (
+                      <button
+                        onClick={() => {
+                          handleOpenAdminCancelEventDay(b);
+                        }}
+                        className="px-4 py-2 bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C4541A]/20 transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <XCircle size={14} /> Cancel Event (Today)
+                      </button>
+                    )}
+                </div>
                 <button
                   onClick={() => setSelectedSummaryBooking(null)}
                   className="px-6 py-2.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3D2217] transition-colors cursor-pointer"
@@ -5422,6 +5529,149 @@ function BookingsSection() {
                 {submittingMenuChangeReject ? "Rejecting..." : "Confirm Rejection"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Event-Day Cancellation Confirmation Modal */}
+      {adminCancelEventDayTarget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[65] flex items-center justify-center p-4">
+          <div className="bg-[#F5F0E8] rounded-3xl max-w-xl w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-[#C4541A]/30">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#8B3A1A] to-[#C4541A] p-5 rounded-t-3xl flex items-center justify-between text-white">
+              <div>
+                <h3 className="font-['Playfair_Display'] text-lg font-bold flex items-center gap-2">
+                  <XCircle size={22} className="text-[#F5F0E8]" />
+                  Cancel Event on Scheduled Date
+                </h3>
+                <p className="text-xs text-white/80 font-['Lato'] mt-0.5">
+                  {adminCancelEventDayTarget.booking_reference ||
+                    `#BK${String(adminCancelEventDayTarget.booking_id).padStart(4, "0")}`}{" "}
+                  · {adminCancelEventDayTarget.first_name}{" "}
+                  {adminCancelEventDayTarget.last_name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseAdminCancelEventDay}
+                disabled={submittingAdminEventDayCancel}
+                className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmAdminCancelEventDay} className="p-6 space-y-5">
+              {/* Event Details Summary */}
+              <div className="bg-white rounded-2xl p-4 border border-[#C8922A]/15 text-xs font-['Lato'] space-y-2">
+                <div className="flex justify-between items-center border-b border-[#2C1810]/10 pb-2">
+                  <span className="text-[#2C1810]/60">Event Date:</span>
+                  <span className="font-bold text-[#2C1810]">
+                    {formatDate(adminCancelEventDayTarget.event_date)} (Scheduled Date)
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#2C1810]/60">Package:</span>
+                  <span className="font-semibold text-[#2C1810]">
+                    {adminCancelEventDayTarget.package_name || "Custom Package"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#2C1810]/60">Total Package Price:</span>
+                  <span className="font-semibold text-[#2C1810]">
+                    {formatAmount(adminCancelEventDayTarget.total_price)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#2C1810]/60">Total Amount Paid:</span>
+                  <span className="font-bold text-[#7A8C5C]">
+                    {formatAmount(adminCancelEventDayTarget.amount_paid || 0)}
+                  </span>
+                </div>
+              </div>
+
+              {/* 100% Full Refund Notice Callout */}
+              <div className="bg-[#7A8C5C]/15 border-2 border-[#7A8C5C]/50 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">💰</span>
+                  <p className="font-['Playfair_Display'] font-bold text-[#2C1810] text-sm">
+                    100% Full Refund Owed:{" "}
+                    <span className="text-[#5C7A3E]">
+                      {formatAmount(adminCancelEventDayTarget.amount_paid || 0)}
+                    </span>
+                  </p>
+                </div>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/80 leading-relaxed">
+                  Because this cancellation is initiated by the business on the scheduled event day, the client is entitled to a <strong>full refund of all monies paid</strong> (including reservation fee and downpayment).
+                </p>
+                <div className="bg-white/90 rounded-xl p-3 border border-[#7A8C5C]/30 text-[11px] font-['Lato'] text-[#2C1810] leading-snug">
+                  <strong>⚠️ Offline Refund Notice:</strong> Automated online refunds are not processed through the web system. <strong>The refund must be settled directly between the owner and the customer</strong> (via direct bank transfer, GCash, or in person).
+                </div>
+              </div>
+
+              {/* Alternative Recommendations Notice Callout */}
+              <div className="bg-[#C8922A]/10 border border-[#C8922A]/30 rounded-2xl p-4 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={16} className="text-[#C8922A] shrink-0" />
+                  <p className="font-bold text-xs text-[#2C1810] font-['Lato']">
+                    Alternative Venue Recommendations
+                  </p>
+                </div>
+                <p className="text-xs text-[#2C1810]/80 font-['Lato'] leading-relaxed">
+                  The customer will receive an in-app alert informing them of the cancellation & full refund, and an email with <strong>4 recommended alternative booking venues</strong> in Taguig (<em>Lola Cafe, Ta'gig, La Luna Cafe, and Oro Plato</em>) with phone numbers, emails, Messenger, FB links, and Google Map locations.
+                </p>
+              </div>
+
+              {/* Cancellation Reason Input */}
+              <div>
+                <label className="block text-xs font-semibold text-[#2C1810] font-['Lato'] mb-1.5">
+                  Cancellation Reason <span className="text-[#C4541A]">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={adminEventDayCancelReason}
+                  onChange={(e) => setAdminEventDayCancelReason(e.target.value)}
+                  placeholder="Explain why the event is being cancelled on the event day (e.g. Unforeseen kitchen emergency, severe weather, urgent facility issue)..."
+                  className="w-full px-4 py-3 rounded-xl border border-[#2C1810]/20 bg-white text-[#2C1810] text-xs font-['Lato'] focus:outline-none focus:border-[#C4541A] resize-none"
+                />
+                <p className="text-[10px] text-[#2C1810]/50 mt-1 font-['Lato']">
+                  This reason will be included in the email notification sent directly to the customer.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCloseAdminCancelEventDay}
+                  disabled={submittingAdminEventDayCancel}
+                  className="px-5 py-2.5 bg-white text-[#2C1810] border border-[#2C1810]/20 rounded-full text-xs font-['Lato'] font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    submittingAdminEventDayCancel ||
+                    !adminEventDayCancelReason.trim()
+                  }
+                  className="px-6 py-2.5 bg-gradient-to-r from-[#C4541A] to-[#8B3A1A] text-white rounded-full text-xs font-['Lato'] font-bold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  {submittingAdminEventDayCancel ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Cancelling Event...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={14} />
+                      Confirm Event Cancellation
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

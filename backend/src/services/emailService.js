@@ -552,6 +552,185 @@ export async function sendBookingCancelledEmail(email, firstName, bookingDetails
   return sendBrevoEmail(email, `Booking Cancelled (${booking_reference || "Authentic Flavors"})`, html);
 }
 
+export async function sendAdminEventDayCancelledEmail(
+  email,
+  firstName,
+  bookingDetails,
+  reason,
+) {
+  const { booking_reference, event_date, package_name, amount_paid } =
+    bookingDetails || {};
+  const paidAmountNum = Number(amount_paid || 0);
+  const formattedRefund = `₱${paidAmountNum.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 16px;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 24px; margin: 0; font-weight: bold;">Authentic Flavors</h1>
+        <p style="color: #C8922A; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 0; font-weight: 600;">by Chef Ramos</p>
+      </div>
+
+      <div style="background-color: #ffffff; border-radius: 12px; padding: 28px; box-shadow: 0 4px 12px rgba(44, 24, 16, 0.05);">
+        <div style="border-bottom: 2px solid #C4541A; padding-bottom: 12px; margin-bottom: 16px;">
+          <h2 style="color: #C4541A; font-size: 20px; margin: 0; font-family: 'Georgia', serif;">Important Notice: Event Cancellation Today</h2>
+          <p style="color: #666; font-size: 13px; margin: 4px 0 0;">Booking Ref: <strong>${escapeHtml(booking_reference || "")}</strong></p>
+        </div>
+
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          Dear <strong>${escapeHtml(firstName || "Customer")}</strong>,
+        </p>
+
+        <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+          We deeply regret to inform you that your catering/event booking scheduled for today, <strong>${escapeHtml(event_date || "Today")}</strong>${package_name ? ` (${escapeHtml(package_name)})` : ""}, has been cancelled by our management due to unforeseen circumstances.
+        </p>
+
+        ${reason ? `
+        <div style="background-color: #FDF2E9; border-left: 4px solid #C4541A; padding: 14px 16px; margin: 16px 0; border-radius: 0 8px 8px 0;">
+          <p style="font-size: 13px; color: #8B3A1A; margin: 0; line-height: 1.5;">
+            <strong>Reason for Cancellation:</strong><br/>
+            ${escapeHtml(reason)}
+          </p>
+        </div>` : ""}
+
+        <!-- Full Refund Box -->
+        <div style="background-color: #F3F7EE; border: 1.5px solid #7A8C5C; border-radius: 10px; padding: 18px; margin: 20px 0;">
+          <div style="display: flex; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 18px; margin-right: 8px;">💰</span>
+            <h3 style="font-size: 16px; font-weight: bold; color: #2C1810; margin: 0;">
+              100% Full Refund Notice
+            </h3>
+          </div>
+          <p style="font-size: 14px; color: #2C1810; margin: 0 0 10px; line-height: 1.5;">
+            Because this cancellation was initiated by our management on your event day, you are entitled to a <strong>100% full refund</strong> of all payments made totaling:
+          </p>
+          <div style="background-color: #ffffff; border: 1px dashed #7A8C5C; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 12px;">
+            <span style="font-size: 22px; font-weight: bold; color: #5C7A3E;">${formattedRefund}</span>
+          </div>
+          <p style="font-size: 12px; color: #4A5A30; line-height: 1.5; margin: 0;">
+            <strong>Settlement Method:</strong> Please note that online gateway refunds are not handled automatically by our web portal. <strong>The restaurant owner will coordinate and settle this full refund directly with you</strong> (via direct bank transfer, GCash, or in person). Please keep your booking reference handy.
+          </p>
+        </div>
+
+        <!-- Venue Recommendations -->
+        <div style="margin-top: 28px; border-top: 1px solid #E5DCCF; pt: 20px;">
+          <div style="text-align: center; margin: 20px 0 16px;">
+            <span style="background-color: #C8922A; color: #ffffff; font-size: 11px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; display: inline-block;">
+              Alternative Venues
+            </span>
+            <h3 style="font-family: 'Georgia', serif; color: #2C1810; font-size: 18px; margin: 10px 0 4px;">
+              Recommended Places to Book Today
+            </h3>
+            <p style="color: #666; font-size: 12px; margin: 0;">
+              To help you secure an alternative venue immediately, here are nearby recommended places in Taguig:
+            </p>
+          </div>
+
+          <!-- Recommendation 1: LOLA CAFE -->
+          <div style="background-color: #FAF7F2; border: 1px solid #EADDC8; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+            <h4 style="color: #2C1810; font-size: 15px; margin: 0 0 6px; font-weight: bold;">
+              1. LOLA (Lola Cafe)
+            </h4>
+            <p style="font-size: 12px; color: #555; margin: 0 0 8px; line-height: 1.4;">
+              📍 <strong>Address:</strong> Ground Floor, Ayala Malls, Arca South, Taguig, 1630 Metro Manila
+            </p>
+            <div style="font-size: 12px; color: #444; line-height: 1.6;">
+              <div>📞 <strong>Telephone:</strong> <a href="tel:025012620" style="color: #C8922A; text-decoration: none;">(02) 501 2620</a></div>
+              <div>✉️ <strong>Email:</strong> <a href="mailto:localefoodgroupe@gmail.com" style="color: #C8922A; text-decoration: none;">localefoodgroupe@gmail.com</a></div>
+              <div>💬 <strong>Facebook:</strong> <a href="https://www.facebook.com/lolacafe.ph" target="_blank" style="color: #C4541A; text-decoration: underline;">fb.com/lolacafe.ph</a></div>
+              <div style="margin-top: 6px;">
+                <a href="https://maps.app.goo.gl/Xoq1bAnKJjmkwXn88?g_st=afm" target="_blank" style="display: inline-block; background-color: #2C1810; color: #F5F0E8; font-size: 11px; padding: 5px 12px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                  🗺️ View on Google Maps
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommendation 2: TA'GIG -->
+          <div style="background-color: #FAF7F2; border: 1px solid #EADDC8; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+            <h4 style="color: #2C1810; font-size: 15px; margin: 0 0 6px; font-weight: bold;">
+              2. TA'GIG Restaurant & Events
+            </h4>
+            <p style="font-size: 12px; color: #555; margin: 0 0 8px; line-height: 1.4;">
+              📍 <strong>Address:</strong> Near Medical Center Taguig, Pedro Cayetano Blvd. (former Levi Mariano Ave), Taguig
+            </p>
+            <div style="font-size: 12px; color: #444; line-height: 1.6;">
+              <div>📞 <strong>Phone:</strong> <a href="tel:09164887257" style="color: #C8922A; text-decoration: none;">0916 488 7257</a></div>
+              <div>✉️ <strong>Email:</strong> <a href="mailto:tagigrestobar@gmail.com" style="color: #C8922A; text-decoration: none;">tagigrestobar@gmail.com</a></div>
+              <div>💬 <strong>Facebook:</strong> <a href="https://www.facebook.com/TagigRestoBar" target="_blank" style="color: #C4541A; text-decoration: underline;">fb.com/TagigRestoBar</a></div>
+              <div style="margin-top: 6px;">
+                <a href="https://maps.app.goo.gl/SYriNTAr16S1wKz97" target="_blank" style="display: inline-block; background-color: #2C1810; color: #F5F0E8; font-size: 11px; padding: 5px 12px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                  🗺️ View on Google Maps
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommendation 3: LA LUNA CAFE -->
+          <div style="background-color: #FAF7F2; border: 1px solid #EADDC8; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+            <h4 style="color: #2C1810; font-size: 15px; margin: 0 0 6px; font-weight: bold;">
+              3. LA LUNA CAFE
+            </h4>
+            <p style="font-size: 12px; color: #555; margin: 0 0 8px; line-height: 1.4;">
+              📍 <strong>Address:</strong> 103 M. L. Quezon Avenue, Taguig, Metro Manila
+            </p>
+            <div style="font-size: 12px; color: #444; line-height: 1.6;">
+              <div>📞 <strong>Phone:</strong> <a href="tel:0282937655" style="color: #C8922A; text-decoration: none;">(02) 8293 7655</a> / <a href="tel:09690906137" style="color: #C8922A; text-decoration: none;">0969 090 6137</a></div>
+              <div>🌐 <strong>Website:</strong> <a href="https://lalunacafe.ph" target="_blank" style="color: #C8922A; text-decoration: underline;">lalunacafe.ph</a></div>
+              <div>✉️ <strong>Email:</strong> <a href="mailto:lalunacafe@lalunagroup.ph" style="color: #C8922A; text-decoration: none;">lalunacafe@lalunagroup.ph</a></div>
+              <div>💬 <strong>Facebook:</strong> <a href="https://www.facebook.com/LaLunaCafeTaguig" target="_blank" style="color: #C4541A; text-decoration: underline;">fb.com/LaLunaCafeTaguig</a></div>
+              <div style="margin-top: 6px;">
+                <a href="https://maps.app.goo.gl/BzfmLFwxt5WNMoA88" target="_blank" style="display: inline-block; background-color: #2C1810; color: #F5F0E8; font-size: 11px; padding: 5px 12px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                  🗺️ View on Google Maps
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommendation 4: ORO PLATO -->
+          <div style="background-color: #FAF7F2; border: 1px solid #EADDC8; border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+            <h4 style="color: #2C1810; font-size: 15px; margin: 0 0 6px; font-weight: bold;">
+              4. ORO PLATO
+            </h4>
+            <p style="font-size: 12px; color: #555; margin: 0 0 8px; line-height: 1.4;">
+              📍 <strong>Address:</strong> Phase 4, AFPOVAI, S. Ola, Corner Villamor St, Western Bicutan, Taguig, 1630 Metro Manila
+            </p>
+            <div style="font-size: 12px; color: #444; line-height: 1.6;">
+              <div>📞 <strong>Phone:</strong> <a href="tel:09285548787" style="color: #C8922A; text-decoration: none;">0928 554 8787</a></div>
+              <div>🌐 <strong>Website:</strong> <a href="https://oroplato.com" target="_blank" style="color: #C8922A; text-decoration: underline;">oroplato.com</a></div>
+              <div>✉️ <strong>Email:</strong> <a href="mailto:oroplato.gueridon@gmail.com" style="color: #C8922A; text-decoration: none;">oroplato.gueridon@gmail.com</a></div>
+              <div>💬 <strong>Facebook:</strong> <a href="https://www.facebook.com/oroplato.mnl" target="_blank" style="color: #C4541A; text-decoration: underline;">fb.com/oroplato.mnl</a></div>
+              <div style="margin-top: 6px;">
+                <a href="https://maps.app.goo.gl/c3osyy1fMp3QdaCG9" target="_blank" style="display: inline-block; background-color: #2C1810; color: #F5F0E8; font-size: 11px; padding: 5px 12px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                  🗺️ View on Google Maps
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin: 28px 0 10px;">
+          <a href="${env.frontendUrl}/dashboard?tab=events" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
+            View Booking Status
+          </a>
+        </div>
+      </div>
+
+      <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
+        &copy; ${new Date().getFullYear()} Authentic Flavors by Chef Ramos. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendBrevoEmail(
+    email,
+    `URGENT: Booking Cancelled Today - ${booking_reference || "Authentic Flavors"}`,
+    html,
+  );
+}
+
 export async function sendBookingRescheduledEmail(
   email,
   firstName,
