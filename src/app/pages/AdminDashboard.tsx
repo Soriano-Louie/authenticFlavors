@@ -3218,6 +3218,20 @@ function BookingsSection() {
     e.preventDefault();
     if (!accessToken || !adminRescheduleBooking || !adminNewDate) return;
     const [y, m, d] = adminNewDate.split("-").map(Number);
+    const todayPh = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    if (adminNewDate <= todayPh) {
+      toast.error(
+        "The new event date must be in the future (past or present dates are not allowed).",
+      );
+      return;
+    }
+
     if (new Date(y, m - 1, d).getDay() === 1) {
       toast.error("The store is closed on Mondays.");
       return;
@@ -4048,17 +4062,18 @@ function BookingsSection() {
                       >
                         <Eye size={13} /> View Summary
                       </button>
-                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAdminRescheduleOpen(booking);
-                          }}
-                          className="px-3 py-1.5 bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C8922A]/25 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Calendar size={13} className="text-[#C8922A]" /> Reschedule
-                        </button>
-                      )}
+                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
+                        !isEventTodayOrPast(booking.event_date) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAdminRescheduleOpen(booking);
+                            }}
+                            className="px-3 py-1.5 bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C8922A]/25 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Calendar size={13} className="text-[#C8922A]" /> Reschedule
+                          </button>
+                        )}
                       {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
                         isEventTodayOrPast(booking.event_date) && (
                           <button

@@ -1039,6 +1039,20 @@ export function CustomerDashboard() {
     e.preventDefault();
     if (!accessToken || !rescheduleBookingTarget || !newRescheduleDate) return;
 
+    const todayPh = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    if (newRescheduleDate <= todayPh) {
+      toast.error(
+        "The new event date must be in the future (past or present dates are not allowed).",
+      );
+      return;
+    }
+
     // Check Monday closure on client side
     const [y, m, d] = newRescheduleDate.split("-").map(Number);
     if (new Date(y, m - 1, d).getDay() === 1) {

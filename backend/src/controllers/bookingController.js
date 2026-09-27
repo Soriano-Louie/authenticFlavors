@@ -2198,9 +2198,12 @@ export async function rescheduleBooking(req, res) {
       });
     }
 
-    if (newEventDate < todayStr) {
+    if (newEventDate <= todayStr) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Event date cannot be in the past." },
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Rescheduled event date must be in the future (past or present dates are not allowed).",
+        },
       });
     }
 
@@ -2270,6 +2273,17 @@ export async function rescheduleBooking(req, res) {
       });
     }
 
+    const currentEventDateStr = toPhilippineDateString(booking.event_date);
+    if (currentEventDateStr <= todayStr) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: {
+          code: "RESCHEDULE_WINDOW_CLOSED",
+          message: "This event date has already arrived or passed and cannot be rescheduled.",
+        },
+      });
+    }
+
     // 2-Week Window Rule on the currently scheduled event date
     const daysUntilCurrentEvent = Number(booking.days_until_event);
     if (daysUntilCurrentEvent < 14) {
@@ -2283,7 +2297,6 @@ export async function rescheduleBooking(req, res) {
       });
     }
 
-    const currentEventDateStr = toPhilippineDateString(booking.event_date);
     if (newEventDate === currentEventDateStr) {
       await connection.rollback();
       return res.status(400).json({
