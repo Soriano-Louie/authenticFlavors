@@ -656,33 +656,7 @@ export async function autoCompletePastBookings() {
   );
   if (due.length === 0) return;
 
-  // Cancel any unpaid payments on bookings that are about to be completed so
-  // they never linger as Overdue with no valid action left (the admin
-  // overdue-cancel would reject an already-completed booking). Receipts still
-  // under admin review (For_Verification) are left untouched — they must not
-  // be silently destroyed; verifyReceipt already blocks approving them on a
-  // Completed booking.
-  await pool.query(
-    `UPDATE payments p
-     JOIN bookings b ON p.booking_id = b.booking_id
-     SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
-     WHERE b.event_date < ?
-       AND (
-         b.booking_status IN (?, ?)
-         OR (
-           b.booking_status = 'Pending'
-           AND EXISTS (
-             SELECT 1 FROM payments p2
-             WHERE p2.booking_id = b.booking_id
-               AND p2.payment_status IN ('Paid', 'For_Verification')
-           )
-         )
-       )
-       AND p.payment_status IN ('Pending', 'Overdue')
-       AND p.payment_type != 'CancellationCharge'`,
-    [todayStr, ...ACTIVE_BOOKING_STATUSES],
-  );
-
+  // 1. Mark eligible past bookings as 'Completed'
   await pool.query(
     `UPDATE bookings b
      SET b.booking_status = 'Completed', b.updated_at = CURRENT_TIMESTAMP
@@ -699,6 +673,20 @@ export async function autoCompletePastBookings() {
          )
        )`,
     [todayStr, ...ACTIVE_BOOKING_STATUSES],
+  );
+
+  // 2. Cancel any unpaid payments on bookings that are completed so they never
+  // linger as Overdue with no valid action left. Receipts still under admin review
+  // (For_Verification) are left untouched.
+  await pool.query(
+    `UPDATE payments p
+     JOIN bookings b ON p.booking_id = b.booking_id
+     SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
+     WHERE b.booking_status = 'Completed'
+       AND b.event_date < ?
+       AND p.payment_status IN ('Pending', 'Overdue')
+       AND p.payment_type != 'CancellationCharge'`,
+    [todayStr],
   );
 }
 
