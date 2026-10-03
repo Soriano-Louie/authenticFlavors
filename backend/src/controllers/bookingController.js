@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { applyBookingPaymentTotals } from "../services/bookingPaymentTotalsService.js";
 import { pool } from "../db/pool.js";
 import {
   getMinimumEventDate,
@@ -902,6 +903,8 @@ export async function getBookings(req, res) {
       }
     }
 
+    await applyBookingPaymentTotals(bookings);
+
     const bookingsWithDetails = bookings.map((booking) => {
       const refundInfo =
         booking.booking_status === "Cancelled"
@@ -1056,6 +1059,8 @@ export async function getAdminBookings(req, res) {
         else menuByBooking.set(row.booking_id, [entry]);
       }
     }
+
+    await applyBookingPaymentTotals(bookings);
 
     const bookingsWithDetails = bookings.map((booking) => {
       const refundInfo =
@@ -1957,6 +1962,8 @@ export async function getCancellationDetails(req, res) {
       });
     }
 
+    await applyBookingPaymentTotals([booking]);
+
     // Calculate days before event using Philippine calendar days
     const todayMs = new Date(
       `${getPhilippineDateString()}T00:00:00Z`,
@@ -2536,6 +2543,7 @@ export async function adminCancelEventDayBooking(req, res) {
       });
     }
 
+    await applyBookingPaymentTotals([booking], connection);
     const policyApplied = "admin_event_day_cancellation";
     const amountAlreadyPaid = parseFloat(booking.amount_paid || 0);
     const refundableAmount = amountAlreadyPaid; // 100% full refund
@@ -2545,6 +2553,8 @@ export async function adminCancelEventDayBooking(req, res) {
     const [cancelUpdate] = await connection.query(
       `UPDATE bookings 
        SET booking_status = 'Cancelled',
+           amount_paid = ?,
+           remaining_balance = ?,
            cancellation_requested_at = CURRENT_TIMESTAMP,
            cancellation_processed_at = CURRENT_TIMESTAMP,
            cancellation_policy_applied = ?,
@@ -2552,7 +2562,7 @@ export async function adminCancelEventDayBooking(req, res) {
            cancellation_notes = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
-      [policyApplied, amountDue, cancellation_reason.trim(), bookingId],
+      [amountAlreadyPaid, booking.remaining_balance, policyApplied, amountDue, cancellation_reason.trim(), bookingId],
     );
 
     if (cancelUpdate.affectedRows === 0) {
