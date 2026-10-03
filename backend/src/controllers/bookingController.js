@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { pool } from "../db/pool.js";
 import {
   getMinimumEventDate,
+  getBookingCompletionCutoff,
   getPhilippineDateString,
   toPhilippineDateString,
 } from "../utils/timezone.js";
@@ -630,11 +631,9 @@ async function generateUniqueBookingReference(connection, kind) {
 }
 
 // Auto-complete past confirmed/reserved/pending-with-receipt bookings
-// Uses the Philippine calendar day so events are only completed once the
-// Manila date has actually passed (MySQL CURDATE() runs on the session/UTC
-// clock, which can be a day behind/ahead).
+// Complete at 11:59 PM Philippine time, including missed runs after restart.
 export async function autoCompletePastBookings() {
-  const todayStr = getPhilippineDateString();
+  const todayStr = getBookingCompletionCutoff();
 
   // Skip the UPDATE entirely (and its table scan) when nothing is due.
   const [due] = await pool.query(
@@ -2594,35 +2593,39 @@ export async function adminCancelEventDayBooking(req, res) {
       minimumFractionDigits: 2,
     })}`;
 
-    // Create in-site notification for the customer
-    createNotification({
-      userId: booking.user_id,
-      bookingId: booking.booking_id,
-      type: "booking_cancelled_admin_event_day",
-      title: "Event Cancelled by Admin",
-      message: `Your booking (${refStr}) scheduled for today has been cancelled by the administrator. You are entitled to a full 100% refund of ${formattedRefund} (settled directly with the owner). Please check your email for a list of recommended alternative venues.`,
-      link: `/dashboard?tab=events&bookingId=${booking.booking_id}`,
-      sendEmailFn: () =>
-        sendAdminEventDayCancelledEmail(
-          booking.email,
-          booking.first_name,
-          {
-            booking_reference: refStr,
-            event_date: eventDateStr,
-            package_name: booking.package_name,
-            amount_paid: amountAlreadyPaid,
-          },
-          cancellation_reason.trim(),
-        ),
-    }).catch((err) =>
-      console.error(
-        "Notification creation failed (booking_cancelled_admin_event_day):",
-        err,
+    // Persist the alert and send the email independently: a notification storage
+    // failure must not prevent the recommendation email from being attempted.
+    const [, emailResult] = await Promise.allSettled([
+      createNotification({
+        userId: booking.user_id,
+        bookingId: booking.booking_id,
+        type: "booking_cancelled_admin_event_day",
+        title: "Event Cancelled by Admin",
+        message: `Your booking (${refStr}) has been cancelled by the administrator. You are entitled to a full 100% refund of ${formattedRefund} (settled directly with the owner). Alternative venue recommendations will be sent by email.`,
+        link: `/dashboard?tab=events&bookingId=${booking.booking_id}`,
+      }),
+      sendAdminEventDayCancelledEmail(
+        booking.email,
+        booking.first_name,
+        {
+          booking_reference: refStr,
+          event_date: eventDateStr,
+          package_name: booking.package_name,
+          amount_paid: amountAlreadyPaid,
+        },
+        cancellation_reason.trim(),
       ),
-    );
+    ]);
+    const emailSent = emailResult.status === "fulfilled";
+    if (!emailSent) {
+      console.error("Event-day recommendation email failed:", emailResult.reason);
+    }
 
     res.status(200).json({
-      message: "Event-day booking cancelled successfully. Full refund marked for offline settlement and alternative venue recommendations emailed to customer.",
+      message: emailSent
+        ? "Event-day booking cancelled successfully. Full refund marked for offline settlement and recommendation email accepted by the email provider."
+        : "Event-day booking cancelled successfully. Full refund marked for offline settlement, but the recommendation email failed to send. Please contact the customer with the alternative venues.",
+      email_status: emailSent ? "sent" : "failed",
       booking_status: "Cancelled",
       refundable_amount: refundableAmount,
     });

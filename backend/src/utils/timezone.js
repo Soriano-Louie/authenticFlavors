@@ -1,5 +1,14 @@
 const PH_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000;
 
+// Exclusive event-date cutoff: include today starting at 11:59 PM Manila time.
+export function getBookingCompletionCutoff(now = new Date()) {
+  const local = new Date(now.getTime() + PH_TIMEZONE_OFFSET_MS);
+  const today = local.toISOString().slice(0, 10);
+  return local.getUTCHours() === 23 && local.getUTCMinutes() === 59
+    ? addDaysToDateString(today, 1)
+    : today;
+}
+
 export function getPhilippineDateString() {
   const now = new Date(Date.now() + PH_TIMEZONE_OFFSET_MS);
   return now.toISOString().split("T")[0];

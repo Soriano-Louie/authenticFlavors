@@ -1,6 +1,7 @@
 export interface Payment {
   payment_id: number;
   booking_id: number;
+  booking_status?: string;
   payment_type:
     | "Reservation"
     | "DownPayment"

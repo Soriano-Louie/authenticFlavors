@@ -292,11 +292,13 @@ export function adminCancelEventDayBooking(
 ): Promise<{
   message: string;
   booking_status: string;
+  email_status: "sent" | "failed";
   refundable_amount: number;
 }> {
   return request<{
     message: string;
     booking_status: string;
+    email_status: "sent" | "failed";
     refundable_amount: number;
   }>(`/api/admin/bookings/${bookingId}/cancel-event-day`, {
     method: "POST",

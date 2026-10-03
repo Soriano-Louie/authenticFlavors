@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import cron from "node-cron";
 import { createNotification } from "./notificationService.js";
 import { ACTIVE_BOOKING_STATUSES } from "./availabilityService.js";
 import {
@@ -244,6 +245,12 @@ async function checkFeedbackReminders() {
 }
 
 export function startReminderScheduler() {
+  cron.schedule("59 23 * * *", () => {
+    autoCompletePastBookings().catch((err) =>
+      console.error("[ReminderScheduler] End-of-day completion failed:", err),
+    );
+  }, { timezone: "Asia/Manila" });
+
   // Run checks immediately on startup
   setTimeout(() => {
     autoCompletePastBookings().catch((err) =>

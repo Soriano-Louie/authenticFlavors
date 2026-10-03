@@ -3305,7 +3305,11 @@ function BookingsSection() {
         adminCancelEventDayTarget.booking_id,
         adminEventDayCancelReason.trim(),
       );
-      toast.success(res.message || "Event cancelled successfully.");
+      if (res.email_status === "failed") {
+        toast.warning(res.message);
+      } else {
+        toast.success(res.message || "Event cancelled successfully.");
+      }
       handleCloseAdminCancelEventDay();
       await fetchBookings();
       await fetchOverduePayments();
@@ -3664,8 +3668,14 @@ function BookingsSection() {
     }
   };
 
+  const canCancelOverdueBooking = (payment: Payment) => {
+    const status = bookings.find((booking) => booking.booking_id === payment.booking_id)
+      ?.booking_status ?? payment.booking_status;
+    return !!status && !["Completed", "Cancelled", "Rejected"].includes(status);
+  };
+
   const handleCancelBooking = async (payment: Payment) => {
-    if (!accessToken) return;
+    if (!accessToken || !canCancelOverdueBooking(payment)) return;
     try {
       // Enumerate exactly which payments will be cancelled before confirming
       // (review §2.4): only unsettled Pending/Overdue rows are targets;
@@ -3964,7 +3974,7 @@ function BookingsSection() {
                         ? "Sending..."
                         : "Send Reminder"}
                     </button>
-                    <button
+                    {canCancelOverdueBooking(payment) && <button
                       onClick={() => handleCancelBooking(payment)}
                       disabled={
                         cancellingId === payment.payment_id ||
@@ -3976,7 +3986,7 @@ function BookingsSection() {
                       cancellingItems.includes(payment.payment_id)
                         ? "Loading..."
                         : "Cancel Booking"}
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
