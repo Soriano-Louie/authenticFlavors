@@ -8,7 +8,10 @@ import {
   uploadToCloudinary,
   deleteFromCloudinary,
 } from "../services/cloudinaryService.js";
-import { ACTIVE_BOOKING_STATUSES } from "../services/availabilityService.js";
+import {
+  ACTIVE_BOOKING_STATUSES,
+  CALENDAR_SCHEDULE_STATUSES,
+} from "../services/availabilityService.js";
 
 export async function getPackages(_req, res) {
   try {
@@ -854,7 +857,7 @@ export async function getHomepageStatistics(_req, res) {
   }
 }
 
-// Upcoming events
+// Schedule calendar events (retains completed and confirmed bookings)
 export async function getUpcomingEvents(_req, res) {
   try {
     const [rows] = await pool.query(
@@ -869,19 +872,18 @@ export async function getUpcomingEvents(_req, res) {
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        JOIN event_types et ON b.event_type_id = et.event_type_id
-       WHERE b.booking_status IN (?, ?)
-       AND b.event_date >= CURDATE()
+       WHERE b.booking_status IN (?, ?, ?)
        ORDER BY b.event_date ASC, b.start_time ASC`,
-      ACTIVE_BOOKING_STATUSES,
+      CALENDAR_SCHEDULE_STATUSES,
     );
 
     res.status(200).json({ events: rows });
   } catch (error) {
-    console.error("Error fetching upcoming events:", error);
+    console.error("Error fetching schedule events:", error);
     res.status(500).json({
       error: {
         code: "DATABASE_ERROR",
-        message: "Failed to fetch upcoming events",
+        message: "Failed to fetch schedule events",
       },
     });
   }

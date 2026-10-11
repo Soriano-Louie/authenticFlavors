@@ -16,10 +16,16 @@ import { pool } from "../db/pool.js";
 
 export const OCCUPYING_BOOKING_STATUSES = ["Pending", "Reserved", "Confirmed"];
 
-// Statuses shown on the public "Private Dining Schedule" calendar. Pending
-// bookings hold the date but are not yet confirmed events, so they are not
-// shown to visitors.
+// Statuses of currently active/live bookings that hold a future date.
 export const ACTIVE_BOOKING_STATUSES = ["Reserved", "Confirmed"];
+
+// Statuses shown on the public "Private Dining Schedule" calendar.
+// Includes upcoming confirmed/reserved bookings as well as retained completed past events.
+export const CALENDAR_SCHEDULE_STATUSES = [
+  "Reserved",
+  "Confirmed",
+  "Completed",
+];
 
 // Maximum number of bookings allowed per day (strictly one booking per day).
 export const CAPACITY_PER_DAY = 1;

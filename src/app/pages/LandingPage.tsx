@@ -4,6 +4,8 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronDown,
   ChevronUp,
   Calendar,
@@ -349,27 +351,82 @@ export function LandingPage() {
     year: "numeric",
   });
 
-  const goToPreviousMonth = () => {
-    setCalendarMonth(
-      (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
+  const navigateMonth = (deltaMonths: number) => {
+    setCalendarMonth((current) => {
+      const nextM = new Date(
+        current.getFullYear(),
+        current.getMonth() + deltaMonths,
+        1,
+      );
+      const nextPrefix = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, "0")}`;
+      const eventInNewMonth = upcomingEvents.find((e) =>
+        e.event_date.startsWith(nextPrefix),
+      );
+      setSelectedDate(eventInNewMonth ? eventInNewMonth.event_date : "");
+      return nextM;
+    });
+  };
+
+  const navigateYear = (deltaYears: number) => {
+    setCalendarMonth((current) => {
+      const nextM = new Date(
+        current.getFullYear() + deltaYears,
+        current.getMonth(),
+        1,
+      );
+      const nextPrefix = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, "0")}`;
+      const eventInNewMonth = upcomingEvents.find((e) =>
+        e.event_date.startsWith(nextPrefix),
+      );
+      setSelectedDate(eventInNewMonth ? eventInNewMonth.event_date : "");
+      return nextM;
+    });
+  };
+
+  const goToToday = () => {
+    const now = new Date();
+    const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    setCalendarMonth(currentMonthDate);
+    const todayStr = toLocalDateStr(now);
+    const eventToday = upcomingEvents.find((e) => e.event_date === todayStr);
+    const nextFutureEvent = upcomingEvents.find((e) => e.event_date >= todayStr);
+    setSelectedDate(
+      eventToday?.event_date ?? (nextFutureEvent?.event_date || todayStr),
     );
   };
 
-  const goToNextMonth = () => {
-    setCalendarMonth(
-      (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
-    );
-  };
+  const isCurrentMonth =
+    calendarAnchorDate.getFullYear() === new Date().getFullYear() &&
+    calendarAnchorDate.getMonth() === new Date().getMonth();
 
-  // Get unique event dates from upcoming events
+  // Today's date string for comparisons
+  const todayKey = toLocalDateStr(new Date());
+
+  // Get unique event dates from scheduled events
   const eventDates = upcomingEvents.map((event) => event.event_date);
+
+  // Count upcoming future events and events in current viewing month
+  const upcomingCount = upcomingEvents.filter(
+    (event) => event.event_date >= todayKey,
+  ).length;
+
+  const currentMonthPrefix = `${calendarAnchorDate.getFullYear()}-${String(calendarAnchorDate.getMonth() + 1).padStart(2, "0")}`;
+  const monthEventsCount = upcomingEvents.filter((event) =>
+    event.event_date.startsWith(currentMonthPrefix),
+  ).length;
 
   const calendarDays = [
     ...Array.from({ length: firstDay }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => {
       const day = index + 1;
       const dateKey = `${calendarAnchorDate.getFullYear()}-${String(calendarAnchorDate.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const hasEvent = eventDates.includes(dateKey);
+      const dayEvents = upcomingEvents.filter((e) => e.event_date === dateKey);
+      const hasEvent = dayEvents.length > 0;
+      const isCompleted =
+        hasEvent &&
+        dayEvents.every(
+          (e) => e.booking_status === "Completed" || e.event_date < todayKey,
+        );
       const dayOfWeek = new Date(
         calendarAnchorDate.getFullYear(),
         calendarAnchorDate.getMonth(),
@@ -381,6 +438,7 @@ export function LandingPage() {
         day,
         dateKey,
         hasEvent,
+        isCompleted,
         isClosed,
         isBlocked,
         blockedReason: blockedDays[dateKey] ?? null,
@@ -392,9 +450,17 @@ export function LandingPage() {
   const selectedEvent = upcomingEvents.find(
     (event) => event.event_date === selectedDate,
   );
+  const selectedDayEvents = selectedDate
+    ? upcomingEvents.filter((event) => event.event_date === selectedDate)
+    : [];
+  const futureEvents = upcomingEvents.filter(
+    (event) => event.event_date >= todayKey,
+  );
+  const defaultEvents =
+    futureEvents.length > 0 ? futureEvents : upcomingEvents;
   const visibleEvents = showAllEvents
-    ? upcomingEvents
-    : upcomingEvents.slice(0, 3);
+    ? defaultEvents
+    : defaultEvents.slice(0, 3);
 
   return (
     <div>
@@ -750,25 +816,57 @@ export function LandingPage() {
                 </div>
                 <div className="shrink-0 rounded-full border border-[#C8922A]/30 px-3 py-1.5">
                   <span className="text-sm font-['Lato'] text-[#F5F0E8]">
-                    {upcomingEvents.length} upcoming
+                    {upcomingCount > 0
+                      ? `${upcomingCount} upcoming`
+                      : `${monthEventsCount} scheduled`}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  {!isCurrentMonth && (
+                    <button
+                      type="button"
+                      onClick={goToToday}
+                      className="text-xs font-['Lato'] px-2.5 py-1.5 rounded-full border border-[#C8922A]/40 text-[#F5F0E8] hover:bg-[#C8922A]/20 transition-colors cursor-pointer"
+                      title="Return to current month"
+                    >
+                      Today
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={goToPreviousMonth}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60"
-                    aria-label="Previous month"
+                    onClick={() => navigateYear(-1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60 cursor-pointer"
+                    aria-label="Previous year"
+                    title="Previous year"
                   >
-                    <ChevronLeft size={18} />
+                    <ChevronsLeft size={16} />
                   </button>
                   <button
                     type="button"
-                    onClick={goToNextMonth}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60"
-                    aria-label="Next month"
+                    onClick={() => navigateMonth(-1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60 cursor-pointer"
+                    aria-label="Previous month"
+                    title="Previous month"
                   >
-                    <ChevronRight size={18} />
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateMonth(1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60 cursor-pointer"
+                    aria-label="Next month"
+                    title="Next month"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateYear(1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#C8922A]/30 text-[#F5F0E8] transition-colors hover:bg-[#C8922A]/15 hover:border-[#C8922A]/60 cursor-pointer"
+                    aria-label="Next year"
+                    title="Next year"
+                  >
+                    <ChevronsRight size={16} />
                   </button>
                 </div>
               </div>
@@ -801,7 +899,9 @@ export function LandingPage() {
                                 : ""
                             }`
                           : day?.hasEvent
-                            ? "Private Event Scheduled"
+                            ? day.isCompleted
+                              ? "Completed Private Dining"
+                              : "Private Event Scheduled"
                             : "Available for Booking"
                     }
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
@@ -813,7 +913,9 @@ export function LandingPage() {
                             : day.isBlocked
                               ? "border-[#C4541A]/40 bg-[#C4541A]/15 text-[#C4541A] hover:border-[#C4541A] cursor-pointer"
                               : day.hasEvent
-                                ? "border-[#C8922A]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#C8922A]"
+                                ? day.isCompleted
+                                  ? "border-[#7A8C5C]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#7A8C5C]"
+                                  : "border-[#C8922A]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#C8922A]"
                                 : "border-transparent bg-white/5 text-[#F5F0E8]/70 hover:border-[#C8922A]/40 cursor-pointer"
                         : "border-transparent bg-transparent"
                     }`}
@@ -825,7 +927,13 @@ export function LandingPage() {
                         </span>
                         {day.hasEvent && !day.isClosed && !day.isBlocked && (
                           <span
-                            className={`mt-1 h-1.5 w-1.5 rounded-full ${day.isSelected ? "bg-[#F5F0E8]" : "bg-[#C8922A]"}`}
+                            className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                              day.isSelected
+                                ? "bg-[#F5F0E8]"
+                                : day.isCompleted
+                                  ? "bg-[#7A8C5C]"
+                                  : "bg-[#C8922A]"
+                            }`}
                           />
                         )}
                         {day.isBlocked && (
@@ -839,10 +947,14 @@ export function LandingPage() {
                 ))}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] tracking-wide text-[#F5F0E8]/50">
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] tracking-wide text-[#F5F0E8]/60">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#C8922A]" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#C8922A]" />
                   Reserved / Confirmed
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#7A8C5C]" />
+                  Completed
                 </span>
                 {Object.keys(blockedDays).length > 0 && (
                   <span className="inline-flex items-center gap-1.5">
@@ -853,7 +965,7 @@ export function LandingPage() {
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#F5F0E8]/20" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#F5F0E8]/20" />
                   Closed Mondays
                 </span>
               </div>
@@ -970,49 +1082,77 @@ export function LandingPage() {
                   })()}
 
                   <div className="mt-6 space-y-3">
-                    {(selectedDate
-                      ? upcomingEvents.filter(
-                          (event) => event.event_date === selectedDate,
-                        )
-                      : visibleEvents
-                    ).map((event) => (
-                      <button
-                        key={event.booking_id}
-                        type="button"
-                        onClick={() => setSelectedDate(event.event_date)}
-                        className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
-                              {event.package_name}
-                            </p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[#C8922A]">
-                              {event.event_type}
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
-                              {(() => {
-                                const dateObj = localDateFromStr(
-                                  event.event_date,
-                                );
-                                return dateObj.toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                });
-                              })()}
-                            </p>
-                            <p className="text-xs font-['Lato'] text-[#2C1810]/60">
-                              {to12HourFormat(event.start_time)}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-sm font-['Lato'] text-[#2C1810]/70">
-                          {event.number_of_pax} guests
+                    {selectedDate && selectedDayEvents.length === 0 ? (
+                      <div className="py-6 px-4 rounded-2xl bg-white/60 border border-[#C8922A]/15 text-center">
+                        <p className="text-sm font-['Lato'] text-[#2C1810]/70">
+                          {(() => {
+                            const dObj = localDateFromStr(selectedDate);
+                            const isMonday = dObj.getDay() === 1;
+                            const isBlocked = blockedDays[selectedDate] !== undefined;
+                            if (isMonday) return "Chef Ramos is closed on Mondays.";
+                            if (isBlocked)
+                              return `This date is unavailable${blockedDays[selectedDate] ? ` (${blockedDays[selectedDate]})` : ""}.`;
+                            if (selectedDate < todayKey)
+                              return "No private dining was scheduled on this date.";
+                            return "No private dining scheduled for this date — available for booking!";
+                          })()}
                         </p>
-                      </button>
-                    ))}
+                      </div>
+                    ) : (
+                      (selectedDate ? selectedDayEvents : visibleEvents).map((event) => (
+                        <button
+                          key={event.booking_id}
+                          type="button"
+                          onClick={() => setSelectedDate(event.event_date)}
+                          className={`w-full rounded-2xl border p-4 text-left transition-colors ${selectedDate === event.event_date ? "border-[#C8922A] bg-[#FFF8EF]" : "border-[#C8922A]/20 bg-white"}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-['Lato'] font-semibold text-[#2C1810]">
+                                  {event.package_name}
+                                </p>
+                                {event.booking_status === "Completed" ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-['Lato'] bg-[#7A8C5C]/15 text-[#5C7A3E] border border-[#7A8C5C]/30">
+                                    Completed
+                                  </span>
+                                ) : event.booking_status === "Confirmed" ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-['Lato'] bg-[#C8922A]/15 text-[#C8922A] border border-[#C8922A]/30">
+                                    Confirmed
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-['Lato'] bg-[#2C1810]/10 text-[#2C1810] border border-[#2C1810]/20">
+                                    Reserved
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-xs uppercase tracking-[0.24em] text-[#C8922A]">
+                                {event.event_type}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-['Playfair_Display'] text-[#2C1810]">
+                                {(() => {
+                                  const dateObj = localDateFromStr(
+                                    event.event_date,
+                                  );
+                                  return dateObj.toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                  });
+                                })()}
+                              </p>
+                              <p className="text-xs font-['Lato'] text-[#2C1810]/60">
+                                {to12HourFormat(event.start_time)}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-sm font-['Lato'] text-[#2C1810]/70">
+                            {event.number_of_pax} guests
+                          </p>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </>
               )}
