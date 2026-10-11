@@ -4636,98 +4636,145 @@ function BookingsSection() {
                 >
                   {/* Booking header row */}
                   <div
-                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-[#F5F0E8]/50 cursor-pointer hover:bg-[#F5F0E8] transition-colors"
+                    className="p-3.5 sm:p-4 bg-[#F5F0E8]/50 cursor-pointer hover:bg-[#F5F0E8] transition-colors"
                     onClick={() =>
                       setExpandedBookingId(
                         isExpanded ? null : booking.booking_id,
                       )
                     }
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
-                        {getBookingReference(booking)}
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium font-['Lato'] text-[#2C1810]">
-                          {booking.first_name} {booking.last_name}
-                        </p>
-                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">
-                          {booking.package_name} ·{" "}
-                          {formatDate(booking.event_date)}
-                        </p>
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      {/* Left info & mobile/tablet status & total */}
+                      <div className="flex items-start sm:items-center justify-between gap-3 min-w-0">
+                        <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-[#2C1810]/5 text-[#2C1810] rounded-md text-xs sm:text-sm font-bold font-['Lato'] tracking-wide">
+                            {getBookingReference(booking)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold font-['Lato'] text-[#2C1810] truncate">
+                              {booking.first_name} {booking.last_name}
+                            </p>
+                            <p className="text-xs text-[#2C1810]/60 font-['Lato'] truncate">
+                              {booking.package_name} ·{" "}
+                              {formatDate(booking.event_date)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* On mobile / tablet (<lg), show Total & Status badge here */}
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0 lg:hidden">
+                          <div className="text-right">
+                            <p className="text-[10px] sm:text-xs text-[#2C1810]/50 font-['Lato']">
+                              Total
+                            </p>
+                            <p className="text-xs sm:text-sm font-bold font-['Lato'] text-[#2C1810]">
+                              {formatAmount(booking.total_price)}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 sm:py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}
+                          >
+                            {booking.booking_status}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className="text-xs text-[#2C1810]/50 font-['Lato']">
-                          Total
-                        </p>
-                        <p className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
-                          {formatAmount(booking.total_price)}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}
-                      >
-                        {booking.booking_status}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSummaryBooking(booking);
-                        }}
-                        className="px-3 py-1.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3D2217] transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <Eye size={13} /> View Summary
-                      </button>
-                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
-                        !isEventTodayOrPast(booking.event_date) && (
+
+                      {/* Actions Toolbar & Desktop Total/Status */}
+                      <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2 pt-2.5 border-t border-[#C8922A]/10 lg:border-t-0 lg:pt-0">
+                        {/* On desktop (>=lg), show Total and Status here */}
+                        <div className="hidden lg:flex items-center gap-3 mr-2">
+                          <div className="text-right">
+                            <p className="text-xs text-[#2C1810]/50 font-['Lato']">
+                              Total
+                            </p>
+                            <p className="text-sm font-semibold font-['Lato'] text-[#2C1810]">
+                              {formatAmount(booking.total_price)}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-['Lato'] ${getStatusStyle(booking.booking_status)}`}
+                          >
+                            {booking.booking_status}
+                          </span>
+                        </div>
+
+                        {/* Buttons toolbar */}
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleAdminRescheduleOpen(booking);
+                              setSelectedSummaryBooking(booking);
                             }}
-                            className="px-3 py-1.5 bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C8922A]/25 transition-colors flex items-center gap-1 cursor-pointer"
+                            className="px-3 py-1.5 bg-[#2C1810] text-[#F5F0E8] rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#3D2217] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
                           >
-                            <Calendar size={13} className="text-[#C8922A]" /> Reschedule
+                            <Eye size={13} /> View Summary
                           </button>
-                        )}
-                      {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
-                        isEventTodayOrPast(booking.event_date) && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenAdminCancelEventDay(booking);
-                            }}
-                            title="Cancel this event on the scheduled date with 100% full refund"
-                            className="px-3 py-1.5 bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C4541A]/20 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <XCircle size={13} className="text-[#C4541A]" /> Cancel Event (Today)
-                          </button>
-                        )}
-                      {canComplete && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleComplete(booking.booking_id);
-                          }}
-                          disabled={
-                            isPendingAction ||
-                            !isToday ||
-                            !hasDepositOrDownpaymentMade
-                          }
-                          title={
-                            !isToday
-                              ? "Cannot mark as completed: Event date is not today."
-                              : !hasDepositOrDownpaymentMade
-                                ? "Cannot mark as completed: No reservation fee or down payment was made."
-                                : "Mark this event as completed"
-                          }
-                          className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity cursor-pointer"
-                        >
-                          {isPendingAction ? "Saving..." : "Mark Completed"}
-                        </button>
-                      )}
+                          {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
+                            !isEventTodayOrPast(booking.event_date) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAdminRescheduleOpen(booking);
+                                }}
+                                className="px-3 py-1.5 bg-[#C8922A]/15 text-[#2C1810] border border-[#C8922A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C8922A]/25 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                              >
+                                <Calendar size={13} className="text-[#C8922A]" /> Reschedule
+                              </button>
+                            )}
+                          {["Pending", "Reserved", "Confirmed"].includes(booking.booking_status) &&
+                            isEventTodayOrPast(booking.event_date) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenAdminCancelEventDay(booking);
+                                }}
+                                title="Cancel this event on the scheduled date with 100% full refund"
+                                className="px-3 py-1.5 bg-[#C4541A]/10 text-[#C4541A] border border-[#C4541A]/30 rounded-full text-xs font-['Lato'] font-semibold hover:bg-[#C4541A]/20 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                              >
+                                <XCircle size={13} className="text-[#C4541A]" /> Cancel Event (Today)
+                              </button>
+                            )}
+                          {canComplete && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleComplete(booking.booking_id);
+                              }}
+                              disabled={
+                                isPendingAction ||
+                                !isToday ||
+                                !hasDepositOrDownpaymentMade
+                              }
+                              title={
+                                !isToday
+                                  ? "Cannot mark as completed: Event date is not today."
+                                  : !hasDepositOrDownpaymentMade
+                                    ? "Cannot mark as completed: No reservation fee or down payment was made."
+                                    : "Mark this event as completed"
+                              }
+                              className="px-3 py-1.5 bg-gradient-to-r from-[#7A8C5C] to-[#5C7A3E] text-white rounded-full text-xs font-['Lato'] font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
+                            >
+                              <CheckCircle size={13} />
+                              {isPendingAction ? "Saving..." : "Mark Completed"}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Expand indicator chevron */}
+                        <div className="flex items-center gap-1 text-[#2C1810]/40 hover:text-[#2C1810] transition-colors ml-auto lg:ml-2 shrink-0">
+                          <span className="text-[11px] font-['Lato'] hidden sm:inline">
+                            {isExpanded ? "Less" : "Details"}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
