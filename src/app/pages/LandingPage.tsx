@@ -181,7 +181,7 @@ export function LandingPage() {
     fetchStatistics();
   }, []);
 
-  // Fetch upcoming events on mount
+  // Fetch the schedule, including retained completed bookings, on mount.
   useEffect(() => {
     // Only auto-open the calendar month once on the very first successful
     // fetch; subsequent focus re-syncs must not yank the user's month around.
@@ -459,7 +459,7 @@ export function LandingPage() {
   const defaultEvents =
     futureEvents.length > 0 ? futureEvents : upcomingEvents;
   const visibleEvents = showAllEvents
-    ? defaultEvents
+    ? upcomingEvents
     : defaultEvents.slice(0, 3);
 
   return (
@@ -797,9 +797,8 @@ export function LandingPage() {
               Calendar of Private Dining Schedules
             </h2>
             <p className="text-[#2C1810]/60 mt-3 max-w-xl mx-auto font-['Lato']">
-              Browse the next few dates and reserve a preferred slot for your
-              private celebration, including live music and in-restaurant
-              performances.
+              Browse upcoming private dining dates and completed celebrations.
+              Previously confirmed bookings stay on the calendar after completion.
             </p>
           </div>
 
@@ -890,7 +889,11 @@ export function LandingPage() {
                       setSelectedDate(day.dateKey);
                     }}
                     title={
-                      day?.isClosed
+                      day?.hasEvent
+                        ? day.isCompleted
+                          ? "Completed Private Dining"
+                          : "Private Event Scheduled"
+                        : day?.isClosed
                         ? "Closed on Mondays"
                         : day?.isBlocked
                           ? `Unavailable${
@@ -898,25 +901,21 @@ export function LandingPage() {
                                 ? ` — ${day.blockedReason}`
                                 : ""
                             }`
-                          : day?.hasEvent
-                            ? day.isCompleted
-                              ? "Completed Private Dining"
-                              : "Private Event Scheduled"
-                            : "Available for Booking"
+                          : "Available for Booking"
                     }
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day
                         ? day.isSelected
                           ? "border-2 border-[#C8922A] bg-[#C8922A]/30 text-[#F5F0E8] ring-2 ring-[#C8922A] font-bold shadow-lg scale-105 z-10"
+                          : day.hasEvent
+                            ? day.isCompleted
+                              ? "border-[#7A8C5C]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#7A8C5C]"
+                              : "border-[#C8922A]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#C8922A]"
                           : day.isClosed
                             ? "border-transparent bg-white/5 text-[#F5F0E8]/30 hover:border-[#C8922A]/40 cursor-pointer"
                             : day.isBlocked
                               ? "border-[#C4541A]/40 bg-[#C4541A]/15 text-[#C4541A] hover:border-[#C4541A] cursor-pointer"
-                              : day.hasEvent
-                                ? day.isCompleted
-                                  ? "border-[#7A8C5C]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#7A8C5C]"
-                                  : "border-[#C8922A]/40 bg-[#1A0E08]/80 text-[#F5F0E8] hover:border-[#C8922A]"
-                                : "border-transparent bg-white/5 text-[#F5F0E8]/70 hover:border-[#C8922A]/40 cursor-pointer"
+                              : "border-transparent bg-white/5 text-[#F5F0E8]/70 hover:border-[#C8922A]/40 cursor-pointer"
                         : "border-transparent bg-transparent"
                     }`}
                   >
@@ -925,7 +924,7 @@ export function LandingPage() {
                         <span className={day.isBlocked ? "line-through" : ""}>
                           {day.day}
                         </span>
-                        {day.hasEvent && !day.isClosed && !day.isBlocked && (
+                        {day.hasEvent && (
                           <span
                             className={`mt-1 h-1.5 w-1.5 rounded-full ${
                               day.isSelected
@@ -1025,14 +1024,14 @@ export function LandingPage() {
                   })()}
                   <div className="text-center">
                     <p className="text-[#2C1810]/60 text-sm font-['Lato']">
-                      No upcoming events scheduled.
+                      No private dining events scheduled.
                     </p>
                   </div>
                 </div>
               ) : (
                 <>
                   <p className="text-[11px] uppercase tracking-[0.3em] text-[#C8922A]">
-                    {selectedDate ? "Selected day" : "Upcoming events"}
+                    {selectedDate ? "Selected day" : showAllEvents ? "All events" : "Upcoming events"}
                   </p>
                   <h3 className="mt-2 font-['Playfair_Display'] text-2xl text-[#2C1810]">
                     {selectedDate
@@ -1160,7 +1159,10 @@ export function LandingPage() {
               {upcomingEvents.length > 3 && (
                 <button
                   type="button"
-                  onClick={() => setShowAllEvents((value) => !value)}
+                  onClick={() => {
+                    setShowAllEvents((value) => !value);
+                    setSelectedDate("");
+                  }}
                   className="mt-4 text-sm font-['Lato'] font-semibold text-[#C8922A] hover:text-[#C4541A] transition-colors"
                 >
                   {showAllEvents
