@@ -46,29 +46,69 @@ interface AuthContextValue {
   setAuth: (accessToken: string, user: AuthUser) => void;
 }
 
+const CACHED_USER_KEY = "af_cached_user";
+const HAS_SESSION_KEY = "af_has_session";
+
+function getCachedUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(CACHED_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasLocalSession(): boolean {
+  try {
+    return localStorage.getItem(HAS_SESSION_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveCachedUser(u: AuthUser | null) {
+  try {
+    if (u) {
+      localStorage.setItem(CACHED_USER_KEY, JSON.stringify(u));
+      localStorage.setItem(HAS_SESSION_KEY, "true");
+    } else {
+      localStorage.removeItem(CACHED_USER_KEY);
+      localStorage.removeItem(HAS_SESSION_KEY);
+    }
+  } catch {
+    // Ignore storage quota limits
+  }
+}
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUserState] = useState<AuthUser | null>(getCachedUser);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  // Only block if a previous active session is recorded; visitors bootstrap immediately (0ms)
+  const [isBootstrapping, setIsBootstrapping] = useState(() => hasLocalSession());
+
+  const setUser = useCallback((u: AuthUser | null) => {
+    setUserState(u);
+    saveCachedUser(u);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
+      // Single network roundtrip: refreshSession already returns both user & accessToken
       const refreshed = await refreshSession();
       setAccessToken(refreshed.accessToken);
-
-      const me = await getCurrentUser(refreshed.accessToken);
-      setUser(me.user);
-      return me.user;
+      setUser(refreshed.user);
+      return refreshed.user;
     } catch {
       setAccessToken(null);
       setUser(null);
       return null;
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
+    // If a session exists, refresh it; if not, do a silent background check without blocking
     refreshUser().finally(() => setIsBootstrapping(false));
   }, [refreshUser]);
 
@@ -89,14 +129,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         "authenticflavors:unauthorized",
         handleSessionExpired,
       );
-  }, []);
+  }, [setUser]);
 
   const login = useCallback(async (payload: LoginPayload) => {
     const result = await apiLogin(payload);
     setAccessToken(result.accessToken);
     setUser(result.user);
     return result.user;
-  }, []);
+  }, [setUser]);
 
   const register = useCallback(async (payload: RegisterPayload) => {
     await apiRegister(payload);
@@ -109,7 +149,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const setAuth = useCallback((token: string, user: AuthUser) => {
     setAccessToken(token);
     setUser(user);
-  }, []);
+  }, [setUser]);
 
   const logout = useCallback(async () => {
     try {
@@ -121,7 +161,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setAccessToken(null);
       setUser(null);
     }
-  }, [accessToken]);
+  }, [accessToken, setUser]);
 
   const updateProfile = useCallback(
     async (payload: UpdateProfilePayload) => {
