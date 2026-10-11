@@ -42,7 +42,8 @@ export interface Booking {
     | "Reserved"
     | "Confirmed"
     | "Completed"
-    | "Cancelled";
+    | "Cancelled"
+    | "Rejected";
   booking_summary: string | null; // JSON text containing receipt_path, rejection_reason, etc.
   total_price: number;
   amount_paid: number;

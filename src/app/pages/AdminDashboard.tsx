@@ -160,6 +160,8 @@ import {
   UserPlus,
   Phone,
   User,
+  ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 import {
   BarChart as RechartsBarChart,
@@ -172,6 +174,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 
 const SIDEBAR_LINKS = [
@@ -199,6 +202,13 @@ const PRIORITY_STYLES: Record<string, string> = {
   Medium: "bg-[#C8922A]/15 text-[#C8922A] border-[#C8922A]/30",
   Low: "bg-[#7A8C5C]/15 text-[#7A8C5C] border-[#7A8C5C]/30",
 };
+
+function isEventPast(eventDate: string): boolean {
+  if (!eventDate) return false;
+  const today = new Date().toISOString().split("T")[0];
+  const dateStr = eventDate.includes("T") ? eventDate.split("T")[0] : eventDate;
+  return dateStr < today;
+}
 
 export function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -461,7 +471,9 @@ export function AdminDashboard() {
 
         {/* Content Sections */}
         <div className="p-4 sm:p-6">
-          {activeSection === "overview" && <OverviewSection />}
+          {activeSection === "overview" && (
+            <OverviewSection onNavigate={navigate} />
+          )}
           {activeSection === "feedback" && (
             <FeedbackSection
               onGenerateReport={handleGenerateReport}
@@ -2308,10 +2320,15 @@ function MenuManagementSection() {
 }
 
 // Overview Section
-function OverviewSection() {
+interface OverviewSectionProps {
+  onNavigate?: (section: string) => void;
+}
+
+function OverviewSection({ onNavigate }: OverviewSectionProps) {
   const { accessToken } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [trendView, setTrendView] = useState<"revenue" | "bookings">("revenue");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -2325,119 +2342,686 @@ function OverviewSection() {
       .finally(() => setLoading(false));
   }, [accessToken]);
 
-  const statCards = [
-    {
-      icon: Users,
-      label: "Total Users",
-      value: stats ? String(stats.totalUsers) : "—",
-      color: "#C8922A",
-    },
-    {
-      icon: MessageSquare,
-      label: "Feedback Count",
-      value: stats ? String(stats.totalFeedback) : "—",
-      color: "#7A8C5C",
-    },
-    {
-      icon: "₱",
-      label: "Total Revenue",
-      value: stats
-        ? `₱${stats.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-        : "—",
-      color: "#7A8C5C",
-    },
-  ];
+  const formatCurrency = (val: number) =>
+    `₱${Number(val || 0).toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const statCards = stats
+    ? [
+        {
+          id: "revenue",
+          icon: DollarSign,
+          label: "Total Revenue",
+          value: formatCurrency(stats.totalRevenue),
+          subtext: "Settled payments",
+          color: "#7A8C5C",
+          bgLight: "#7A8C5C15",
+          onClick: () => onNavigate?.("bookings"),
+        },
+        {
+          id: "bookings",
+          icon: Calendar,
+          label: "Total Bookings",
+          value: String(stats.totalBookings ?? 0),
+          subtext: "All-time events",
+          color: "#C8922A",
+          bgLight: "#C8922A15",
+          onClick: () => onNavigate?.("bookings"),
+        },
+        {
+          id: "pending",
+          icon: Clock,
+          label: "Pending Approvals",
+          value: String(stats.pendingBookingsCount ?? 0),
+          subtext: "Requires admin action",
+          color: "#C4541A",
+          bgLight: "#C4541A15",
+          badge:
+            (stats.pendingBookingsCount ?? 0) > 0
+              ? `${stats.pendingBookingsCount} action needed`
+              : null,
+          onClick: () => onNavigate?.("bookings"),
+        },
+        {
+          id: "overdue",
+          icon: AlertTriangle,
+          label: "Overdue Payments",
+          value: String(stats.overduePaymentsCount ?? 0),
+          subtext: "Unsettled past due dates",
+          color: "#C4541A",
+          bgLight: "#C4541A15",
+          badge:
+            (stats.overduePaymentsCount ?? 0) > 0
+              ? `${stats.overduePaymentsCount} urgent`
+              : null,
+          onClick: () => onNavigate?.("bookings"),
+        },
+        {
+          id: "upcoming",
+          icon: CalendarX,
+          label: "Upcoming (7 Days)",
+          value: String(stats.upcomingEventsCount ?? 0),
+          subtext: "Events this week",
+          color: "#2C1810",
+          bgLight: "#2C181015",
+          onClick: () => onNavigate?.("calendar"),
+        },
+        {
+          id: "rating",
+          icon: Star,
+          label: "Average Rating",
+          value:
+            stats.averageRating && stats.averageRating > 0
+              ? `${stats.averageRating.toFixed(1)} ★`
+              : "No reviews",
+          subtext: `${stats.totalFeedback ?? 0} reviews received`,
+          color: "#C8922A",
+          bgLight: "#C8922A15",
+          onClick: () => onNavigate?.("feedback"),
+        },
+        {
+          id: "completed",
+          icon: CheckCircle,
+          label: "Events Hosted",
+          value: String(stats.eventsHostedCount ?? 0),
+          subtext: "Completed celebrations",
+          color: "#7A8C5C",
+          bgLight: "#7A8C5C15",
+          onClick: () => onNavigate?.("bookings"),
+        },
+        {
+          id: "users",
+          icon: Users,
+          label: "Registered Clients",
+          value: String(stats.totalUsers ?? 0),
+          subtext: "Customer accounts",
+          color: "#4A5568",
+          bgLight: "#4A556815",
+          onClick: () => onNavigate?.("users"),
+        },
+      ]
+    : [];
+
+  const CustomTrendTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0]?.payload;
+      return (
+        <div className="bg-[#1A0E08] text-[#F5F0E8] p-3 rounded-xl shadow-xl border border-[#C8922A]/30 text-xs font-['Lato']">
+          <p className="font-bold text-[#C8922A] mb-1 font-['Playfair_Display'] text-sm">
+            {data?.month || label}
+          </p>
+          <div className="space-y-1">
+            <p className="flex items-center justify-between gap-4">
+              <span className="text-[#F5F0E8]/70">Revenue:</span>
+              <span className="font-semibold text-[#7A8C5C]">
+                {formatCurrency(data?.revenue)}
+              </span>
+            </p>
+            <p className="flex items-center justify-between gap-4">
+              <span className="text-[#F5F0E8]/70">Bookings:</span>
+              <span className="font-semibold text-[#C8922A]">
+                {data?.bookings ?? 0} events
+              </span>
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomPieTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0];
+      return (
+        <div className="bg-[#1A0E08] text-[#F5F0E8] px-3 py-2 rounded-xl shadow-xl border border-[#C8922A]/30 text-xs font-['Lato']">
+          <p className="font-bold text-[#C8922A]">{data.name}</p>
+          <p className="text-[#F5F0E8]/80">{data.value} bookings</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const hasActionItems =
+    stats &&
+    ((stats.pendingBookingsCount ?? 0) > 0 ||
+      (stats.overduePaymentsCount ?? 0) > 0);
 
   return (
     <div className="space-y-6">
-      {/* Stats Grid */}
+      {/* Action Center Banner */}
+      {hasActionItems && (
+        <div className="bg-gradient-to-r from-[#C4541A]/10 via-[#C8922A]/10 to-transparent border border-[#C4541A]/30 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[#C4541A]/20 flex items-center justify-center shrink-0 mt-0.5 text-[#C4541A]">
+              <AlertTriangle size={22} />
+            </div>
+            <div>
+              <h3 className="font-['Playfair_Display'] text-[#2C1810] font-semibold text-base sm:text-lg">
+                Action Required: Pending Items
+              </h3>
+              <p className="text-xs sm:text-sm font-['Lato'] text-[#2C1810]/70 mt-0.5">
+                {(stats.pendingBookingsCount ?? 0) > 0 && (
+                  <span className="font-semibold text-[#C4541A]">
+                    {stats.pendingBookingsCount} booking request
+                    {(stats.pendingBookingsCount ?? 0) > 1 ? "s" : ""}{" "}
+                    awaiting review.{" "}
+                  </span>
+                )}
+                {(stats.overduePaymentsCount ?? 0) > 0 && (
+                  <span className="font-semibold text-[#C4541A]">
+                    {stats.overduePaymentsCount} payment
+                    {(stats.overduePaymentsCount ?? 0) > 1 ? "s" : ""}{" "}
+                    past due.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+            {(stats.pendingBookingsCount ?? 0) > 0 && (
+              <button
+                onClick={() => onNavigate?.("bookings")}
+                className="px-3.5 py-2 bg-[#C4541A] text-[#F5F0E8] rounded-xl text-xs font-['Lato'] font-semibold hover:bg-[#C4541A]/90 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                Review Bookings
+                <ArrowRight size={14} />
+              </button>
+            )}
+            {(stats.overduePaymentsCount ?? 0) > 0 && (
+              <button
+                onClick={() => onNavigate?.("bookings")}
+                className="px-3.5 py-2 bg-[#2C1810] text-[#F5F0E8] rounded-xl text-xs font-['Lato'] font-semibold hover:bg-[#2C1810]/90 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                Inspect Payments
+                <ArrowRight size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* KPI Cards Grid */}
       {loading ? (
-        <div className="flex justify-center py-10">
+        <div className="flex justify-center py-12">
           <Loader2 className="animate-spin text-[#C8922A]" size={32} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {statCards.map((stat, idx) => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {statCards.map((stat) => {
             const Icon = stat.icon;
             return (
               <div
-                key={idx}
-                className="bg-white rounded-2xl p-5 border border-[#C8922A]/10 shadow-sm hover:shadow-md transition-shadow"
+                key={stat.id}
+                onClick={stat.onClick}
+                className="bg-white rounded-2xl p-5 border border-[#C8922A]/15 shadow-sm hover:shadow-md transition-all cursor-pointer group hover:border-[#C8922A]/40"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${stat.color}15` }}
+                    className="w-11 h-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
+                    style={{ backgroundColor: stat.bgLight }}
                   >
-                    {typeof Icon === "string" ? (
-                      <span
-                        className="text-lg font-bold"
-                        style={{ color: stat.color }}
-                      >
-                        {Icon}
-                      </span>
-                    ) : (
-                      <Icon size={22} style={{ color: stat.color }} />
-                    )}
+                    <Icon size={22} style={{ color: stat.color }} />
                   </div>
+                  {stat.badge && (
+                    <span className="text-[10px] font-['Lato'] font-semibold px-2 py-0.5 rounded-full bg-[#C4541A]/15 text-[#C4541A] border border-[#C4541A]/30">
+                      {stat.badge}
+                    </span>
+                  )}
                 </div>
-                <p className="text-2xl font-['Lato'] font-semibold tracking-tight text-[#2C1810] mb-1">
+                <p className="text-2xl font-['Lato'] font-bold tracking-tight text-[#2C1810] mb-0.5">
                   {stat.value}
                 </p>
-                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
-                  {stat.label}
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-['Lato'] font-semibold text-[#2C1810]/70">
+                      {stat.label}
+                    </p>
+                    <p className="text-[11px] font-['Lato'] text-[#2C1810]/40">
+                      {stat.subtext}
+                    </p>
+                  </div>
+                  <ChevronRight
+                    size={15}
+                    className="text-[#2C1810]/30 group-hover:text-[#C8922A] group-hover:translate-x-0.5 transition-all"
+                  />
+                </div>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Quick Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-          <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
-            Sentiment Overview
-          </h3>
-          {loading ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="animate-spin text-[#C8922A]" size={26} />
+      {/* Analytics & Charts Row */}
+      {stats && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Monthly Revenue & Booking Trends (2 cols on large) */}
+          <div className="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm flex flex-col justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div>
+                <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                  Performance Trends (Last 6 Months)
+                </h3>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                  Monthly track record of gross revenue and catering bookings
+                </p>
+              </div>
+              <div className="flex items-center bg-[#F5F0E8] p-1 rounded-xl self-start sm:self-auto border border-[#C8922A]/20">
+                <button
+                  onClick={() => setTrendView("revenue")}
+                  className={`px-3 py-1 text-xs font-['Lato'] font-semibold rounded-lg transition-all ${
+                    trendView === "revenue"
+                      ? "bg-white text-[#2C1810] shadow-sm"
+                      : "text-[#2C1810]/60 hover:text-[#2C1810]"
+                  }`}
+                >
+                  Revenue (₱)
+                </button>
+                <button
+                  onClick={() => setTrendView("bookings")}
+                  className={`px-3 py-1 text-xs font-['Lato'] font-semibold rounded-lg transition-all ${
+                    trendView === "bookings"
+                      ? "bg-white text-[#2C1810] shadow-sm"
+                      : "text-[#2C1810]/60 hover:text-[#2C1810]"
+                  }`}
+                >
+                  Bookings
+                </button>
+              </div>
             </div>
-          ) : stats && stats.sentimentBreakdown.length > 0 ? (
-            <div className="space-y-3">
-              {stats.sentimentBreakdown.map((item) => (
-                <div key={item.sentiment}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-['Lato'] text-[#2C1810]">
-                      {item.sentiment}
-                    </span>
-                    <span className="text-sm font-['Lato'] text-[#2C1810]/60">
-                      {item.count} ({item.percentage}%)
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-[#EDE8DF] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${item.percentage}%`,
-                        backgroundColor: SENTIMENT_COLORS[item.sentiment],
-                      }}
+
+            <div className="w-full h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart
+                  data={stats.monthlyTrends || []}
+                  margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F0EBE1" vertical={false} />
+                  <XAxis
+                    dataKey="shortMonth"
+                    tick={{ fill: "#7A6E65", fontSize: 12, fontFamily: "Lato" }}
+                    axisLine={{ stroke: "#E2DCD5" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: "#7A6E65", fontSize: 11, fontFamily: "Lato" }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(val) =>
+                      trendView === "revenue"
+                        ? val >= 1000
+                          ? `₱${(val / 1000).toFixed(0)}k`
+                          : `₱${val}`
+                        : String(val)
+                    }
+                  />
+                  <Tooltip content={<CustomTrendTooltip />} />
+                  <Bar
+                    dataKey={trendView === "revenue" ? "revenue" : "bookings"}
+                    fill={trendView === "revenue" ? "#7A8C5C" : "#C8922A"}
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={48}
+                  />
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 mt-2 border-t border-[#C8922A]/10 text-xs font-['Lato'] text-[#2C1810]/60">
+              <span>
+                Total 6-mo Gross:{" "}
+                <strong className="text-[#2C1810]">
+                  {formatCurrency(
+                    (stats.monthlyTrends || []).reduce(
+                      (acc, curr) => acc + (curr.revenue || 0),
+                      0,
+                    ),
+                  )}
+                </strong>
+              </span>
+              <span>
+                Total 6-mo Bookings:{" "}
+                <strong className="text-[#2C1810]">
+                  {(stats.monthlyTrends || []).reduce(
+                    (acc, curr) => acc + (curr.bookings || 0),
+                    0,
+                  )}{" "}
+                  events
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Booking Status Breakdown (1 col) */}
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm flex flex-col justify-between">
+            <div>
+              <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                Booking Status Share
+              </h3>
+              <p className="text-xs font-['Lato'] text-[#2C1810]/50 mb-3">
+                Distribution of all-time booking states
+              </p>
+
+              <div className="w-full h-52 relative flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={(stats.bookingStatusBreakdown || []).map((s) => ({
+                        name: s.status,
+                        value: s.count,
+                        color: s.color,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={78}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {(stats.bookingStatusBreakdown || []).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomPieTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Center text */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-xl font-bold font-['Lato'] text-[#2C1810]">
+                    {stats.totalBookings ?? 0}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-[#2C1810]/50 font-['Lato']">
+                    Bookings
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Legend Pill List */}
+            <div className="pt-3 border-t border-[#C8922A]/10 space-y-1.5">
+              {(stats.bookingStatusBreakdown || []).slice(0, 5).map((item) => (
+                <div
+                  key={item.status}
+                  className="flex items-center justify-between text-xs font-['Lato']"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: item.color }}
                     />
+                    <span className="text-[#2C1810]">{item.status}</span>
                   </div>
+                  <span className="font-semibold text-[#2C1810]/70">
+                    {item.count}{" "}
+                    <span className="text-[10px] text-[#2C1810]/40 font-normal">
+                      (
+                      {stats.totalBookings > 0
+                        ? Math.round((item.count / stats.totalBookings) * 100)
+                        : 0}
+                      %)
+                    </span>
+                  </span>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-6">
-              No feedback data available yet.
-            </p>
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* Row 3: Most Popular Packages & Customer Sentiment */}
+      {stats && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Packages */}
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                  Most Booked Catering Packages
+                </h3>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                  Top performing food and celebration packages
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate?.("packages")}
+                className="text-xs text-[#C8922A] hover:underline font-['Lato'] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                View Packages
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            {stats.packagePopularity && stats.packagePopularity.length > 0 ? (
+              <div className="space-y-3.5">
+                {stats.packagePopularity.map((pkg, idx) => {
+                  const maxCount = Math.max(
+                    ...stats.packagePopularity!.map((p) => p.bookingCount),
+                    1,
+                  );
+                  const pct = Math.round((pkg.bookingCount / maxCount) * 100);
+                  return (
+                    <div key={pkg.packageId} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs font-['Lato']">
+                        <span className="font-semibold text-[#2C1810] flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-[#C8922A]/15 text-[#C8922A] flex items-center justify-center text-[10px] font-bold">
+                            #{idx + 1}
+                          </span>
+                          {pkg.packageName}
+                        </span>
+                        <div className="flex items-center gap-3 text-[#2C1810]/60">
+                          <span>{pkg.bookingCount} bookings</span>
+                          <span className="font-semibold text-[#7A8C5C]">
+                            {formatCurrency(pkg.totalRevenue)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full h-2 bg-[#EDE8DF] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#C8922A] to-[#C4541A] transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-8">
+                No package booking data recorded yet.
+              </p>
+            )}
+          </div>
+
+          {/* Sentiment Overview */}
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                  Client Sentiment Overview
+                </h3>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                  AI analysis of post-event customer feedback
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate?.("feedback")}
+                className="text-xs text-[#C8922A] hover:underline font-['Lato'] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                Deep Analysis
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            {stats.sentimentBreakdown && stats.sentimentBreakdown.length > 0 ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {stats.sentimentBreakdown.map((item) => (
+                    <div
+                      key={item.sentiment}
+                      className="rounded-xl p-3 border text-center"
+                      style={{
+                        backgroundColor: `${SENTIMENT_COLORS[item.sentiment] || "#C8922A"}10`,
+                        borderColor: `${SENTIMENT_COLORS[item.sentiment] || "#C8922A"}30`,
+                      }}
+                    >
+                      <p
+                        className="text-xl font-bold font-['Lato']"
+                        style={{ color: SENTIMENT_COLORS[item.sentiment] || "#C8922A" }}
+                      >
+                        {item.percentage}%
+                      </p>
+                      <p className="text-xs font-semibold font-['Lato'] text-[#2C1810]">
+                        {item.sentiment}
+                      </p>
+                      <p className="text-[11px] font-['Lato'] text-[#2C1810]/50">
+                        {item.count} reviews
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2.5 pt-2">
+                  {stats.sentimentBreakdown.map((item) => (
+                    <div key={item.sentiment}>
+                      <div className="flex items-center justify-between text-xs font-['Lato'] mb-1">
+                        <span className="text-[#2C1810] font-semibold">{item.sentiment}</span>
+                        <span className="text-[#2C1810]/60">
+                          {item.count} ({item.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-[#EDE8DF] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${item.percentage}%`,
+                            backgroundColor: SENTIMENT_COLORS[item.sentiment] || "#C8922A",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-8">
+                No feedback data available yet.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Row 4: Upcoming Events This Week & Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Upcoming Events Agenda Preview */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                  Upcoming Events (Next 7-14 Days)
+                </h3>
+                <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                  Quick schedule snapshot for catering preparation
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate?.("calendar")}
+                className="text-xs text-[#C8922A] hover:underline font-['Lato'] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                Full Calendar
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            {stats?.upcomingEventsPreview && stats.upcomingEventsPreview.length > 0 ? (
+              <div className="divide-y divide-[#C8922A]/10">
+                {stats.upcomingEventsPreview.map((ev) => {
+                  const statusColors: Record<string, string> = {
+                    Confirmed: "bg-[#7A8C5C]/15 text-[#7A8C5C] border-[#7A8C5C]/30",
+                    Reserved: "bg-[#C8922A]/15 text-[#C8922A] border-[#C8922A]/30",
+                    Pending: "bg-[#C4541A]/15 text-[#C4541A] border-[#C4541A]/30",
+                  };
+                  return (
+                    <div
+                      key={ev.booking_id}
+                      onClick={() => onNavigate?.("bookings")}
+                      className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-3 hover:bg-[#F5F0E8]/50 px-2 rounded-xl transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-[#EDE8DF] flex flex-col items-center justify-center text-center shrink-0 border border-[#C8922A]/20">
+                          <span className="text-[10px] uppercase font-bold text-[#C8922A] leading-tight">
+                            {new Date(ev.event_date).toLocaleDateString("en-US", {
+                              month: "short",
+                            })}
+                          </span>
+                          <span className="text-sm font-bold text-[#2C1810] leading-none">
+                            {new Date(ev.event_date).getDate()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-xs sm:text-sm font-semibold font-['Lato'] text-[#2C1810] group-hover:text-[#C8922A] transition-colors">
+                            {ev.contact_name}
+                          </p>
+                          <p className="text-[11px] font-['Lato'] text-[#2C1810]/60">
+                            {ev.package_name} • {ev.number_of_pax} pax
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span
+                          className={`inline-block text-[10px] font-semibold font-['Lato'] px-2 py-0.5 rounded-full border ${
+                            statusColors[ev.booking_status] ||
+                            "bg-stone-100 text-stone-600 border-stone-200"
+                          }`}
+                        >
+                          {ev.booking_status}
+                        </span>
+                        <p className="text-[11px] font-['Lato'] text-[#2C1810]/50 mt-1">
+                          {ev.start_time ? ev.start_time.slice(0, 5) : "TBD"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm font-['Lato'] text-[#2C1810]/50 text-center py-8">
+                No events scheduled within the upcoming 14 days.
+              </p>
+            )}
+          </div>
+          <div className="pt-3 border-t border-[#C8922A]/10 mt-3 text-right">
+            <button
+              onClick={() => onNavigate?.("bookings")}
+              className="text-xs text-[#2C1810]/70 hover:text-[#C8922A] font-['Lato'] font-semibold inline-flex items-center gap-1 cursor-pointer"
+            >
+              Manage all bookings <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-[#C8922A]/10">
-          <h3 className="text-lg font-['Playfair_Display'] text-[#2C1810] mb-4">
-            Recent Activity
-          </h3>
+        {/* Recent Activity */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#C8922A]/15 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-['Playfair_Display'] font-semibold text-[#2C1810]">
+                Recent System Activity
+              </h3>
+              <p className="text-xs font-['Lato'] text-[#2C1810]/50">
+                Latest customer actions and administrator events
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigate?.("activity")}
+              className="text-xs text-[#C8922A] hover:underline font-['Lato'] font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              View All
+              <ChevronRight size={14} />
+            </button>
+          </div>
           <RecentActivityList limit={5} />
         </div>
       </div>

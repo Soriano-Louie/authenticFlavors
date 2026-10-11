@@ -35,6 +35,11 @@ import {
   applyDiscount,
   discountAmount,
 } from "../services/promotionService.js";
+import {
+  getEventsHostedCount,
+  getAverageRating,
+} from "../services/statisticsService.js";
+import { autoUpdateOverduePayments } from "./paymentController.js";
 
 // Booking lead-time window (in Philippine days) required before an event.
 const MIN_EVENT_LEAD_DAYS = 14;
@@ -1368,52 +1373,194 @@ export async function verifyBooking(req, res) {
   }
 }
 
-// Admin dashboard stats (Total Users, Total Feedback, Total Revenue, Sentiment Breakdown)
+// Admin dashboard stats (Total Users, Total Feedback, Total Revenue, KPIs, Status Distribution, Trends, Packages)
 export async function getAdminStats(req, res) {
   try {
-    const [[{ total: totalUsers }]] = await pool.query(
-      "SELECT COUNT(*) AS total FROM users WHERE role = 'Customer'",
-    );
-    const [[{ total: totalFeedback }]] = await pool.query(
-      "SELECT COUNT(*) AS total FROM feedback",
-    );
-    const [[{ total: totalRevenue }]] = await pool.query(
-      "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_status = 'Paid'",
-    );
+    // Ensure overdue statuses are updated first
+    try {
+      await autoUpdateOverduePayments();
+    } catch (e) {
+      console.warn("Auto-update overdue payments warning:", e);
+    }
 
-    // Sentiment breakdown from analyzed feedback
-    const [sentimentRows] = await pool.query(
-      `SELECT 
-        sentiment_status AS sentiment,
-        COUNT(*) AS count
-       FROM feedback 
-       WHERE sentiment_status IN ('Positive', 'Neutral', 'Negative')
-       GROUP BY sentiment_status`,
-    );
+    const [
+      [[{ total: totalUsers }]],
+      [[{ total: totalFeedback }]],
+      [[{ total: totalRevenue }]],
+      [[{ total: totalBookings }]],
+      [[{ total: pendingBookingsCount }]],
+      [[{ total: overduePaymentsCount }]],
+      [[{ total: upcomingEventsCount }]],
+      [statusRows],
+      [pkgRows],
+      [sentimentRows],
+      [revenueMonthRows],
+      [bookingMonthRows],
+      [upcomingEventsRows],
+      eventsHostedCount,
+      averageRating,
+    ] = await Promise.all([
+      pool.query("SELECT COUNT(*) AS total FROM users WHERE role = 'Customer'"),
+      pool.query("SELECT COUNT(*) AS total FROM feedback"),
+      pool.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_status = 'Paid'"),
+      pool.query("SELECT COUNT(*) AS total FROM bookings"),
+      pool.query("SELECT COUNT(*) AS total FROM bookings WHERE booking_status = 'Pending'"),
+      pool.query("SELECT COUNT(*) AS total FROM payments WHERE payment_status = 'Overdue' AND payment_type != 'CancellationCharge'"),
+      pool.query("SELECT COUNT(*) AS total FROM bookings WHERE event_date >= CURDATE() AND event_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND booking_status NOT IN ('Cancelled', 'Rejected')"),
+      pool.query(`
+        SELECT 
+          booking_status AS status,
+          COUNT(*) AS count
+        FROM bookings
+        GROUP BY booking_status
+        ORDER BY count DESC
+      `),
+      pool.query(`
+        SELECT 
+          p.package_id,
+          p.package_name AS packageName,
+          COUNT(b.booking_id) AS bookingCount,
+          COALESCE(SUM(b.total_price), 0) AS totalRevenue
+        FROM packages p
+        LEFT JOIN bookings b ON p.package_id = b.package_id AND b.booking_status NOT IN ('Cancelled', 'Rejected')
+        GROUP BY p.package_id, p.package_name
+        ORDER BY bookingCount DESC, totalRevenue DESC
+        LIMIT 5
+      `),
+      pool.query(`
+        SELECT 
+          sentiment_status AS sentiment,
+          COUNT(*) AS count
+        FROM feedback 
+        WHERE sentiment_status IN ('Positive', 'Neutral', 'Negative')
+        GROUP BY sentiment_status
+      `),
+      pool.query(`
+        SELECT 
+          DATE_FORMAT(COALESCE(paid_at, created_at), '%Y-%m') AS monthKey,
+          COALESCE(SUM(amount), 0) AS revenue
+        FROM payments
+        WHERE payment_status = 'Paid'
+          AND COALESCE(paid_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+        GROUP BY monthKey
+        ORDER BY monthKey ASC
+      `),
+      pool.query(`
+        SELECT 
+          DATE_FORMAT(created_at, '%Y-%m') AS monthKey,
+          COUNT(*) AS bookings
+        FROM bookings
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+        GROUP BY monthKey
+        ORDER BY monthKey ASC
+      `),
+      pool.query(`
+        SELECT 
+          b.booking_id,
+          b.booking_reference,
+          b.ai_booking_reference,
+          b.contact_name,
+          b.event_date,
+          b.start_time,
+          b.number_of_pax,
+          b.booking_status,
+          b.total_price,
+          p.package_name
+        FROM bookings b
+        LEFT JOIN packages p ON b.package_id = p.package_id
+        WHERE b.event_date >= CURDATE()
+          AND b.booking_status NOT IN ('Cancelled', 'Rejected')
+        ORDER BY b.event_date ASC, b.start_time ASC
+        LIMIT 5
+      `),
+      getEventsHostedCount().catch(() => 0),
+      getAverageRating().catch(() => null),
+    ]);
 
-    // Total analyzed feedback for percentage calculation
-    const totalAnalyzed = sentimentRows.reduce((sum, r) => sum + r.count, 0);
-    const sentimentBreakdown = sentimentRows.map((r) => ({
+    // Build continuous 6-month array for monthly trends
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const now = new Date();
+    const monthlyTrends = [];
+    const revMap = new Map((revenueMonthRows || []).map((r) => [r.monthKey, parseFloat(r.revenue) || 0]));
+    const bkMap = new Map((bookingMonthRows || []).map((r) => [r.monthKey, parseInt(r.bookings, 10) || 0]));
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const key = `${yyyy}-${mm}`;
+      const label = `${monthNames[d.getMonth()]} ${yyyy}`;
+      monthlyTrends.push({
+        month: label,
+        shortMonth: monthNames[d.getMonth()],
+        monthKey: key,
+        revenue: revMap.get(key) || 0,
+        bookings: bkMap.get(key) || 0,
+      });
+    }
+
+    // Sentiment breakdown
+    const totalAnalyzed = (sentimentRows || []).reduce((sum, r) => sum + r.count, 0);
+    let sentimentBreakdown = (sentimentRows || []).map((r) => ({
       sentiment: r.sentiment,
       count: r.count,
-      percentage:
-        totalAnalyzed > 0 ? Math.round((r.count / totalAnalyzed) * 100) : 0,
+      percentage: totalAnalyzed > 0 ? Math.round((r.count / totalAnalyzed) * 100) : 0,
     }));
-
-    // If no analyzed feedback exists, provide zeros
     if (sentimentBreakdown.length === 0) {
-      sentimentBreakdown.push(
+      sentimentBreakdown = [
         { sentiment: "Positive", count: 0, percentage: 0 },
         { sentiment: "Neutral", count: 0, percentage: 0 },
         { sentiment: "Negative", count: 0, percentage: 0 },
-      );
+      ];
     }
 
+    // Booking status color mapping
+    const statusColorMap = {
+      Pending: "#C4541A",
+      Reserved: "#C8922A",
+      Confirmed: "#7A8C5C",
+      Completed: "#2C1810",
+      Cancelled: "#8C827A",
+      Rejected: "#D9534F",
+    };
+    const bookingStatusBreakdown = (statusRows || []).map((r) => ({
+      status: r.status,
+      count: r.count,
+      color: statusColorMap[r.status] || "#7A6E65",
+    }));
+
     res.status(200).json({
-      totalUsers,
-      totalFeedback,
-      totalRevenue: parseFloat(totalRevenue),
+      totalUsers: totalUsers || 0,
+      totalFeedback: totalFeedback || 0,
+      totalRevenue: parseFloat(totalRevenue) || 0,
+      totalBookings: totalBookings || 0,
+      pendingBookingsCount: pendingBookingsCount || 0,
+      overduePaymentsCount: overduePaymentsCount || 0,
+      upcomingEventsCount: upcomingEventsCount || 0,
+      eventsHostedCount: eventsHostedCount || 0,
+      averageRating: averageRating !== null && averageRating !== undefined ? Number(averageRating) : 0,
       sentimentBreakdown,
+      bookingStatusBreakdown,
+      packagePopularity: (pkgRows || []).map((p) => ({
+        packageId: p.package_id,
+        packageName: p.packageName,
+        bookingCount: parseInt(p.bookingCount, 10) || 0,
+        totalRevenue: parseFloat(p.totalRevenue) || 0,
+      })),
+      monthlyTrends,
+      upcomingEventsPreview: (upcomingEventsRows || []).map((b) => ({
+        booking_id: b.booking_id,
+        booking_reference:
+          b.booking_reference ||
+          (b.ai_booking_reference ? `#AF-${b.ai_booking_reference}` : `#BK${String(b.booking_id).padStart(4, "0")}`),
+        contact_name: b.contact_name,
+        event_date: b.event_date instanceof Date ? b.event_date.toISOString().split("T")[0] : String(b.event_date).split("T")[0],
+        start_time: b.start_time,
+        number_of_pax: b.number_of_pax,
+        booking_status: b.booking_status,
+        total_price: parseFloat(b.total_price) || 0,
+        package_name: b.package_name || "Custom Package",
+      })),
     });
   } catch (error) {
     console.error("Error fetching admin stats:", error);

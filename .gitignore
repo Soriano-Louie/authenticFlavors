@@ -444,3 +444,6 @@ backend/dist/
 # ─── Kilo AI working directory (local assistant state, not app code) ───
 .kilo/
 
+# ─── Local documentation (not for version control) ───
+API_OVERVIEW.md
+

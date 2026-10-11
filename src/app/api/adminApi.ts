@@ -6,11 +6,54 @@ export interface SentimentBreakdown {
   percentage: number;
 }
 
+export interface MonthlyTrend {
+  month: string;
+  shortMonth: string;
+  monthKey: string;
+  revenue: number;
+  bookings: number;
+}
+
+export interface BookingStatusBreakdown {
+  status: string;
+  count: number;
+  color: string;
+}
+
+export interface PackagePopularity {
+  packageId: number;
+  packageName: string;
+  bookingCount: number;
+  totalRevenue: number;
+}
+
+export interface UpcomingEventPreview {
+  booking_id: number;
+  booking_reference: string;
+  contact_name: string;
+  event_date: string;
+  start_time: string;
+  number_of_pax: number;
+  booking_status: string;
+  total_price: number;
+  package_name: string;
+}
+
 export interface AdminStats {
   totalUsers: number;
   totalFeedback: number;
   totalRevenue: number;
+  totalBookings: number;
+  pendingBookingsCount: number;
+  overduePaymentsCount: number;
+  upcomingEventsCount: number;
+  eventsHostedCount: number;
+  averageRating: number;
   sentimentBreakdown: SentimentBreakdown[];
+  bookingStatusBreakdown?: BookingStatusBreakdown[];
+  packagePopularity?: PackagePopularity[];
+  monthlyTrends?: MonthlyTrend[];
+  upcomingEventsPreview?: UpcomingEventPreview[];
 }
 
 export interface AdminActivity {
