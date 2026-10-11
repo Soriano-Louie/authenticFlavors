@@ -55,12 +55,12 @@ function getNormalizedImage(image: string | null, packageName?: string): string 
   if (!image) {
     if (packageName) {
       const lower = packageName.toLowerCase();
-      if (lower.includes("package a") || lower === "a") return "/packagesImage/package A.png";
-      if (lower.includes("package b") || lower === "b") return "/packagesImage/Package B.png";
-      if (lower.includes("package c") || lower === "c") return "/packagesImage/Package C.png";
-      if (lower.includes("package d") || lower === "d") return "/packagesImage/Package D.png";
+      if (lower.includes("package a") || lower === "a") return "/packagesImage/package A.webp";
+      if (lower.includes("package b") || lower === "b") return "/packagesImage/Package B.webp";
+      if (lower.includes("package c") || lower === "c") return "/packagesImage/Package C.webp";
+      if (lower.includes("package d") || lower === "d") return "/packagesImage/Package D.webp";
     }
-    return "/packagesFood.png";
+    return "/packagesFood.webp";
   }
   if (
     image.includes("res.cloudinary.com") &&
@@ -70,6 +70,9 @@ function getNormalizedImage(image: string | null, packageName?: string): string 
       "/image/upload/",
       "/image/upload/w_720,h_405,c_fill,g_auto,f_auto,q_auto/",
     );
+  }
+  if (image.endsWith(".png")) {
+    return image.replace(/\.png$/, ".webp");
   }
   return image;
 }
@@ -575,6 +578,8 @@ export function PackageSelectionPage() {
                     <img
                       src={pkg.image}
                       alt={pkg.title}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-48 object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/85 via-[#1A0E08]/20 to-transparent" />

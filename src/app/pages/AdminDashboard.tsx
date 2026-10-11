@@ -322,9 +322,11 @@ export function AdminDashboard() {
         <div className="p-5 border-b border-[#C8922A]/15">
           <div className="flex items-center gap-2.5">
             <img
-              src="/authentic_flavor_logo.png"
+              src="/authentic_flavor_logo.webp"
               alt="Authentic Flavors Logo"
               className="w-9 h-9 rounded-full object-cover border border-[#C8922A]/30"
+              loading="lazy"
+              decoding="async"
             />
             <div>
               <p className="text-[#F5F0E8] text-sm font-['Playfair_Display']">
@@ -6737,9 +6739,11 @@ function PackagesSection() {
                       <td data-label="Name" className="py-3 px-2">
                         <div className="flex items-center gap-3">
                           <img
-                            src={pkg.image || "/packagesFood.png"}
+                            src={pkg.image || "/packagesFood.webp"}
                             alt={pkg.package_name}
                             className="w-10 h-10 rounded-lg object-cover"
+                            loading="lazy"
+                            decoding="async"
                           />
                           <span className="text-[#2C1810] font-medium">
                             {pkg.package_name}

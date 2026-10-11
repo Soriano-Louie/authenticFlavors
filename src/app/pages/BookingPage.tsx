@@ -160,11 +160,11 @@ function transformPackage(
     serving: `Up to ${pkg.max_pax} guests`,
     priceLabel: `₱${Number(startingPrice).toLocaleString()}`,
     image: pkg.image || (
-      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.png" :
-      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.png" :
-      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.png" :
-      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.png" :
-      "/packagesFood.png"
+      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.webp" :
+      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.webp" :
+      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.webp" :
+      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.webp" :
+      "/packagesFood.webp"
     ),
     pricing: pkg.pricing || [],
     maxPax: pkg.max_pax,

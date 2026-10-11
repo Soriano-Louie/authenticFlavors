@@ -1,15 +1,15 @@
 export const IMAGES = {
-  hero: "/AuthenticFlavor_backgroundImage.png",
-  chef: "/OurStory_chefRamos.png",
-  birthday: "/Birthday_Celebrations.png",
-  corporate: "/Corporate_Dinners.png",
-  wedding: "/Wedding_Receptions.png",
-  gourmetPlating: "/Gourmet_Plating.jpg",
-  buffet: "/Gourmet_Buffet.png",
-  dessert: "/Artisan_Desserts.jpg",
-  ambiance: "/Venue_Ambiance.jpg",
-  familyStyle: "/Family_Fiesta.png",
-  anniversary: "/Anniversary_Dinners.png",
+  hero: "/AuthenticFlavor_backgroundImage.webp",
+  chef: "/OurStory_chefRamos.webp",
+  birthday: "/Birthday_Celebrations.webp",
+  corporate: "/Corporate_Dinners.webp",
+  wedding: "/Wedding_Receptions.webp",
+  gourmetPlating: "/Gourmet_Plating.webp",
+  buffet: "/Gourmet_Buffet.webp",
+  dessert: "/Artisan_Desserts.webp",
+  ambiance: "/Venue_Ambiance.webp",
+  familyStyle: "/Family_Fiesta.webp",
+  anniversary: "/Anniversary_Dinners.webp",
 };
 
 export const UPCOMING_EVENTS = [

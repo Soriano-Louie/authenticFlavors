@@ -89,9 +89,11 @@ export function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 sm:gap-3 group min-w-0">
             <img
-              src="/authentic_flavor_logo.png"
+              src="/authentic_flavor_logo.webp"
               alt="Authentic Flavors"
               className="h-12 w-auto object-contain shrink-0"
+              loading="eager"
+              decoding="async"
             />
             <div className="leading-none min-w-0">
               <p className="text-[#F5F0E8] text-base font-['Playfair_Display'] tracking-wide">

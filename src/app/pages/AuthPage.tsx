@@ -262,9 +262,10 @@ export function AuthPage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center px-10 text-center">
           <div className="w-64 h-64 rounded-full overflow-hidden shadow-2xl mb-6">
             <img
-              src="/authentic_flavor_logo.png"
+              src="/authentic_flavor_logo.webp"
               alt="Authentic Flavors"
               className="w-full h-full object-cover"
+              decoding="async"
             />
           </div>
           <p className="text-[#F5F0E8]/65 font-['Lato'] leading-relaxed max-w-sm text-sm">
@@ -295,9 +296,10 @@ export function AuthPage() {
           <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
             <div className="w-44 h-44 rounded-full overflow-hidden shadow-md">
               <img
-                src="/authentic_flavor_logo.png"
+                src="/authentic_flavor_logo.webp"
                 alt="Authentic Flavors"
                 className="w-full h-full object-cover"
+                decoding="async"
               />
             </div>
           </div>

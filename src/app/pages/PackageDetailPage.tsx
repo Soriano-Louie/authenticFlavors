@@ -76,11 +76,11 @@ function transformPackage(
     id: String(pkg.package_id),
     name: pkg.package_name,
     image: pkg.image || (
-      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.png" :
-      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.png" :
-      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.png" :
-      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.png" :
-      "/packagesFood.png"
+      pkg.package_name.toLowerCase().includes("package a") ? "/packagesImage/package A.webp" :
+      pkg.package_name.toLowerCase().includes("package b") ? "/packagesImage/Package B.webp" :
+      pkg.package_name.toLowerCase().includes("package c") ? "/packagesImage/Package C.webp" :
+      pkg.package_name.toLowerCase().includes("package d") ? "/packagesImage/Package D.webp" :
+      "/packagesFood.webp"
     ),
     dishes: items.slice(0, 4).map((i) => i.item_name), // Show first 4 items as preview
     guestRange: `Up to ${pkg.max_pax} guests`,
@@ -193,6 +193,8 @@ export function PackageDetailPage() {
         <img
           src={transformedPkg.image}
           alt={transformedPkg.name}
+          loading="eager"
+          decoding="async"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/80 via-[#1A0E08]/30 to-transparent" />

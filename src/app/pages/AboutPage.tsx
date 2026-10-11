@@ -61,6 +61,8 @@ export function AboutPage() {
           <img
             src={IMAGES.ambiance}
             alt="Venue"
+            loading="eager"
+            decoding="async"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#1A0E08]/85 via-[#1A0E08]/70 to-[#F5F0E8]" />
@@ -92,6 +94,8 @@ export function AboutPage() {
               <img
                 src={IMAGES.chef}
                 alt="Chef Ramos"
+                loading="lazy"
+                decoding="async"
                 className="w-full rounded-2xl object-cover shadow-2xl"
                 style={{ height: "500px" }}
               />
@@ -248,6 +252,8 @@ export function AboutPage() {
                   <img
                     src={item.img}
                     alt={item.caption}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -288,6 +294,8 @@ export function AboutPage() {
                 <img
                   src={item.img}
                   alt={item.caption}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/70 via-transparent to-transparent" />

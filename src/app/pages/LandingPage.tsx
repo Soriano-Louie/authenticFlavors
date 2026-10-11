@@ -405,6 +405,8 @@ export function LandingPage() {
             src={IMAGES.hero}
             alt="Private dining"
             className="w-full h-full object-cover"
+            loading="eager"
+            decoding="async"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#1A0E08]/90 via-[#1A0E08]/70 to-[#1A0E08]/30" />
         </div>
@@ -460,9 +462,11 @@ export function LandingPage() {
                   style={{ aspectRatio: "3/4" }}
                 >
                   <img
-                    src="/mr-ramosFInal.png"
+                    src="/mr-ramosFInal.webp"
                     alt="Chef Ramos"
                     className="w-full h-full object-cover"
+                    loading="eager"
+                    decoding="async"
                   />
                   {/* Subtle overlay for color grading */}
                   <div className="absolute inset-0 bg-gradient-to-b from-[#C8922A]/10 via-transparent to-[#1A0E08]/20" />
@@ -533,6 +537,8 @@ export function LandingPage() {
                     <img
                       src={ann.image_url}
                       alt={ann.title}
+                      loading="lazy"
+                      decoding="async"
                       onClick={() =>
                         setSelectedAnnouncementImage(ann.image_url)
                       }
@@ -660,6 +666,8 @@ export function LandingPage() {
                   <img
                     src={event.image}
                     alt={event.title}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#1A0E08]/80 via-transparent to-transparent" />
@@ -1040,6 +1048,8 @@ export function LandingPage() {
               <img
                 src={IMAGES.chef}
                 alt="Chef Ramos"
+                loading="lazy"
+                decoding="async"
                 className="w-full rounded-2xl object-cover shadow-xl"
                 style={{ height: "480px" }}
               />
@@ -1214,6 +1224,8 @@ export function LandingPage() {
           <img
             src={IMAGES.ambiance}
             alt="Venue"
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-[#1A0E08]/85" />
