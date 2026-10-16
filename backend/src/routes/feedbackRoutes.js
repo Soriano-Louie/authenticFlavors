@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   createFeedback,
   getFeedback,
@@ -11,7 +11,7 @@ import {
 } from "../controllers/feedbackController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const feedbackRouter = Router();
+export const feedbackRouter = asyncRouter();
 
 // Public endpoint — no auth required
 feedbackRouter.get("/feedbacks/public", getPublicFeedbacks);

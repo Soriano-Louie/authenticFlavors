@@ -717,10 +717,10 @@ export async function updatePackage(req, res) {
 
         await connection.commit();
       } catch (tierError) {
-        await connection.rollback();
+        await connection?.rollback();
         throw tierError;
       } finally {
-        connection.release();
+        connection?.release();
       }
     }
 

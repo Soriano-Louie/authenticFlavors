@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface Payment {
   payment_id: number;
   booking_id: number;
@@ -61,7 +62,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {
@@ -131,7 +132,7 @@ export function uploadReceiptFile(
     (import.meta.env as { VITE_API_BASE_URL?: string }).VITE_API_BASE_URL ??
     "";
 
-  return fetch(`${API_BASE_URL}/api/payments/upload-receipt-file`, {
+  return apiFetch(`${API_BASE_URL}/api/payments/upload-receipt-file`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,

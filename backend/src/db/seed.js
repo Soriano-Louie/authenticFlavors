@@ -4,12 +4,25 @@ import { getOperatingHoursDisplay } from "../utils/operatingHours.js";
 export async function seedDatabaseIfEmpty() {
   const connection = await pool.getConnection();
   try {
+    await connection.query(`CREATE TABLE IF NOT EXISTS email_outbox (
+      outbox_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      payload JSON NOT NULL, attempts INT NOT NULL DEFAULT 0,
+      next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX ix_outbox_retry (next_attempt_at)
+    ) ENGINE=InnoDB`);
     // 0. Ensure amount_paid and remaining_balance exist on bookings table
     const [columns] = await connection.query(
       "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings'",
       [connection.config.database],
     );
     const columnNames = columns.map((c) => c.COLUMN_NAME);
+    if (!columnNames.includes("reservation_expires_at")) {
+      await connection.query("ALTER TABLE bookings ADD COLUMN reservation_expires_at DATETIME NULL");
+    }
+    await connection.query("CREATE TABLE IF NOT EXISTS booking_calendar_lock (lock_id INT PRIMARY KEY) ENGINE=InnoDB");
+    await connection.query("INSERT IGNORE INTO booking_calendar_lock (lock_id) VALUES (1)");
+
     if (!columnNames.includes("amount_paid")) {
       await connection.query(
         "ALTER TABLE bookings ADD COLUMN amount_paid DECIMAL(10,2) DEFAULT 0.00",
@@ -1247,6 +1260,10 @@ export async function seedDatabaseIfEmpty() {
       );
     }
 
+    // Existing pending holds get a full grace period from rollout, never an immediate retroactive expiry.
+    await connection.query(`UPDATE bookings SET reservation_expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR)
+      WHERE booking_status = 'Pending' AND reservation_expires_at IS NULL AND event_date >= CURDATE()`);
+
     // Idempotently correct FAQ answers that previously contradicted the
     // implemented business rules, so databases seeded before the rules existed
     // also pick up the fix on the next server start.
@@ -1273,6 +1290,7 @@ export async function seedDatabaseIfEmpty() {
     );
   } catch (error) {
     console.error("[SEED] Error seeding database:", error);
+    throw error;
   } finally {
     connection.release();
   }

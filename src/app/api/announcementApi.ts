@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 // ─── Announcement API ─────────────────────────────────────────────────────────
 
 export interface Announcement {
@@ -50,7 +51,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {
@@ -90,7 +91,7 @@ export async function createAnnouncement(
   accessToken: string,
   formData: FormData,
 ): Promise<AnnouncementSingleResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/announcements`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/announcements`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -108,7 +109,7 @@ export async function updateAnnouncement(
   id: number,
   formData: FormData,
 ): Promise<AnnouncementSingleResponse> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/admin/announcements/${id}`,
     {
       method: "PUT",

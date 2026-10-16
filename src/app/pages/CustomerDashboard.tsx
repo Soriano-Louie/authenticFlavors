@@ -1,3 +1,4 @@
+import { ReceiptImage } from "../components/ReceiptImage";
 import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
@@ -1374,9 +1375,10 @@ export function CustomerDashboard() {
       (p) => p.payment_type === "FinalPayment",
     );
 
-    const reservationPaid = reservation?.payment_status === "Paid";
-    const downPaymentPaid = downPayment?.payment_status === "Paid";
+    const reservationPaid = reservation?.payment_status === "Paid" || Number(reservation?.amount) === 0;
+    const downPaymentPaid = downPayment?.payment_status === "Paid" || Number(downPayment?.amount) === 0;
 
+    const canSettle = !["Cancelled", "Rejected"].includes(booking.booking_status);
     const canCancel =
       booking.booking_status !== "Cancelled" &&
       booking.booking_status !== "Completed";
@@ -1485,7 +1487,7 @@ export function CustomerDashboard() {
                       >
                         {statusInfo.label}
                       </span>
-                      {statusInfo.canUpload && (
+                      {canSettle && statusInfo.canUpload && (
                         <button
                           onClick={() =>
                             handlePayNow(
@@ -1514,7 +1516,7 @@ export function CustomerDashboard() {
                         Uploaded Receipt:
                       </p>
                       <div className="flex items-center gap-2">
-                        <img
+                        <ReceiptImage
                           src={reservation.receipt_url}
                           alt="Payment Receipt"
                           className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"
@@ -1566,7 +1568,7 @@ export function CustomerDashboard() {
                       >
                         {statusInfo.label}
                       </span>
-                      {statusInfo.canUpload && (
+                      {canSettle && statusInfo.canUpload && (
                         <button
                           disabled={!reservationPaid}
                           onClick={() =>
@@ -1621,9 +1623,9 @@ export function CustomerDashboard() {
                       >
                         {statusInfo.label}
                       </span>
-                      {statusInfo.canUpload && (
+                      {canSettle && statusInfo.canUpload && (
                         <button
-                          disabled={!downPaymentPaid}
+                          disabled={!reservationPaid || !downPaymentPaid}
                           onClick={() =>
                             handlePayNow(
                               finalPayment.payment_id,
@@ -1692,7 +1694,7 @@ export function CustomerDashboard() {
                       >
                         {statusInfo.label}
                       </span>
-                      {statusInfo.canUpload && (
+                      {canSettle && statusInfo.canUpload && (
                         <button
                           onClick={() =>
                             handlePayNow(
@@ -1720,7 +1722,7 @@ export function CustomerDashboard() {
                         Uploaded Receipt:
                       </p>
                       <div className="flex items-center gap-2">
-                        <img
+                        <ReceiptImage
                           src={extraPayment.receipt_url}
                           alt="Payment Receipt"
                           className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"
@@ -4610,6 +4612,8 @@ export function CustomerDashboard() {
                       );
                     })()}
 
+                    {selectedBooking.booking_status === 'Completed' && Number(selectedBooking.remaining_balance) > 0 && renderPaymentSchedule(selectedBooking)}
+
                     {/* Payment cards */}
                     {[
                       reservation,
@@ -4680,7 +4684,7 @@ export function CustomerDashboard() {
                                   Uploaded Receipt:
                                 </p>
                                 <div className="flex items-center gap-2">
-                                  <img
+                                  <ReceiptImage
                                     src={payment!.receipt_url}
                                     alt="Payment Receipt"
                                     className="w-16 h-16 object-cover rounded-lg border border-[#C8922A]/20 cursor-pointer"

@@ -1,3 +1,4 @@
+import { expireUnpaidHolds } from "./reservationHoldService.js";
 import { pool } from "../db/pool.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ export const CAPACITY_PER_DAY = 1;
  * excluded; blocking a date also fully occupies it.
  */
 export async function getDateOccupancy() {
+  await expireUnpaidHolds();
   const [bookingRows] = await pool.query(
     `SELECT DATE_FORMAT(b.event_date, '%Y-%m-%d') AS event_date,
             COUNT(*) AS booking_count,

@@ -1,3 +1,4 @@
+import { ReceiptImage } from "./ReceiptImage";
 import { useEffect } from "react";
 import { X } from "lucide-react";
 
@@ -66,7 +67,7 @@ export function ReceiptViewer({
         className="flex-1 overflow-auto flex items-start sm:items-center justify-center p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <img
+        <ReceiptImage
           src={receiptUrl}
           alt="Payment Receipt"
           className="max-w-full max-h-full rounded-xl shadow-2xl object-contain"

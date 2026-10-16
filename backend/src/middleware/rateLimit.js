@@ -48,3 +48,6 @@ export const chatLimiter = rateLimit({
   legacyHeaders,
   handler: rateLimitResponse,
 });
+
+export const bookingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10,
+  standardHeaders, legacyHeaders, handler: rateLimitResponse });

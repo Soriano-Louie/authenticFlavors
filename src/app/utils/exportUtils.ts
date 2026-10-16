@@ -10,9 +10,10 @@ import type { Announcement } from "../api/announcementApi";
 /**
  * Escapes a single CSV field value according to RFC-4180 rules.
  */
-function escapeCSVField(val: string | number | boolean | null | undefined): string {
+export function escapeCSVField(val: string | number | boolean | null | undefined): string {
   if (val === null || val === undefined) return "";
-  const str = String(val);
+  const raw = String(val);
+  const str = typeof val === "string" && /^[\s\uFEFF]*[=+@-]/.test(raw) ? `'${raw}` : raw;
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replace(/"/g, '""')}"`;
   }

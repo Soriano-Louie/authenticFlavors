@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   sendMessage,
   getConversations,
@@ -11,7 +11,7 @@ import {
 import { requireAuth } from "../middleware/auth.js";
 import { chatLimiter } from "../middleware/rateLimit.js";
 
-export const chatbotRouter = Router();
+export const chatbotRouter = asyncRouter();
 
 // ─── Public endpoint (optional auth) ─────────────────────────────────────────
 // The sendMessage endpoint works with or without authentication.
@@ -23,11 +23,7 @@ chatbotRouter.post(
     // Try to authenticate, but don't fail if no token is provided
     const header = req.headers.authorization;
     if (header && header.startsWith("Bearer ")) {
-      return requireAuth(req, res, (err) => {
-        if (!err) return next();
-        // If token is invalid, just continue without auth
-        return next();
-      });
+      return requireAuth(req, res, next);
     }
     return next();
   },

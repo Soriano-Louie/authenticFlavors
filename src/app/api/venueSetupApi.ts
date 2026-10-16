@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface VenueSetupRequest {
   request_id: number;
   booking_id: number;
@@ -36,7 +37,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {

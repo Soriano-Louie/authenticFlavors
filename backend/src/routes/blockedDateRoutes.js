@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   getBlockedDates,
   createBlockedDate,
@@ -6,7 +6,7 @@ import {
 } from "../controllers/blockedDateController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const blockedDateRouter = Router();
+export const blockedDateRouter = asyncRouter();
 
 // Admin-only management of dates blocked from the booking calendar.
 blockedDateRouter.get(

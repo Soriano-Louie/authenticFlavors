@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface AuthUser {
   user_id: number;
   first_name: string;
@@ -124,7 +125,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = options.headers as Record<string, string> | undefined;
   const hadAuthHeader = Boolean(headers && "Authorization" in headers);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {
@@ -200,7 +201,7 @@ export function uploadProfilePhoto(
   const formData = new FormData();
   formData.append("photo", file);
 
-  return fetch(`${API_BASE_URL}/api/auth/profile/photo`, {
+  return apiFetch(`${API_BASE_URL}/api/auth/profile/photo`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,

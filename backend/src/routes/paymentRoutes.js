@@ -1,4 +1,5 @@
-import express from "express";
+import { getReceipt } from "../controllers/paymentController.js";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { upload, validateImageSignature } from "../middleware/upload.js";
 import { uploadLimiter } from "../middleware/rateLimit.js";
@@ -17,7 +18,9 @@ import {
   settleCancellationCharge,
 } from "../controllers/paymentController.js";
 
-const router = express.Router();
+const router = asyncRouter();
+
+router.get("/receipt/:paymentId", requireAuth, getReceipt);
 
 // Customer: Get payment instructions for a booking
 router.get("/instructions/:bookingId", requireAuth, getPaymentInstructions);

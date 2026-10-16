@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface ChatResponse {
   reply: string;
   conversation_id: number | null;
@@ -44,7 +45,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {
@@ -201,7 +202,7 @@ export function cancelBookingSessionBeacon(
   },
 ): void {
   try {
-    fetch(`${API_BASE_URL}/api/chat/booking-session/cancel`, {
+    apiFetch(`${API_BASE_URL}/api/chat/booking-session/cancel`, {
       method: "POST",
       credentials: "include",
       keepalive: true,

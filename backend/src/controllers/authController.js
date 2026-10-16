@@ -786,7 +786,7 @@ export async function resetPassword(req, res) {
     );
 
     if (tokens.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_TOKEN",
@@ -799,7 +799,7 @@ export async function resetPassword(req, res) {
 
     // Check expiration
     if (new Date(resetRecord.expires_at) < new Date()) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "TOKEN_EXPIRED",
@@ -817,7 +817,7 @@ export async function resetPassword(req, res) {
     );
 
     if (users.length === 0 || users[0].account_status !== "Active") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "ACCOUNT_DISABLED",
@@ -853,7 +853,7 @@ export async function resetPassword(req, res) {
     });
   } catch (error) {
     try {
-      await connection.rollback();
+      await connection?.rollback();
     } catch {
       // ignore rollback errors
     }
@@ -865,7 +865,7 @@ export async function resetPassword(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 

@@ -11,7 +11,8 @@
     "dev": "vite",
     "dev:frontend": "vite",
     "dev:backend": "npm --prefix backend run dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test backend/tests/*.test.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

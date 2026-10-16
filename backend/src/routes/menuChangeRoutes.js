@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   requestMenuChange,
   getBookingMenuChangeRequests,
@@ -8,7 +8,7 @@ import {
 } from "../controllers/menuChangeController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const menuChangeRouter = Router();
+export const menuChangeRouter = asyncRouter();
 
 // Customer endpoints
 menuChangeRouter.post(

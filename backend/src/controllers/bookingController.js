@@ -1,3 +1,6 @@
+import { assertBookingInput, isCalendarDate } from "../utils/inputValidation.js";
+import { resolveMenu } from "../services/bookingRulesService.js";
+import { lockBookingCalendar, expireUnpaidHolds } from "../services/reservationHoldService.js";
 import crypto from "crypto";
 import { applyBookingPaymentTotals } from "../services/bookingPaymentTotalsService.js";
 import { pool } from "../db/pool.js";
@@ -46,8 +49,11 @@ const MIN_EVENT_LEAD_DAYS = 14;
 
 // Create Booking inside transaction
 export async function createBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    assertBookingInput(req.body);
+    await expireUnpaidHolds();
+    connection = await pool.getConnection();
     const userId = Number(req.auth.sub);
 
     // Admin accounts manage bookings; they cannot create bookings (manual or
@@ -150,7 +156,7 @@ export async function createBooking(req, res) {
     // blocked by an admin (e.g. a rest day). Cancelled bookings never block it.
     // This pre-check is a best-effort fast path; the authoritative, race-proof
     // check runs inside the transaction below.
-    if (await isDateUnavailable(pool, event_date)) {
+    if (await isDateUnavailable(connection, event_date)) {
       return res.status(409).json({
         error: {
           code: "DATE_UNAVAILABLE",
@@ -162,6 +168,12 @@ export async function createBooking(req, res) {
 
     // Start database transaction
     await connection.beginTransaction();
+    await lockBookingCalendar(connection);
+    const [pendingHolds] = await connection.query("SELECT booking_id FROM bookings WHERE user_id = ? AND booking_status = 'Pending' LIMIT 3", [userId]);
+    if (pendingHolds.length >= 3) {
+      await connection.rollback();
+      return res.status(429).json({ error: { code: "BOOKING_LIMIT", message: "Please settle or cancel an existing pending booking before creating another." } });
+    }
 
     // 2c-2. Authoritative availability check inside the transaction. It takes a
     // locking read (FOR UPDATE) on the event_date index, so two concurrent
@@ -169,7 +181,7 @@ export async function createBooking(req, res) {
     // the just-inserted booking and is rejected — making the one-booking-per-day
     // rule atomic even under concurrency.
     if (await isDateUnavailableForUpdate(connection, event_date)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "DATE_UNAVAILABLE",
@@ -185,7 +197,7 @@ export async function createBooking(req, res) {
       [event_type_name],
     );
     if (eventTypes.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -199,7 +211,7 @@ export async function createBooking(req, res) {
     if (event_type_name === "Other") {
       const customType = (custom_event_type || "").trim();
       if (!customType) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(400).json({
           error: {
             code: "VALIDATION_ERROR",
@@ -212,7 +224,7 @@ export async function createBooking(req, res) {
 
     // 3b. Validate booking start time against operating hours
     if (!isOperatingDay(event_date)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -223,7 +235,7 @@ export async function createBooking(req, res) {
     }
 
     if (!isWithinOperatingHours(start_time)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -242,7 +254,7 @@ export async function createBooking(req, res) {
       [primarySetupName],
     );
     if (venueSetups.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -259,11 +271,11 @@ export async function createBooking(req, res) {
       `SELECT pp.price, pkg.max_pax
        FROM package_pricing pp
        JOIN packages pkg ON pkg.package_id = pp.package_id
-       WHERE pp.package_id = ? AND pp.pax_count = ?`,
+       WHERE pp.package_id = ? AND pp.pax_count = ? AND pkg.status = 'Active' FOR UPDATE`,
       [package_id, number_of_pax],
     );
     if (pricingRows.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -276,7 +288,7 @@ export async function createBooking(req, res) {
     const MAX_VENUE_PAX = 70;
     const packageMaxPax = pricingRows[0].max_pax;
     if (packageMaxPax != null && number_of_pax > packageMaxPax) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -285,7 +297,7 @@ export async function createBooking(req, res) {
       });
     }
     if (number_of_pax > MAX_VENUE_PAX) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -296,85 +308,8 @@ export async function createBooking(req, res) {
 
     const basePrice = parseFloat(pricingRows[0].price);
 
-    // 6. Resolve menu selections and check additional prices. Enforces: no
-    // duplicate items, only items from active categories, one item per
-    // category (backing the booking_menu_selections unique key), and — when
-    // the package defines inclusions — the item must be part of that package.
-    const [inclusionCheck] = await connection.query(
-      "SELECT COUNT(*) AS cnt FROM package_menu_inclusions WHERE package_id = ?",
-      [package_id],
-    );
-    const hasPackageInclusions = Number(inclusionCheck[0]?.cnt) > 0;
-
-    const seenItems = new Set();
-    const seenCategories = new Set();
-    let resolvedMenuSelections = [];
-    let additionalPriceSum = 0;
-
-    for (const rawItemName of menu_selections) {
-      const itemName = String(rawItemName).trim();
-      if (!itemName) continue;
-
-      if (seenItems.has(itemName)) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: `Menu item '${itemName}' was selected more than once.`,
-          },
-        });
-      }
-      seenItems.add(itemName);
-
-      const [itemRows] = await connection.query(
-        `SELECT mi.menu_item_id, mi.category_id, mi.additional_price,
-                EXISTS (
-                  SELECT 1 FROM package_menu_inclusions pmi
-                  WHERE pmi.package_id = ? AND pmi.menu_item_id = mi.menu_item_id
-                ) AS is_included
-         FROM menu_items mi
-         JOIN menu_categories mc ON mc.category_id = mi.category_id
-         WHERE mi.item_name = ?
-           AND mi.availability_status = 'Active'
-           AND mc.status = 'Active'
-         LIMIT 1`,
-        [package_id, itemName],
-      );
-
-      if (itemRows.length === 0) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: `Menu item '${itemName}' is not available.`,
-          },
-        });
-      }
-
-      if (hasPackageInclusions && Number(itemRows[0].is_included) !== 1) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: `Menu item '${itemName}' is not included in this package.`,
-          },
-        });
-      }
-
-      if (seenCategories.has(itemRows[0].category_id)) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Please select only one menu item per category.",
-          },
-        });
-      }
-      seenCategories.add(itemRows[0].category_id);
-
-      resolvedMenuSelections.push(itemRows[0]);
-      additionalPriceSum += parseFloat(itemRows[0].additional_price || 0);
-    }
+    const resolvedMenuSelections = await resolveMenu(connection, package_id, menu_selections);
+    const additionalPriceSum = resolvedMenuSelections.reduce((sum, item) => sum + Number(item.additional_price || 0), 0);
 
     // 7. Apply any live promotion and verify price matching. The pre-discount
     // total is always recomputed from the DB and the client value is never
@@ -386,6 +321,7 @@ export async function createBooking(req, res) {
     const activeDiscount = await getActiveDiscount(
       package_id,
       number_of_pax,
+      connection,
     );
     const discountedTotal = applyDiscount(calculatedTotal, activeDiscount);
     const discountApplied = discountAmount(calculatedTotal, activeDiscount);
@@ -396,9 +332,9 @@ export async function createBooking(req, res) {
       req.body.total_price !== "";
     if (
       hasSubmittedPrice &&
-      Math.abs(discountedTotal - parseFloat(req.body.total_price)) > 0.01
+      (!Number.isFinite(Number(req.body.total_price)) || Math.abs(discountedTotal - Number(req.body.total_price)) > 0.01)
     ) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -424,6 +360,11 @@ export async function createBooking(req, res) {
       venue_options: venue_setup_names || [primarySetupName],
       menu_choices_names: menu_selections,
       original_pax: number_of_pax,
+      pricing_snapshot: {
+        base_price: basePrice,
+        discount: activeDiscount ? { type: activeDiscount.type, value: activeDiscount.value } : null,
+        items: Object.fromEntries(resolvedMenuSelections.map(item => [item.menu_item_id, Number(item.additional_price || 0)])),
+      },
     });
 
     // 8. Insert booking (with collision retry on the unique reference columns)
@@ -476,6 +417,7 @@ export async function createBooking(req, res) {
     }
 
     const booking_id = bookingResult.insertId;
+    await connection.query("UPDATE bookings SET reservation_expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE booking_id = ?", [booking_id]);
 
     // 9. Insert menu selections
     for (const item of resolvedMenuSelections) {
@@ -512,8 +454,8 @@ export async function createBooking(req, res) {
     // or cheap package can't produce a reservation larger than the booking).
     const reservationVal = Math.min(reservationFee, discountedTotal);
     const remainingVal = Math.max(discountedTotal - reservationVal, 0);
-    const downPaymentVal = Math.max(0, remainingVal * 0.5);
-    const finalPaymentVal = Math.max(0, remainingVal - downPaymentVal);
+    const downPaymentVal = Math.round(Math.max(0, remainingVal * 0.5) * 100) / 100;
+    const finalPaymentVal = Math.round(Math.max(0, remainingVal - downPaymentVal) * 100) / 100;
 
     // Insert Reservation
     await connection.query(
@@ -534,6 +476,13 @@ export async function createBooking(req, res) {
       `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
        VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
       [booking_id, finalPaymentVal, event_date],
+    );
+
+    await connection.query("UPDATE payments SET payment_status = 'Paid', paid_at = NOW() WHERE booking_id = ? AND amount = 0", [booking_id]);
+    if (discountedTotal === 0) await connection.query("UPDATE bookings SET booking_status = 'Confirmed' WHERE booking_id = ?", [booking_id]);
+
+    const [admins] = await connection.query(
+      "SELECT user_id, email FROM users WHERE role = 'Admin'",
     );
 
     await connection.commit();
@@ -569,9 +518,7 @@ export async function createBooking(req, res) {
     }).catch((err) => console.error("Notification creation failed:", err));
 
     // Notify all admins via in-app notification & email
-    const [admins] = await pool.query(
-      "SELECT user_id, email FROM users WHERE role = 'Admin'",
-    );
+
 
     if (admins.length > 0) {
       for (const admin of admins) {
@@ -610,13 +557,14 @@ export async function createBooking(req, res) {
       ...(booking_reference ? { booking_reference } : {}),
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Booking transaction failed:", error);
     res.status(500).json({
       error: { code: "DATABASE_ERROR", message: "Failed to create booking." },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -639,60 +587,8 @@ async function generateUniqueBookingReference(connection, kind) {
 // Auto-complete past confirmed/reserved/pending-with-receipt bookings
 // Complete at 11:59 PM Philippine time, including missed runs after restart.
 export async function autoCompletePastBookings() {
-  const todayStr = getBookingCompletionCutoff();
-
-  // Skip the UPDATE entirely (and its table scan) when nothing is due.
-  const [due] = await pool.query(
-    `SELECT b.booking_id FROM bookings b
-     WHERE b.event_date < ?
-       AND (
-         b.booking_status IN (?, ?)
-         OR (
-           b.booking_status = 'Pending'
-           AND EXISTS (
-             SELECT 1 FROM payments p
-             WHERE p.booking_id = b.booking_id
-               AND p.payment_status IN ('Paid', 'For_Verification')
-           )
-         )
-       )
-     LIMIT 1`,
-    [todayStr, ...ACTIVE_BOOKING_STATUSES],
-  );
-  if (due.length === 0) return;
-
-  // 1. Mark eligible past bookings as 'Completed'
-  await pool.query(
-    `UPDATE bookings b
-     SET b.booking_status = 'Completed', b.updated_at = CURRENT_TIMESTAMP
-     WHERE b.event_date < ?
-       AND (
-         b.booking_status IN (?, ?)
-         OR (
-           b.booking_status = 'Pending'
-           AND EXISTS (
-             SELECT 1 FROM payments p
-             WHERE p.booking_id = b.booking_id
-               AND p.payment_status IN ('Paid', 'For_Verification')
-           )
-         )
-       )`,
-    [todayStr, ...ACTIVE_BOOKING_STATUSES],
-  );
-
-  // 2. Cancel any unpaid payments on bookings that are completed so they never
-  // linger as Overdue with no valid action left. Receipts still under admin review
-  // (For_Verification) are left untouched.
-  await pool.query(
-    `UPDATE payments p
-     JOIN bookings b ON p.booking_id = b.booking_id
-     SET p.payment_status = 'Cancelled', p.updated_at = CURRENT_TIMESTAMP
-     WHERE b.booking_status = 'Completed'
-       AND b.event_date < ?
-       AND p.payment_status IN ('Pending', 'Overdue')
-       AND p.payment_type != 'CancellationCharge'`,
-    [todayStr],
-  );
+  await pool.query(`UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP
+    WHERE event_date < ? AND booking_status IN ('Reserved', 'Confirmed')`, [getBookingCompletionCutoff()]);
 }
 
 // Auto-cancel bookings that never paid the reservation (so no down payment was
@@ -724,8 +620,9 @@ export async function autoCancelUnpaidPastBookings() {
   );
   if (due.length === 0) return;
 
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     await connection.beginTransaction();
 
     const [rows] = await connection.query(
@@ -746,7 +643,7 @@ export async function autoCancelUnpaidPastBookings() {
     );
 
     if (rows.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return;
     }
 
@@ -775,7 +672,7 @@ export async function autoCancelUnpaidPastBookings() {
       ids,
     );
     if (cancelResult.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return;
     }
 
@@ -817,10 +714,11 @@ export async function autoCancelUnpaidPastBookings() {
       );
     }
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Auto-cancel unpaid bookings sweep failed:", error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -1097,8 +995,9 @@ export async function getAdminBookings(req, res) {
 
 // Manually complete booking (Admin only)
 export async function completeBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
 
     // Lock the row so only one request can complete the booking.
@@ -1110,7 +1009,7 @@ export async function completeBooking(req, res) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -1123,7 +1022,7 @@ export async function completeBooking(req, res) {
     const eventDateStr = toPhilippineDateString(booking.event_date);
 
     if (eventDateStr > todayStr) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -1134,54 +1033,46 @@ export async function completeBooking(req, res) {
 
     if (
       booking.booking_status !== "Confirmed" &&
-      booking.booking_status !== "Reserved" &&
-      booking.booking_status !== "Pending"
+      booking.booking_status !== "Reserved"
     ) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
           message:
-            "Only pending, reserved, or confirmed bookings can be marked as completed.",
+            "Only reserved or confirmed bookings can be marked as completed.",
         },
       });
     }
 
-    // Check if at least one reservation fee or down payment was paid or submitted for verification (or amount_paid > 0)
+    // Manual completion requires a verified payment stage, not merely an uploaded receipt.
     const [paidDeposits] = await connection.query(
-      `SELECT payment_id FROM payments 
-       WHERE booking_id = ? 
-         AND payment_type IN ('Reservation', 'DownPayment') 
-         AND payment_status IN ('Paid', 'For_Verification') 
+      `SELECT payment_id FROM payments
+       WHERE booking_id = ?
+         AND payment_type IN ('Reservation', 'DownPayment')
+         AND payment_status = 'Paid'
        LIMIT 1`,
       [bookingId],
     );
 
-    const [bookingAmountPaid] = await connection.query(
-      "SELECT amount_paid FROM bookings WHERE booking_id = ?",
-      [bookingId],
-    );
-
-    const amountPaid = Number(bookingAmountPaid[0]?.amount_paid || 0);
-
-    if (paidDeposits.length === 0 && amountPaid <= 0) {
-      await connection.rollback();
+    if (paidDeposits.length === 0) {
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "PAYMENT_REQUIRED",
           message:
-            "Cannot mark booking as completed: No reservation fee or down payment has been paid or submitted.",
+            "Cannot mark booking as completed: No reservation fee or down payment has been verified.",
         },
       });
     }
 
     const [updateResult] = await connection.query(
-      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved', 'Pending')",
+      "UPDATE bookings SET booking_status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE booking_id = ? AND booking_status IN ('Confirmed', 'Reserved')",
       [bookingId],
     );
 
     if (updateResult.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1207,7 +1098,8 @@ export async function completeBooking(req, res) {
       booking_status: "Completed",
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Complete booking failed:", error);
     res.status(500).json({
       error: {
@@ -1216,14 +1108,15 @@ export async function completeBooking(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
 // Admin verify booking (Pending -> Confirmed)
 export async function verifyBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const { admin_remarks } = req.body;
 
@@ -1243,7 +1136,7 @@ export async function verifyBooking(req, res) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -1252,7 +1145,7 @@ export async function verifyBooking(req, res) {
     const booking = bookings[0];
 
     if (booking.booking_status !== "Pending") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1265,7 +1158,7 @@ export async function verifyBooking(req, res) {
     // by an admin. Another booking (pending or active) occupying this date must
     // be resolved (cancelled / rejected) first.
     if (await isDateUnavailable(connection, booking.event_date, bookingId)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "DATE_UNAVAILABLE",
@@ -1286,13 +1179,13 @@ export async function verifyBooking(req, res) {
       [bookingId],
     );
     const reservationStatus = reservationRows[0]?.payment_status;
-    if (!["Paid", "For_Verification"].includes(reservationStatus)) {
-      await connection.rollback();
+    if (!["Paid"].includes(reservationStatus)) {
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "RESERVATION_NOT_PAID",
           message:
-            "This booking cannot be verified until the reservation fee has been paid (or a receipt is pending verification).",
+            "This booking cannot be verified until the reservation fee has been paid.",
         },
       });
     }
@@ -1306,14 +1199,14 @@ export async function verifyBooking(req, res) {
       newRemainingBalance <= 0 ? "Confirmed" : "Reserved";
 
     const [updateResult] = await connection.query(
-      `UPDATE bookings 
+      `UPDATE bookings
        SET booking_status = ?, amount_paid = ?, remaining_balance = ?, updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND booking_status = 'Pending'`,
       [newBookingStatus, amountPaid, newRemainingBalance, bookingId],
     );
 
     if (updateResult.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1342,8 +1235,8 @@ export async function verifyBooking(req, res) {
       userId: booking.user_id,
       bookingId,
       type: "booking_confirmed",
-      title: "Booking Confirmed! 🎉",
-      message: `Your booking (${refStr}) has been confirmed by the administrator.`,
+      title: "Booking Reserved! 🎉",
+      message: `Your booking (${refStr}) has been reserved after payment verification.`,
       link: `/dashboard?tab=events&bookingId=${bookingId}`,
       sendEmailFn: () =>
         sendBookingConfirmedEmail(booking.email, booking.first_name, {
@@ -1360,7 +1253,8 @@ export async function verifyBooking(req, res) {
       remaining_balance: newRemainingBalance,
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Verify booking failed:", error);
     res.status(500).json({
       error: {
@@ -1369,7 +1263,7 @@ export async function verifyBooking(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -1408,7 +1302,7 @@ export async function getAdminStats(req, res) {
       pool.query("SELECT COUNT(*) AS total FROM payments WHERE payment_status = 'Overdue' AND payment_type != 'CancellationCharge'"),
       pool.query("SELECT COUNT(*) AS total FROM bookings WHERE event_date >= CURDATE() AND event_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND booking_status NOT IN ('Cancelled', 'Rejected')"),
       pool.query(`
-        SELECT 
+        SELECT
           booking_status AS status,
           COUNT(*) AS count
         FROM bookings
@@ -1416,7 +1310,7 @@ export async function getAdminStats(req, res) {
         ORDER BY count DESC
       `),
       pool.query(`
-        SELECT 
+        SELECT
           p.package_id,
           p.package_name AS packageName,
           COUNT(b.booking_id) AS bookingCount,
@@ -1428,15 +1322,15 @@ export async function getAdminStats(req, res) {
         LIMIT 5
       `),
       pool.query(`
-        SELECT 
+        SELECT
           sentiment_status AS sentiment,
           COUNT(*) AS count
-        FROM feedback 
+        FROM feedback
         WHERE sentiment_status IN ('Positive', 'Neutral', 'Negative')
         GROUP BY sentiment_status
       `),
       pool.query(`
-        SELECT 
+        SELECT
           DATE_FORMAT(COALESCE(paid_at, created_at), '%Y-%m') AS monthKey,
           COALESCE(SUM(amount), 0) AS revenue
         FROM payments
@@ -1446,7 +1340,7 @@ export async function getAdminStats(req, res) {
         ORDER BY monthKey ASC
       `),
       pool.query(`
-        SELECT 
+        SELECT
           DATE_FORMAT(created_at, '%Y-%m') AS monthKey,
           COUNT(*) AS bookings
         FROM bookings
@@ -1455,7 +1349,7 @@ export async function getAdminStats(req, res) {
         ORDER BY monthKey ASC
       `),
       pool.query(`
-        SELECT 
+        SELECT
           b.booking_id,
           b.booking_reference,
           b.ai_booking_reference,
@@ -1641,8 +1535,9 @@ export async function getAdminActivity(req, res) {
 
 // Admin reject booking (Pending -> Rejected)
 export async function rejectBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const { admin_remarks } = req.body;
 
@@ -1659,7 +1554,7 @@ export async function rejectBooking(req, res) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -1668,7 +1563,7 @@ export async function rejectBooking(req, res) {
     const booking = bookings[0];
 
     if (booking.booking_status !== "Pending") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1682,14 +1577,14 @@ export async function rejectBooking(req, res) {
     // customer cancellations. cancellation_requested_at is deliberately left
     // NULL so feedback-eligibility / history logic keeps telling them apart.
     const [updateResult] = await connection.query(
-      `UPDATE bookings 
+      `UPDATE bookings
        SET booking_status = 'Rejected', updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND booking_status = 'Pending'`,
       [bookingId],
     );
 
     if (updateResult.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1748,7 +1643,8 @@ export async function rejectBooking(req, res) {
       booking_status: "Rejected",
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Reject booking failed:", error);
     res.status(500).json({
       error: {
@@ -1757,7 +1653,7 @@ export async function rejectBooking(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -1799,8 +1695,9 @@ export function calculateCancellationRefund(totalPrice, amountPaid, policyApplie
 // Customer: Request booking cancellation
 // ──────────────────────────────────────────
 export async function requestCancellation(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
     const { cancellation_reason } = req.body;
@@ -1821,7 +1718,7 @@ export async function requestCancellation(req, res) {
 
     // Get booking details
     const [bookings] = await connection.query(
-      `SELECT b.*, p.package_name 
+      `SELECT b.*, p.package_name
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        WHERE b.booking_id = ? LIMIT 1
@@ -1830,7 +1727,7 @@ export async function requestCancellation(req, res) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -1840,7 +1737,7 @@ export async function requestCancellation(req, res) {
 
     // Verify user owns this booking
     if (booking.user_id !== userId) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(403).json({
         error: {
           code: "FORBIDDEN",
@@ -1851,7 +1748,7 @@ export async function requestCancellation(req, res) {
 
     // Check if booking is already cancelled or completed
     if (booking.booking_status === "Cancelled") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1861,7 +1758,7 @@ export async function requestCancellation(req, res) {
     }
 
     if (booking.booking_status === "Completed") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1871,7 +1768,7 @@ export async function requestCancellation(req, res) {
     }
 
     if (booking.booking_status === "Rejected") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1926,7 +1823,7 @@ export async function requestCancellation(req, res) {
 
     // Update booking with cancellation details (only if not already cancelled)
     const [cancelUpdate] = await connection.query(
-      `UPDATE bookings 
+      `UPDATE bookings
        SET booking_status = 'Cancelled',
            cancellation_requested_at = CURRENT_TIMESTAMP,
            cancellation_processed_at = CURRENT_TIMESTAMP,
@@ -1939,7 +1836,7 @@ export async function requestCancellation(req, res) {
     );
 
     if (cancelUpdate.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1951,7 +1848,7 @@ export async function requestCancellation(req, res) {
     // Cancel any existing pending payments for this booking FIRST
     // (before inserting new cancellation charge, to avoid cancelling it)
     await connection.query(
-      `UPDATE payments 
+      `UPDATE payments
        SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
       [bookingId],
@@ -1978,7 +1875,7 @@ export async function requestCancellation(req, res) {
         });
 
         await connection.query(
-          `INSERT INTO payments 
+          `INSERT INTO payments
            (booking_id, payment_type, amount, due_date, payment_status, is_cancellation_charge, admin_remarks)
            VALUES (?, 'CancellationCharge', ?, ?, 'Pending', TRUE, ?)`,
           [
@@ -2061,7 +1958,8 @@ export async function requestCancellation(req, res) {
 
     res.status(200).json(responseData);
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Request cancellation failed:", error);
     res.status(500).json({
       error: {
@@ -2070,7 +1968,7 @@ export async function requestCancellation(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -2083,7 +1981,7 @@ export async function getCancellationDetails(req, res) {
     const userId = Number(req.auth.sub);
 
     const [bookings] = await pool.query(
-      `SELECT b.*, p.package_name 
+      `SELECT b.*, p.package_name
        FROM bookings b
        JOIN packages p ON b.package_id = p.package_id
        WHERE b.booking_id = ?`,
@@ -2161,7 +2059,7 @@ export async function getCancellationDetails(req, res) {
 
     // Get cancellation charge payments if any
     const [cancellationPayments] = await pool.query(
-      `SELECT * FROM payments 
+      `SELECT * FROM payments
        WHERE booking_id = ? AND payment_type = 'CancellationCharge'
        ORDER BY created_at DESC`,
       [bookingId],
@@ -2315,8 +2213,9 @@ export async function getRescheduleDetails(req, res) {
  * Execute booking reschedule inside an atomic transaction.
  */
 export async function rescheduleBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
     const userRole = req.auth.role;
@@ -2333,7 +2232,7 @@ export async function rescheduleBooking(req, res) {
 
     // Validate new event date presence and format
     const newEventDate = String(new_event_date || "").trim();
-    if (!newEventDate) {
+    if (!isCalendarDate(newEventDate)) {
       return res.status(400).json({
         error: { code: "VALIDATION_ERROR", message: "Please select a new event date." },
       });
@@ -2372,6 +2271,7 @@ export async function rescheduleBooking(req, res) {
 
     // Begin atomic transaction
     await connection.beginTransaction();
+    await lockBookingCalendar(connection);
 
     // Fetch booking with locking read
     const [bookingRows] = await connection.query(
@@ -2387,7 +2287,7 @@ export async function rescheduleBooking(req, res) {
     );
 
     if (bookingRows.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -2397,7 +2297,7 @@ export async function rescheduleBooking(req, res) {
 
     // Authorization check
     if (userRole !== "Admin" && booking.user_id !== userId) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(403).json({
         error: { code: "FORBIDDEN", message: "You are not authorized to reschedule this booking." },
       });
@@ -2405,7 +2305,7 @@ export async function rescheduleBooking(req, res) {
 
     // Status check
     if (!["Pending", "Reserved", "Confirmed"].includes(booking.booking_status)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
@@ -2416,7 +2316,7 @@ export async function rescheduleBooking(req, res) {
 
     const currentEventDateStr = toPhilippineDateString(booking.event_date);
     if (currentEventDateStr <= todayStr) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "RESCHEDULE_WINDOW_CLOSED",
@@ -2428,7 +2328,7 @@ export async function rescheduleBooking(req, res) {
     // 2-Week Window Rule on the currently scheduled event date
     const daysUntilCurrentEvent = Number(booking.days_until_event);
     if (daysUntilCurrentEvent < 14) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "RESCHEDULE_WINDOW_CLOSED",
@@ -2439,7 +2339,7 @@ export async function rescheduleBooking(req, res) {
     }
 
     if (newEventDate === currentEventDateStr) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -2451,7 +2351,7 @@ export async function rescheduleBooking(req, res) {
     // Validate start time if provided or preserve current
     const startTime = (new_start_time || booking.start_time || "").trim();
     if (startTime && !isWithinOperatingHours(startTime)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -2462,7 +2362,7 @@ export async function rescheduleBooking(req, res) {
 
     // Check date availability (locking read on target date)
     if (await isDateUnavailableForUpdate(connection, newEventDate, booking.booking_id)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "DATE_UNAVAILABLE",
@@ -2538,7 +2438,7 @@ export async function rescheduleBooking(req, res) {
     const [updatedStatusRows] = await pool.query(
       "SELECT booking_status FROM bookings WHERE booking_id = ?",
       [bookingId],
-    );
+    ).catch(() => [[{ booking_status: booking.booking_status }]]);
     const finalBookingStatus =
       updatedStatusRows[0]?.booking_status || booking.booking_status;
 
@@ -2613,13 +2513,14 @@ export async function rescheduleBooking(req, res) {
       },
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Error rescheduling booking:", error);
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to reschedule booking." },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -2627,8 +2528,9 @@ export async function rescheduleBooking(req, res) {
 // Admin: Cancel booking on event day with 100% full refund & venue recommendations
 // ──────────────────────────────────────────
 export async function adminCancelEventDayBooking(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const { cancellation_reason } = req.body;
 
@@ -2654,7 +2556,7 @@ export async function adminCancelEventDayBooking(req, res) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -2667,7 +2569,7 @@ export async function adminCancelEventDayBooking(req, res) {
       booking.booking_status === "Completed" ||
       booking.booking_status === "Rejected"
     ) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -2681,7 +2583,7 @@ export async function adminCancelEventDayBooking(req, res) {
 
     // Verify it is on or after the event date in Philippine time
     if (eventDateStr > todayStr) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_DATE",
@@ -2698,7 +2600,7 @@ export async function adminCancelEventDayBooking(req, res) {
 
     // Update booking status
     const [cancelUpdate] = await connection.query(
-      `UPDATE bookings 
+      `UPDATE bookings
        SET booking_status = 'Cancelled',
            amount_paid = ?,
            remaining_balance = ?,
@@ -2713,7 +2615,7 @@ export async function adminCancelEventDayBooking(req, res) {
     );
 
     if (cancelUpdate.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -2724,7 +2626,7 @@ export async function adminCancelEventDayBooking(req, res) {
 
     // Cancel all unsettled/pending/overdue payments for this booking
     await connection.query(
-      `UPDATE payments 
+      `UPDATE payments
        SET payment_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
        WHERE booking_id = ? AND payment_status IN ('Pending', 'Overdue', 'For_Verification')`,
       [bookingId],
@@ -2787,7 +2689,8 @@ export async function adminCancelEventDayBooking(req, res) {
       refundable_amount: refundableAmount,
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Admin event-day cancellation failed:", error);
     res.status(500).json({
       error: {
@@ -2796,7 +2699,7 @@ export async function adminCancelEventDayBooking(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 

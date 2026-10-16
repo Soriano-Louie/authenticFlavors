@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   getPackageById,
   getPackages,
@@ -17,9 +17,9 @@ import {
   deletePackageImage,
 } from "../controllers/packageController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { upload, validateImageSignature } from "../middleware/upload.js";
 
-export const packageRouter = Router();
+export const packageRouter = asyncRouter();
 
 // Public package routes
 packageRouter.get("/packages", getPackages);
@@ -38,6 +38,7 @@ packageRouter.post(
   requireAuth,
   requireRole("Admin"),
   upload.single("image"),
+  validateImageSignature,
   createPackage,
 );
 packageRouter.put(
@@ -45,6 +46,7 @@ packageRouter.put(
   requireAuth,
   requireRole("Admin"),
   upload.single("image"),
+  validateImageSignature,
   updatePackage,
 );
 packageRouter.delete(

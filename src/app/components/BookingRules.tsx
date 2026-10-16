@@ -14,7 +14,7 @@ const RULES = [
     icon: Wallet,
     title: "Reservation Fee",
     description:
-      "Non-refundable and non-transferable reservation fee of ₱5,000 upon booking. No reservation fee serves as no booking.",
+      "Non-refundable and non-transferable reservation fee of ₱5,000 upon booking. Upload your reservation receipt within 24 hours to keep the date on hold. Unpaid holds expire automatically; receipts under review remain held.",
   },
   {
     icon: CalendarClock,

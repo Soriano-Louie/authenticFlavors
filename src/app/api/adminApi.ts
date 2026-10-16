@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 import type { Package } from "./packageApi";
 
 export interface SentimentBreakdown {
@@ -99,7 +100,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: {
@@ -172,7 +173,7 @@ export async function createAdminPackage(
   accessToken: string,
   formData: FormData,
 ): Promise<AdminSinglePackageResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/packages`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/packages`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -191,7 +192,7 @@ export async function updateAdminPackage(
   id: number,
   formData: FormData,
 ): Promise<AdminSinglePackageResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/packages/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/packages/${id}`, {
     method: "PUT",
     credentials: "include",
     headers: {
@@ -351,7 +352,7 @@ export async function createAdminMenuItem(
   accessToken: string,
   formData: FormData,
 ): Promise<AdminMenuItemResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/menu/items`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/menu/items`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -369,7 +370,7 @@ export async function updateAdminMenuItem(
   id: number,
   formData: FormData,
 ): Promise<AdminMenuItemResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/menu/items/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/menu/items/${id}`, {
     method: "PUT",
     credentials: "include",
     headers: {

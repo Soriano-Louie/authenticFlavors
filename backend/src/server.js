@@ -1,3 +1,4 @@
+import { startEmailRetryScheduler } from "./services/emailService.js";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { testDbConnection } from "./db/pool.js";
@@ -26,6 +27,7 @@ async function startServer() {
 
   // Automated notification and email reminder scheduler
   startReminderScheduler();
+  startEmailRetryScheduler();
   console.log("[ReminderScheduler] Automated reminder scheduler started.");
 }
 

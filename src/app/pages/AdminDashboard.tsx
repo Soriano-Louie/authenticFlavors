@@ -1,3 +1,4 @@
+import { PricingBaselineReview } from "../components/PricingBaselineReview";
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../auth/AuthContext";
@@ -4611,8 +4612,7 @@ function BookingsSection() {
               const isPendingAction = actioningId === booking.booking_id;
               const canComplete =
                 booking.booking_status === "Confirmed" ||
-                booking.booking_status === "Reserved" ||
-                booking.booking_status === "Pending";
+                booking.booking_status === "Reserved";
               const isToday = isEventToday(booking.event_date);
 
               const priorPayments = payments.filter(
@@ -4624,10 +4624,9 @@ function BookingsSection() {
                 priorPayments.length > 0
                   ? priorPayments.some(
                       (p) =>
-                        p.payment_status === "Paid" ||
-                        p.payment_status === "For_Verification",
+                        p.payment_status === "Paid",
                     )
-                  : Number(booking.amount_paid || 0) > 0;
+                  : false;
 
               return (
                 <div
@@ -5104,6 +5103,8 @@ function BookingsSection() {
                           {booking.setup_name || "—"}
                         </div>
                       </div>
+
+                      <PricingBaselineReview key={booking.booking_id} booking={booking} />
 
                       {/* Selected Menu Items & Requirements Preview */}
                       <div className="mt-5 pt-4 border-t border-[#C8922A]/10 space-y-3">

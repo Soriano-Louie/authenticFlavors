@@ -1,3 +1,4 @@
+import { expireUnpaidHolds } from "./reservationHoldService.js";
 import { pool } from "../db/pool.js";
 import cron from "node-cron";
 import { createNotification } from "./notificationService.js";
@@ -245,6 +246,7 @@ async function checkFeedbackReminders() {
 }
 
 export function startReminderScheduler() {
+  cron.schedule("*/5 * * * *", () => expireUnpaidHolds().catch(error => console.error("Reservation expiry failed:", error)));
   cron.schedule("59 23 * * *", () => {
     autoCompletePastBookings().catch((err) =>
       console.error("[ReminderScheduler] End-of-day completion failed:", err),

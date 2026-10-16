@@ -50,7 +50,9 @@ export async function requireAuth(req, res, next) {
     // demoted admin loses privileges immediately (not at token expiry).
     req.auth = { ...decoded, role: rows[0].role };
     return next();
-  } catch {
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') return res.status(401).json({ error: { code: 'TOKEN_EXPIRED', message: 'Access token expired.' } });
+    if (!['JsonWebTokenError', 'NotBeforeError'].includes(error.name)) return next(error);
     return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Invalid or expired access token." } });
   }
 }

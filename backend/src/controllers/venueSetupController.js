@@ -22,8 +22,9 @@ function getDaysUntilEvent(eventDateStr) {
 }
 
 export async function submitVenueSetupRequest(req, res, next) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
     const { venue_setup_notes } = req.body;
@@ -52,7 +53,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -63,7 +64,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     // Only active (Reserved or Confirmed) bookings may have venue setup work reviewed;
     // pending, cancelled, rejected, or completed bookings must not.
     if (!["Confirmed", "Reserved"].includes(booking.booking_status)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
@@ -77,7 +78,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     // submit setup work at the last minute.
     const daysUntilEvent = getDaysUntilEvent(booking.event_date);
     if (daysUntilEvent < 14) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VENUE_SETUP_RESTRICTED",
@@ -102,7 +103,7 @@ export async function submitVenueSetupRequest(req, res, next) {
     if (existingActive.length > 0) {
       const existing = existingActive[0];
       if (existing.status === "Pending") {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(400).json({
           error: {
             code: "PENDING_REQUEST_EXISTS",
@@ -180,10 +181,11 @@ export async function submitVenueSetupRequest(req, res, next) {
       request_id: requestId,
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     next(error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -244,8 +246,9 @@ export async function getAdminVenueSetupRequests(req, res, next) {
 }
 
 export async function approveVenueSetupRequest(req, res, next) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const requestId = Number(req.params.requestId);
     const adminId = Number(req.auth.sub);
 
@@ -261,7 +264,7 @@ export async function approveVenueSetupRequest(req, res, next) {
     );
 
     if (requests.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res
         .status(404)
         .json({ error: { message: "Venue setup request not found." } });
@@ -269,7 +272,7 @@ export async function approveVenueSetupRequest(req, res, next) {
 
     const request = requests[0];
     if (request.status !== "Pending" && request.status !== "Changes_Requested") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: { message: `Request is already ${request.status.toLowerCase()}.` },
       });
@@ -331,16 +334,18 @@ export async function approveVenueSetupRequest(req, res, next) {
 
     res.json({ message: "Venue setup request approved successfully." });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     next(error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
 export async function requestVenueSetupChanges(req, res, next) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const requestId = Number(req.params.requestId);
     const adminId = Number(req.auth.sub);
     const { admin_response } = req.body;
@@ -366,7 +371,7 @@ export async function requestVenueSetupChanges(req, res, next) {
     );
 
     if (requests.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res
         .status(404)
         .json({ error: { message: "Venue setup request not found." } });
@@ -374,7 +379,7 @@ export async function requestVenueSetupChanges(req, res, next) {
 
     const request = requests[0];
     if (request.status !== "Pending" && request.status !== "Changes_Requested") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: { message: `Request is already ${request.status.toLowerCase()}.` },
       });
@@ -439,10 +444,11 @@ export async function requestVenueSetupChanges(req, res, next) {
 
     res.json({ message: "Venue setup changes requested successfully." });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     next(error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 

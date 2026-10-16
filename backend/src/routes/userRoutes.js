@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   getAdminUsers,
   createAdminUser,
@@ -7,7 +7,7 @@ import {
 } from "../controllers/userController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const userRouter = Router();
+export const userRouter = asyncRouter();
 
 // Admin User Management Routes (Protected by Bearer + Admin role)
 userRouter.get("/admin/users", requireAuth, requireRole("Admin"), getAdminUsers);

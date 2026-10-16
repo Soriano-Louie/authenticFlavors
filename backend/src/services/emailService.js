@@ -1,3 +1,4 @@
+import { queueEmail, finishEmail, retryEmails } from "./emailOutboxService.js";
 import { env } from "../config/env.js";
 import { formatPhilippineDate } from "../utils/timezone.js";
 
@@ -21,7 +22,7 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-async function sendBrevoEmail(to, subject, htmlContent) {
+async function deliverBrevoEmail(to, subject, htmlContent) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -54,6 +55,21 @@ async function sendBrevoEmail(to, subject, htmlContent) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function sendBrevoEmail(to, subject, htmlContent) {
+  const lifetime = /verification|reset|password/i.test(subject) ? 10 : 2880;
+  const id = await queueEmail({ to, subject, htmlContent }, lifetime);
+  const result = await deliverBrevoEmail(to, subject, htmlContent);
+  await finishEmail(id);
+  return result;
+}
+
+export function startEmailRetryScheduler() {
+  const retry = () => retryEmails(deliverBrevoEmail).catch(error => console.error('Email retry failed:', error.message));
+  retry();
+  const timer = setInterval(retry, 60000);
+  timer.unref();
 }
 
 export async function sendVerificationCode(email, code) {

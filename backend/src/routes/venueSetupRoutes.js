@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   submitVenueSetupRequest,
   getBookingVenueSetupRequest,
@@ -9,7 +9,7 @@ import {
 } from "../controllers/venueSetupController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const venueSetupRouter = Router();
+export const venueSetupRouter = asyncRouter();
 
 venueSetupRouter.post(
   "/bookings/:id/venue-setup",

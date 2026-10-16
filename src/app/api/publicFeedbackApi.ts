@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface PublicFeedback {
   feedback_id: number;
   rating: number;
@@ -27,7 +28,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 export function getPublicFeedbacks(): Promise<{
   feedbacks: PublicFeedback[];
 }> {
-  return fetch(`${API_BASE_URL}/api/feedbacks/public`, {
+  return apiFetch(`${API_BASE_URL}/api/feedbacks/public`, {
     credentials: "include",
   }).then((res) => parseResponse<{ feedbacks: PublicFeedback[] }>(res));
 }

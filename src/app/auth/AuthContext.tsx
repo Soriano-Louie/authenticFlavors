@@ -1,3 +1,4 @@
+import { setSessionToken } from "../api/apiFetch";
 import {
   createContext,
   useCallback,
@@ -97,10 +98,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     try {
       // Single network roundtrip: refreshSession already returns both user & accessToken
       const refreshed = await refreshSession();
+      setSessionToken(refreshed.accessToken);
       setAccessToken(refreshed.accessToken);
       setUser(refreshed.user);
       return refreshed.user;
     } catch {
+      setSessionToken(null);
       setAccessToken(null);
       setUser(null);
       return null;
@@ -117,6 +120,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // clear the local session so the guards redirect to the sign-in page.
   useEffect(() => {
     const handleSessionExpired = () => {
+      setSessionToken(null);
       setAccessToken(null);
       setUser(null);
     };
@@ -131,9 +135,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
       );
   }, [setUser]);
 
+  useEffect(() => {
+    const refreshed = (event: Event) => {
+      const result = (event as CustomEvent<{ accessToken: string; user: AuthUser }>).detail;
+      setAccessToken(result.accessToken);
+      setUser(result.user);
+    };
+    window.addEventListener('authenticflavors:refreshed', refreshed);
+    return () => window.removeEventListener('authenticflavors:refreshed', refreshed);
+  }, [setUser]);
+
   const login = useCallback(async (payload: LoginPayload) => {
     const result = await apiLogin(payload);
-    setAccessToken(result.accessToken);
+    setSessionToken(result.accessToken);
+      setAccessToken(result.accessToken);
     setUser(result.user);
     return result.user;
   }, [setUser]);
@@ -147,6 +162,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const setAuth = useCallback((token: string, user: AuthUser) => {
+    setSessionToken(token);
     setAccessToken(token);
     setUser(user);
   }, [setUser]);
@@ -158,6 +174,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       toast.success("Logged out successfully");
     } finally {
+      setSessionToken(null);
       setAccessToken(null);
       setUser(null);
     }
@@ -204,7 +221,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       const result = await apiVerifyEmailChange(accessToken, newEmail, code);
       if (result.accessToken) {
-        setAccessToken(result.accessToken);
+        setSessionToken(result.accessToken);
+      setAccessToken(result.accessToken);
       }
       setUser(result.user);
       return result.user;
@@ -225,7 +243,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       // The backend reissues a token pair for THIS device (other devices
       // are signed out), so refresh the in-memory access token.
       if (result.accessToken) {
-        setAccessToken(result.accessToken);
+        setSessionToken(result.accessToken);
+      setAccessToken(result.accessToken);
       }
       return result;
     },

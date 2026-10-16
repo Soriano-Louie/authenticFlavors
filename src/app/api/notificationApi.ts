@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiFetch";
 export interface AppNotification {
   notification_id: number;
   user_id: number;
@@ -24,7 +25,7 @@ const API_BASE_URL =
 export async function fetchNotifications(
   token: string,
 ): Promise<NotificationsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/notifications`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/notifications`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -63,7 +64,7 @@ export async function markNotificationRead(
   token: string,
   notificationId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/notifications/${notificationId}/read`,
     {
       method: "PATCH",
@@ -80,7 +81,7 @@ export async function markNotificationRead(
 }
 
 export async function markAllNotificationsRead(token: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/notifications/read-all`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -97,7 +98,7 @@ export async function deleteNotification(
   token: string,
   notificationId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/notifications/${notificationId}`,
     {
       method: "DELETE",

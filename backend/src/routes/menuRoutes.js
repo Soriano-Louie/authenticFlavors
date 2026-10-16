@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   adminGetCategories,
   adminCreateCategory,
@@ -11,7 +11,7 @@ import {
 } from "../controllers/menuController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const menuRouter = Router();
+export const menuRouter = asyncRouter();
 
 // Admin menu category routes
 menuRouter.get(

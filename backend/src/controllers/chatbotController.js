@@ -694,8 +694,9 @@ export async function getMessages(req, res) {
 // ─── POST /api/chat/booking-session/start ────────────────────────────────────
 // Creates an ai_conversation (purpose=Booking) and an ai_booking_sessions row.
 export async function startBookingSession(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const userId = Number(req.auth.sub);
 
     // Admin accounts manage bookings; they cannot start a booking session.
@@ -746,7 +747,7 @@ export async function startBookingSession(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -856,8 +857,9 @@ export async function updateBookingSession(req, res) {
 // ─── POST /api/chat/booking-session/complete ─────────────────────────────────
 // Finalizes the booking session after a successful booking creation.
 export async function completeBookingSession(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const userId = Number(req.auth.sub);
     const { session_id, conversation_id, booking_id, summary_text } = req.body;
 
@@ -967,7 +969,7 @@ export async function completeBookingSession(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -975,8 +977,9 @@ export async function completeBookingSession(req, res) {
 // Cancels an in-progress booking session and its conversation when the user
 // closes the chat, restarts the wizard, or abandons the flow mid-booking.
 export async function cancelBookingSession(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const userId = Number(req.auth.sub);
     const { session_id, conversation_id } = req.body;
 
@@ -1048,6 +1051,6 @@ export async function cancelBookingSession(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }

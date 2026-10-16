@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   getPublicAnnouncements,
   getActivePromotion,
@@ -8,9 +8,9 @@ import {
   deleteAnnouncement,
 } from "../controllers/announcementController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { upload, validateImageSignature } from "../middleware/upload.js";
 
-export const announcementRouter = Router();
+export const announcementRouter = asyncRouter();
 
 // Public route — fetches published announcements for landing page
 announcementRouter.get("/announcements/public", getPublicAnnouncements);
@@ -30,6 +30,7 @@ announcementRouter.post(
   requireAuth,
   requireRole("Admin"),
   upload.single("image"),
+  validateImageSignature,
   createAnnouncement,
 );
 announcementRouter.put(
@@ -37,6 +38,7 @@ announcementRouter.put(
   requireAuth,
   requireRole("Admin"),
   upload.single("image"),
+  validateImageSignature,
   updateAnnouncement,
 );
 announcementRouter.delete(

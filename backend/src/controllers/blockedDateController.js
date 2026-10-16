@@ -1,3 +1,5 @@
+import { isCalendarDate } from "../utils/inputValidation.js";
+import { lockBookingCalendar } from "../services/reservationHoldService.js";
 import { pool } from "../db/pool.js";
 import { logActivity } from "../services/activityService.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
@@ -47,9 +49,11 @@ export async function getBlockedDates(_req, res) {
 // fully occupied by the availability source of truth from the moment it is
 // saved, so no new bookings can be taken for it.
 export async function createBlockedDate(req, res) {
+  let connection;
   try {
+    connection = await pool.getConnection();
     const blockDate = String(req.body?.date || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(blockDate)) {
+    if (!isCalendarDate(blockDate)) {
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -86,15 +90,18 @@ export async function createBlockedDate(req, res) {
 
     // Refuse to silently block a day that still has active (non-cancelled,
     // non-completed) bookings unless the admin explicitly confirms (force).
-    const [existingBookings] = await pool.query(
+    await connection.beginTransaction();
+    await lockBookingCalendar(connection);
+    const [existingBookings] = await connection.query(
       `SELECT booking_id, booking_reference, booking_status
        FROM bookings
-       WHERE event_date = ? AND booking_status NOT IN ('Cancelled', 'Completed')
+       WHERE event_date = ? AND booking_status NOT IN ('Cancelled', 'Completed', 'Rejected')
        ORDER BY booking_id`,
       [blockDate],
     );
 
-    if (existingBookings.length > 0 && !req.body?.force) {
+    if (existingBookings.length > 0 && req.body?.force !== true) {
+      await connection.rollback();
       return res.status(409).json({
         error: {
           code: "DATE_HAS_BOOKINGS",
@@ -108,11 +115,12 @@ export async function createBlockedDate(req, res) {
       });
     }
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       "INSERT INTO blocked_dates (blocked_date, reason, blocked_by) VALUES (?, ?, ?)",
       [blockDate, reasonText, Number(req.auth?.sub) || null],
     );
 
+    await connection.commit();
     logActivity({
       actorUserId: Number(req.auth?.sub) || null,
       actorRole: "Admin",
@@ -131,6 +139,7 @@ export async function createBlockedDate(req, res) {
       reason: reasonText,
     });
   } catch (error) {
+    await connection?.rollback();
     if (error?.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         error: {
@@ -146,6 +155,8 @@ export async function createBlockedDate(req, res) {
         message: "Failed to block date.",
       },
     });
+  } finally {
+    connection?.release();
   }
 }
 

@@ -84,7 +84,8 @@ export function createApp() {
   app.use("/api", userRouter);
 
   app.use((err, _req, res, _next) => {
-    const status = err.status || err.statusCode || 500;
+    if (res.headersSent) return _next(err);
+    const status = err.code === "LIMIT_FILE_SIZE" ? 413 : (err.status || err.statusCode || 500);
     if (status >= 500) {
       console.error(err);
     }

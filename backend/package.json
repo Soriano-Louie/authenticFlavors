@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "cleanup:ai-sessions": "node src/scripts/cleanupAISessions.js"
+    "cleanup:ai-sessions": "node src/scripts/cleanupAISessions.js",
+    "test": "node --test tests/*.test.js",
+    "audit:data": "node src/scripts/auditBookingIntegrity.js",
+    "receipts:migrate": "node src/scripts/migratePrivateReceipts.js"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",

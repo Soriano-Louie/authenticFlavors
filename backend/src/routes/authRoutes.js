@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   login,
   logout,
@@ -19,7 +19,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { uploadProfilePhoto as uploadProfilePhotoMiddleware, validateImageSignature } from "../middleware/upload.js";
 import { authLimiter, passwordResetLimiter, uploadLimiter } from "../middleware/rateLimit.js";
 
-export const authRouter = Router();
+export const authRouter = asyncRouter();
 
 authRouter.post("/register", authLimiter, register);
 authRouter.post("/login", authLimiter, login);

@@ -16,9 +16,7 @@ const fileFilter = (_req, file, cb) => {
     cb(null, true);
   } else {
     cb(
-      new Error(
-        "Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.",
-      ),
+      Object.assign(new Error("Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed."), { status: 400 }),
       false,
     );
   }
@@ -32,9 +30,7 @@ const profilePhotoFilter = (_req, file, cb) => {
     cb(null, true);
   } else {
     cb(
-      new Error(
-        "Invalid file type. Only JPG, JPEG, and PNG images are allowed.",
-      ),
+      Object.assign(new Error("Invalid file type. Only JPG, JPEG, and PNG images are allowed."), { status: 400 }),
       false,
     );
   }

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   getUserNotifications,
   markAsRead,
@@ -7,7 +7,7 @@ import {
 } from "../controllers/notificationController.js";
 import { requireAuth } from "../middleware/auth.js";
 
-export const notificationRouter = Router();
+export const notificationRouter = asyncRouter();
 
 notificationRouter.get("/notifications", requireAuth, getUserNotifications);
 notificationRouter.patch("/notifications/read-all", requireAuth, markAllAsRead);

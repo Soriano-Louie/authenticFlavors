@@ -1,3 +1,5 @@
+import { privateReceiptUrl, deleteOwnedReceipt } from "../services/cloudinaryService.js";
+import { checkPaymentOrder } from "../services/bookingRulesService.js";
 import { pool } from "../db/pool.js";
 import {
   uploadToCloudinary,
@@ -80,9 +82,10 @@ export async function getPaymentInstructions(req, res) {
 // Upload receipt file (customer) — multer + Cloudinary
 // ──────────────────────────────────────────
 export async function uploadReceiptFile(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   let uploadResult = null;
   try {
+    connection = await pool.getConnection();
     const { payment_id } = req.body;
     const userId = Number(req.auth.sub);
 
@@ -103,7 +106,7 @@ export async function uploadReceiptFile(req, res) {
 
     // Verify payment belongs to user
     const [payments] = await connection.query(
-      `SELECT p.*, b.user_id, b.booking_reference
+      `SELECT p.*, b.user_id, b.booking_reference, b.booking_status
        FROM payments p
        JOIN bookings b ON p.booking_id = b.booking_id
        WHERE p.payment_id = ?`,
@@ -153,6 +156,9 @@ export async function uploadReceiptFile(req, res) {
       });
     }
 
+    if (['Cancelled', 'Rejected'].includes(payment.booking_status)) {
+      return res.status(409).json({ error: { code: 'INVALID_STATE', message: 'This booking no longer accepts payments.' } });
+    }
     // Upload to Cloudinary FIRST. The old receipt asset is only deleted after
     // the new row is persisted, so a re-upload can never leave a broken
     // receipt_url if the new upload or the DB write fails (2.8).
@@ -165,6 +171,8 @@ export async function uploadReceiptFile(req, res) {
     // Re-check the payment status under lock before persisting, so a slow
     // Cloudinary upload can never overwrite a payment the admin just verified.
     await connection.beginTransaction();
+    const [lockedBookings] = await connection.query('SELECT booking_status FROM bookings WHERE booking_id = ? FOR UPDATE', [payment.booking_id]);
+    await checkPaymentOrder(connection, payment, lockedBookings[0]?.booking_status);
     const [lockedPayments] = await connection.query(
       `SELECT payment_id, payment_status FROM payments
        WHERE payment_id = ? FOR UPDATE`,
@@ -175,7 +183,7 @@ export async function uploadReceiptFile(req, res) {
       !lockedPayment ||
       !UPLOADABLE_STATUSES.includes(lockedPayment.payment_status)
     ) {
-      await connection.rollback();
+      await connection?.rollback();
       if (result?.public_id) {
         await deleteFromCloudinary(result.public_id).catch(() => {});
       }
@@ -201,7 +209,8 @@ export async function uploadReceiptFile(req, res) {
     );
 
     if (receiptUpdate.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
+      await deleteOwnedReceipt(result.public_id);
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -215,7 +224,7 @@ export async function uploadReceiptFile(req, res) {
     // The new receipt is now live in the DB — delete the replaced asset
     // best-effort (never fail the request if Cloudinary cleanup errors).
     if (oldReceiptPublicId) {
-      deleteFromCloudinary(oldReceiptPublicId).catch((delErr) =>
+      deleteOwnedReceipt(oldReceiptPublicId).catch((delErr) =>
         console.error(
           "Failed to delete replaced receipt on Cloudinary:",
           delErr,
@@ -261,11 +270,11 @@ export async function uploadReceiptFile(req, res) {
     res.status(200).json({
       message: "Receipt uploaded successfully. Awaiting admin verification.",
       payment_status: "For_Verification",
-      receipt_url: result.secure_url,
+      receipt_url: `/api/payments/receipt/${payment_id}`,
       receipt_public_id: result.public_id,
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
     // If a receipt was uploaded to Cloudinary but the transaction failed,
     // remove the orphaned file so it never lingers without a DB reference.
     if (uploadResult?.public_id) {
@@ -276,178 +285,27 @@ export async function uploadReceiptFile(req, res) {
         ),
       );
     }
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Upload receipt file failed:", error);
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to upload receipt." },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
 // ──────────────────────────────────────────
 // Upload receipt URL (customer) — for frontend direct Cloudinary upload
 // ──────────────────────────────────────────
-export async function uploadReceipt(req, res) {
-  const connection = await pool.getConnection();
-  try {
-    const { payment_id, receipt_url, receipt_public_id } = req.body;
-    const userId = Number(req.auth.sub);
-
-    if (!payment_id || !receipt_url) {
-      return res.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Payment ID and receipt URL are required.",
-        },
-      });
-    }
-
-    // Verify payment belongs to user
-    const [payments] = await connection.query(
-      `SELECT p.*, b.user_id, b.booking_reference
-       FROM payments p
-       JOIN bookings b ON p.booking_id = b.booking_id
-       WHERE p.payment_id = ?`,
-      [payment_id],
-    );
-
-    if (payments.length === 0) {
-      return res.status(404).json({
-        error: { code: "NOT_FOUND", message: "Payment not found." },
-      });
-    }
-
-    const payment = payments[0];
-
-    if (payment.user_id !== userId) {
-      return res.status(403).json({
-        error: {
-          code: "FORBIDDEN",
-          message: "You can only upload receipts for your own payments.",
-        },
-      });
-    }
-
-    // Cancellation charges are settled in person (verified by the admin in
-    // cash). No receipt is ever uploaded against them.
-    if (payment.payment_type === "CancellationCharge") {
-      return res.status(400).json({
-        error: {
-          code: "INVALID_STATE",
-          message:
-            "Cancellation charges are settled in person with the admin — please contact the restaurant to arrange payment.",
-        },
-      });
-    }
-
-    // Allow upload for pending, rejected, or overdue payments. Overdue is
-    // included so customers can still settle after the due date and let the
-    // admin verify the receipt.
-    const UPLOADABLE_STATUSES = ["Pending", "Rejected", "Overdue"];
-    if (!UPLOADABLE_STATUSES.includes(payment.payment_status)) {
-      return res.status(400).json({
-        error: {
-          code: "INVALID_STATE",
-          message:
-            "Receipt can only be uploaded for pending, rejected, or overdue payments.",
-        },
-      });
-    }
-
-    // Remember the previous asset so it can be deleted best-effort after the
-    // new receipt row is persisted (2.8).
-    const oldReceiptPublicId = payment.receipt_public_id;
-
-    const [receiptUpdate] = await connection.query(
-      `UPDATE payments 
-       SET receipt_url = ?, 
-           receipt_public_id = ?, 
-           receipt_uploaded_at = CURRENT_TIMESTAMP,
-           payment_status = 'For_Verification',
-           payment_reference = NULL,
-           payment_method = 'Receipt'
-       WHERE payment_id = ? AND payment_status IN ('Pending', 'Rejected', 'Overdue')`,
-      [receipt_url, receipt_public_id || null, payment_id],
-    );
-
-    if (receiptUpdate.affectedRows === 0) {
-      return res.status(400).json({
-        error: {
-          code: "INVALID_STATE",
-          message: "Payment status changed while uploading. Please try again.",
-        },
-      });
-    }
-
-    // New receipt is live — delete the replaced Cloudinary asset best-effort.
-    if (oldReceiptPublicId && oldReceiptPublicId !== receipt_public_id) {
-      deleteFromCloudinary(oldReceiptPublicId).catch((delErr) =>
-        console.error(
-          "Failed to delete replaced receipt on Cloudinary:",
-          delErr,
-        ),
-      );
-    }
-
-    const paymentTypeLabel =
-      payment.payment_type === "Reservation"
-        ? "Reservation Fee"
-        : payment.payment_type === "DownPayment"
-          ? "Down Payment"
-          : "Final Payment";
-
-    const refStr =
-      payment.booking_reference ||
-      `#BK${String(payment.booking_id).padStart(4, "0")}`;
-    const receiptActionLabel =
-      payment.payment_type === "Reservation"
-        ? "reservation"
-        : payment.payment_type === "DownPayment"
-          ? "down payment"
-          : "final payment";
-    logActivity({
-      actorUserId: userId,
-      actorRole: "Customer",
-      activityType: "receipt_uploaded",
-      action: `uploaded the ${receiptActionLabel} receipt for Booking #${refStr.replace(/^#/, "")}`,
-      bookingId: payment.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (receipt_uploaded):", err),
-    );
-
-    createNotification({
-      userId,
-      bookingId: payment.booking_id,
-      type: `payment_verification_${payment.payment_type.toLowerCase()}`,
-      title: `${paymentTypeLabel} Received`,
-      message: `Your ${paymentTypeLabel} receipt has been received and is currently under verification by the admin.`,
-      link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
-    }).catch((err) => console.error("Notification creation failed:", err));
-
-    res.status(200).json({
-      message: "Receipt uploaded successfully. Awaiting admin verification.",
-      payment_status: "For_Verification",
-    });
-  } catch (error) {
-    console.error("Upload receipt failed:", error);
-    res.status(500).json({
-      error: {
-        code: "SERVER_ERROR",
-        message: "Failed to upload receipt.",
-      },
-    });
-  } finally {
-    connection.release();
-  }
+export async function uploadReceipt(_req, res) {
+  return res.status(410).json({ error: { code: 'FILE_UPLOAD_REQUIRED', message: 'Upload the receipt image using the file upload endpoint.' } });
 }
 
-// ──────────────────────────────────────────
-// Verify receipt (admin approve/reject)
-// ──────────────────────────────────────────
 export async function verifyReceipt(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const { paymentId } = req.params;
     const adminId = Number(req.auth.sub);
     const { action, admin_remarks, approve_without_receipt } = req.body;
@@ -505,6 +363,8 @@ export async function verifyReceipt(req, res) {
     // Lock the payment row so a payment cannot be verified twice concurrently.
     await connection.beginTransaction();
 
+    const [paymentLookup] = await connection.query('SELECT booking_id FROM payments WHERE payment_id = ?', [paymentId]);
+    if (paymentLookup.length) await connection.query('SELECT booking_id FROM bookings WHERE booking_id = ? FOR UPDATE', [paymentLookup[0].booking_id]);
     // Get payment details
     const [payments] = await connection.query(
       `SELECT p.*, b.user_id AS booking_user_id, b.total_price, b.amount_paid, b.remaining_balance, b.booking_status,
@@ -518,13 +378,14 @@ export async function verifyReceipt(req, res) {
     );
 
     if (payments.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Payment not found." },
       });
     }
 
     const payment = payments[0];
+    if (action === "approve") await checkPaymentOrder(connection, payment, payment.booking_status);
 
     // A receipt can be verified while For_Verification, or while Overdue if a
     // receipt was already uploaded (covers payments that went overdue after
@@ -535,7 +396,7 @@ export async function verifyReceipt(req, res) {
     
     if (approve_without_receipt && action === "approve" && payment.payment_type === "FinalPayment") {
       if (!APPROVE_WITHOUT_RECEIPT_STATUSES.includes(payment.payment_status)) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(400).json({
           error: {
             code: "INVALID_STATE",
@@ -546,35 +407,12 @@ export async function verifyReceipt(req, res) {
         });
       }
 
-      // Check if previous payments (Reservation or DownPayment) exist and are paid
-      const [previousPayments] = await connection.query(
-        `SELECT payment_type, payment_status 
-         FROM payments 
-         WHERE booking_id = ? AND payment_type IN ('Reservation', 'DownPayment')`,
-        [payment.booking_id],
-      );
-
-      if (previousPayments.length > 0) {
-        const hasUnpaidPrevious = previousPayments.some(
-          (p) => p.payment_status !== "Paid",
-        );
-        if (hasUnpaidPrevious) {
-          await connection.rollback();
-          return res.status(400).json({
-            error: {
-              code: "PREVIOUS_PAYMENTS_REQUIRED",
-              message:
-                "Final Payment cannot be approved without receipt because previous payments (Down Payment / Reservation) have not been paid yet.",
-            },
-          });
-        }
-      }
     } else {
       if (
         !payment.receipt_url ||
         !VERIFIABLE_STATUSES.includes(payment.payment_status)
       ) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(400).json({
           error: {
             code: "INVALID_STATE",
@@ -622,7 +460,7 @@ export async function verifyReceipt(req, res) {
       );
 
       if (payUpdate.affectedRows === 0) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(409).json({
           error: {
             code: "INVALID_STATE",
@@ -634,9 +472,8 @@ export async function verifyReceipt(req, res) {
       // Update booking: add amount_paid, reduce remaining_balance, update status
       // Money is rounded to cents after every operation (2.13).
       const round2 = (n) => Math.round(n * 100) / 100;
-      const newAmountPaid = round2(
-        parseFloat(payment.amount_paid) + parseFloat(payment.amount),
-      );
+      const [[ledger]] = await connection.query("SELECT COALESCE(SUM(amount), 0) AS paid_total FROM payments WHERE booking_id = ? AND payment_status = 'Paid' AND payment_type != 'CancellationCharge'", [payment.booking_id]);
+      const newAmountPaid = round2(ledger.paid_total);
       const newRemaining = Math.max(
         round2(parseFloat(payment.total_price) - newAmountPaid),
         0,
@@ -659,7 +496,7 @@ export async function verifyReceipt(req, res) {
         newBookingStatus = "Confirmed";
       }
       // If remaining balance is 0 -> Confirmed
-      if (newRemaining <= 0) {
+      if (newRemaining <= 0 && payment.booking_status !== "Completed") {
         newBookingStatus = "Confirmed";
       }
 
@@ -677,7 +514,7 @@ export async function verifyReceipt(req, res) {
             payment.booking_id,
           )
         ) {
-          await connection.rollback();
+          await connection?.rollback();
           return res.status(409).json({
             error: {
               code: "DATE_UNAVAILABLE",
@@ -694,12 +531,12 @@ export async function verifyReceipt(req, res) {
              amount_paid = ?,
              remaining_balance = ?,
              updated_at = CURRENT_TIMESTAMP
-         WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected', 'Completed')`,
+         WHERE booking_id = ? AND booking_status NOT IN ('Cancelled', 'Rejected')`,
         [newBookingStatus, newAmountPaid, newRemaining, payment.booking_id],
       );
 
       if (bookingUpdate.affectedRows === 0) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(409).json({
           error: {
             code: "INVALID_STATE",
@@ -797,7 +634,7 @@ export async function verifyReceipt(req, res) {
       );
 
       if (rejUpdate.affectedRows === 0) {
-        await connection.rollback();
+        await connection?.rollback();
         return res.status(409).json({
           error: {
             code: "INVALID_STATE",
@@ -839,7 +676,8 @@ export async function verifyReceipt(req, res) {
       });
     }
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Verify receipt failed:", error);
     res.status(500).json({
       error: {
@@ -848,7 +686,7 @@ export async function verifyReceipt(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -894,7 +732,7 @@ export async function getPaymentStatus(req, res) {
       paid_at: payment.paid_at,
       payment_method: payment.payment_method,
       payment_reference: payment.payment_reference,
-      receipt_url: payment.receipt_url,
+      receipt_url: payment.receipt_url ? `/api/payments/receipt/${payment.payment_id}` : null,
       receipt_uploaded_at: payment.receipt_uploaded_at,
       verified_at: payment.verified_at,
     });
@@ -930,7 +768,7 @@ export async function getOverduePayments(req, res) {
        ORDER BY p.due_date ASC`,
     );
 
-    res.status(200).json({ payments });
+    res.status(200).json({ payments: payments.map(presentPayment) });
   } catch (error) {
     console.error("Get overdue payments failed:", error);
     res.status(500).json({
@@ -1027,8 +865,9 @@ export async function sendPaymentReminder(req, res) {
 // Admin: Cancel booking for overdue payment
 // ──────────────────────────────────────────
 export async function cancelBookingForOverdue(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const { paymentId } = req.params;
 
     // Lock the payment row so a repeated overdue sweep cannot overwrite a
@@ -1047,7 +886,7 @@ export async function cancelBookingForOverdue(req, res) {
     );
 
     if (payments.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Payment not found." },
       });
@@ -1059,7 +898,7 @@ export async function cancelBookingForOverdue(req, res) {
       payment.booking_status === "Cancelled" ||
       payment.booking_status === "Completed"
     ) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1070,7 +909,7 @@ export async function cancelBookingForOverdue(req, res) {
 
     // Only unsettled payments can trigger an overdue cancellation.
     if (payment.payment_status === "Paid") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1103,7 +942,7 @@ export async function cancelBookingForOverdue(req, res) {
     );
 
     if (bookingUpdate.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1158,13 +997,14 @@ export async function cancelBookingForOverdue(req, res) {
       booking_status: "Cancelled",
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Cancel booking for overdue failed:", error);
     res.status(500).json({
       error: { code: "SERVER_ERROR", message: "Failed to cancel booking." },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -1223,7 +1063,7 @@ export async function getBookingPayments(req, res) {
       [bookingId],
     );
 
-    res.status(200).json({ payments });
+    res.status(200).json({ payments: payments.map(presentPayment) });
   } catch (error) {
     console.error("Get booking payments failed:", error);
     res.status(500).json({
@@ -1275,7 +1115,7 @@ export async function getAllPayments(req, res) {
       [limit, offset],
     );
 
-    res.status(200).json({ payments, total, page, limit });
+    res.status(200).json({ payments: payments.map(presentPayment), total, page, limit });
   } catch (error) {
     console.error("Get all payments failed:", error);
     res.status(500).json({
@@ -1291,8 +1131,9 @@ export async function getAllPayments(req, res) {
 // Admin: Record a cancellation charge as settled in person (cash)
 // ──────────────────────────────────────────
 export async function settleCancellationCharge(req, res) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const { paymentId } = req.params;
     const adminId = Number(req.auth.sub);
 
@@ -1310,7 +1151,7 @@ export async function settleCancellationCharge(req, res) {
     );
 
     if (payments.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Payment not found." },
       });
@@ -1319,7 +1160,7 @@ export async function settleCancellationCharge(req, res) {
     const payment = payments[0];
 
     if (payment.payment_type !== "CancellationCharge") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1330,7 +1171,7 @@ export async function settleCancellationCharge(req, res) {
     }
 
     if (!["Pending", "Overdue"].includes(payment.payment_status)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATE",
@@ -1353,7 +1194,7 @@ export async function settleCancellationCharge(req, res) {
     );
 
     if (settleUpdate.affectedRows === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(409).json({
         error: {
           code: "INVALID_STATE",
@@ -1395,7 +1236,8 @@ export async function settleCancellationCharge(req, res) {
       payment_status: "Paid",
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     console.error("Settle cancellation charge failed:", error);
     res.status(500).json({
       error: {
@@ -1404,7 +1246,7 @@ export async function settleCancellationCharge(req, res) {
       },
     });
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -1458,4 +1300,25 @@ export async function updatePaymentInstructions(req, res) {
       },
     });
   }
+}
+
+function presentPayment(payment) {
+  const { receipt_public_id, ...safe } = payment;
+  return { ...safe, receipt_url: payment.receipt_url ? `/api/payments/receipt/${payment.payment_id}` : null };
+}
+
+export async function getReceipt(req, res) {
+  const [rows] = await pool.query(`SELECT p.*, b.user_id FROM payments p
+    JOIN bookings b ON b.booking_id = p.booking_id WHERE p.payment_id = ?`, [req.params.paymentId]);
+  const payment = rows[0];
+  if (!payment || !payment.receipt_url || (req.auth.role !== 'Admin' && Number(payment.user_id) !== Number(req.auth.sub))) {
+    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Receipt not found.' } });
+  }
+  const response = await fetch(privateReceiptUrl(payment), { signal: AbortSignal.timeout(15000), redirect: 'error' });
+  if (!response.ok || !/^image\/(jpeg|png|gif|webp)/i.test(response.headers.get('content-type') || '')) {
+    return res.status(502).json({ error: { code: 'RECEIPT_UNAVAILABLE', message: 'Unable to load receipt.' } });
+  }
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.type(response.headers.get('content-type'));
+  return res.send(Buffer.from(await response.arrayBuffer()));
 }

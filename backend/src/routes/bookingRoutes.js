@@ -1,4 +1,6 @@
-import { Router } from "express";
+import { savePricingBaseline } from "../controllers/pricingBaselineController.js";
+import { bookingLimiter } from "../middleware/rateLimit.js";
+import { asyncRouter } from "../middleware/asyncRouter.js";
 import {
   createBooking,
   getBookings,
@@ -18,7 +20,7 @@ import {
 } from "../controllers/bookingController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-export const bookingRouter = Router();
+export const bookingRouter = asyncRouter();
 
 // Public availability (single source of truth for occupied dates)
 bookingRouter.get("/availability", getDateAvailability);
@@ -27,7 +29,7 @@ bookingRouter.get("/availability", getDateAvailability);
 bookingRouter.get("/config", getBookingConfig);
 
 // Customer booking endpoints
-bookingRouter.post("/bookings", requireAuth, createBooking);
+bookingRouter.post("/bookings", requireAuth, bookingLimiter, createBooking);
 bookingRouter.get("/bookings", requireAuth, getBookings);
 
 // Reschedule endpoints (Customer & Admin)
@@ -89,3 +91,5 @@ bookingRouter.post(
   requireRole("Admin"),
   adminCancelEventDayBooking,
 );
+
+bookingRouter.post("/admin/bookings/:id/pricing-baseline", requireAuth, requireRole("Admin"), savePricingBaseline);

@@ -37,6 +37,6 @@ export async function createNotification({
     return { notificationId, success: true };
   } catch (error) {
     console.error("[NotificationService] Failed to create notification:", error);
-    throw error;
+    return { success: false, notificationId: null };
   }
 }

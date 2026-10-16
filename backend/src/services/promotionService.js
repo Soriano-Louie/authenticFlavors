@@ -13,7 +13,7 @@ import { getPhilippineDateTimeString } from "../utils/timezone.js";
  *  - Ties resolve to the most recently created announcement.
  * Returns null when nothing applies, so callers keep today's behavior.
  */
-export async function getActiveDiscount(packageId, paxCount = null) {
+export async function getActiveDiscount(packageId, paxCount = null, db = pool) {
   const nowPH = getPhilippineDateTimeString();
   const paxClause = paxCount != null
     ? "AND (discount_pax_count IS NULL OR discount_pax_count = ?)"
@@ -25,7 +25,7 @@ export async function getActiveDiscount(packageId, paxCount = null) {
     ? [nowPH, nowPH, packageId, paxCount]
     : [nowPH, nowPH, packageId];
 
-  const [rows] = await pool.query(
+  const [rows] = await db.query(
     `SELECT id, discount_type, discount_value, discount_scope, discount_package_id, discount_pax_count
      FROM announcements
      WHERE status = 'published'

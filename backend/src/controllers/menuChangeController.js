@@ -1,3 +1,4 @@
+import { resolveMenu, repriceMenu, reconcileInstallments } from "../services/bookingRulesService.js";
 import { pool } from "../db/pool.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
 import { createNotification } from "../services/notificationService.js";
@@ -28,8 +29,9 @@ function getDaysUntilEvent(eventDateStr) {
  * Customer submits a menu change request.
  */
 export async function requestMenuChange(req, res, next) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const bookingId = Number(req.params.id);
     const userId = Number(req.auth.sub);
     const { menu_selections, dietary_notes } = req.body;
@@ -59,7 +61,7 @@ export async function requestMenuChange(req, res, next) {
     );
 
     if (bookings.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(404).json({
         error: { code: "NOT_FOUND", message: "Booking not found." },
       });
@@ -69,7 +71,7 @@ export async function requestMenuChange(req, res, next) {
 
     // Status check: must be Reserved or Confirmed
     if (!["Confirmed", "Reserved"].includes(booking.booking_status)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "INVALID_STATUS",
@@ -82,7 +84,7 @@ export async function requestMenuChange(req, res, next) {
     // 14-day rule check (backend enforcement)
     const daysUntilEvent = getDaysUntilEvent(booking.event_date);
     if (daysUntilEvent < 14) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "MENU_CHANGE_RESTRICTED",
@@ -92,30 +94,7 @@ export async function requestMenuChange(req, res, next) {
       });
     }
 
-    // Check that at most 1 item is selected per category
-    if (menu_selections.length > 0) {
-      const placeholders = menu_selections.map(() => "?").join(",");
-      const [itemsWithCategories] = await connection.query(
-        `SELECT mi.item_name, mi.category_id, mc.category_name
-         FROM menu_items mi
-         JOIN menu_categories mc ON mi.category_id = mc.category_id
-         WHERE mi.item_name IN (${placeholders})`,
-        menu_selections,
-      );
-      const seenCategories = new Map();
-      for (const item of itemsWithCategories) {
-        if (seenCategories.has(item.category_id)) {
-          await connection.rollback();
-          return res.status(400).json({
-            error: {
-              code: "VALIDATION_ERROR",
-              message: `Only 1 selection is allowed for category '${item.category_name}'.`,
-            },
-          });
-        }
-        seenCategories.set(item.category_id, item.item_name);
-      }
-    }
+    await resolveMenu(connection, booking.package_id, menu_selections);
 
     // Check if there is already a pending request for this booking
     const [existingPending] = await connection.query(
@@ -125,7 +104,7 @@ export async function requestMenuChange(req, res, next) {
     );
 
     if (existingPending.length > 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "PENDING_REQUEST_EXISTS",
@@ -153,7 +132,7 @@ export async function requestMenuChange(req, res, next) {
     const notesAreIdentical = currentDietaryNotes === requestedDietaryNotes;
 
     if (itemsAreIdentical && notesAreIdentical) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "NO_CHANGES_DETECTED",
@@ -174,6 +153,10 @@ export async function requestMenuChange(req, res, next) {
       ],
     );
 
+    const [admins] = await connection.query(
+      "SELECT user_id, email FROM users WHERE role = 'Admin'",
+    );
+
     await connection.commit();
 
     const requestId = result.insertId;
@@ -189,9 +172,7 @@ export async function requestMenuChange(req, res, next) {
     );
 
     // Notify admins via in-app notification & email
-    const [admins] = await pool.query(
-      "SELECT user_id, email FROM users WHERE role = 'Admin'",
-    );
+
 
     const customerName = `${booking.first_name} ${booking.last_name}`.trim();
     for (const admin of admins) {
@@ -221,10 +202,11 @@ export async function requestMenuChange(req, res, next) {
       request_id: requestId,
     });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     next(error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
@@ -304,8 +286,9 @@ export async function getAdminMenuChangeRequests(req, res, next) {
  * Admin approves a menu change request.
  */
 export async function approveMenuChangeRequest(req, res, next) {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const requestId = Number(req.params.requestId);
     const adminId = Number(req.auth.sub);
 
@@ -315,7 +298,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     const [requests] = await connection.query(
       `SELECT mcr.*, b.booking_reference, b.event_date, b.booking_status,
               b.package_id, b.dietary_notes as current_dietary_notes,
-              b.number_of_pax, b.total_price, b.amount_paid,
+              b.number_of_pax, b.total_price, b.amount_paid, b.booking_summary,
               u.user_id, u.first_name, u.last_name, u.email
        FROM menu_change_requests mcr
        JOIN bookings b ON mcr.booking_id = b.booking_id
@@ -325,7 +308,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     );
 
     if (requests.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res
         .status(404)
         .json({ error: { message: "Menu change request not found." } });
@@ -333,7 +316,7 @@ export async function approveMenuChangeRequest(req, res, next) {
 
     const request = requests[0];
     if (request.status !== "Pending") {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: { message: `Request is already ${request.status.toLowerCase()}.` },
       });
@@ -345,7 +328,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     // the change from being applied to a booking that no longer qualifies.
     // The booking row was locked FOR UPDATE above, so this check is race-safe.
     if (!["Confirmed", "Reserved"].includes(request.booking_status)) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "MENU_CHANGE_RESTRICTED",
@@ -356,7 +339,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     }
     const daysUntilEvent = getDaysUntilEvent(request.event_date);
     if (daysUntilEvent < 14) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "MENU_CHANGE_RESTRICTED",
@@ -374,7 +357,7 @@ export async function approveMenuChangeRequest(req, res, next) {
     // The item list must never be empty at approval time — wiping the whole
     // menu on an empty request is a data-loss bug, so reject it explicitly.
     if (!Array.isArray(newSelectionsRaw) || newSelectionsRaw.length === 0) {
-      await connection.rollback();
+      await connection?.rollback();
       return res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
@@ -383,172 +366,41 @@ export async function approveMenuChangeRequest(req, res, next) {
       });
     }
 
-    // De-duplicate the requested items (case-insensitive) so an item listed
-    // twice can't double-count its additional_price or crash on the unique key.
-    const newSelections = [
-      ...new Set(
-        newSelectionsRaw
-          .map((s) => String(s).trim())
-          .filter((s) => s.length > 0),
-      ),
-    ];
-
-    // Fetch current menu selections for auditing and to recover the package
-    // base price the customer actually booked at. The old total is priced as
-    // base + additional, so base = oldTotal − sum(old additional prices). The
-    // re-approval then uses that original base — never the package's current
-    // tier — so a price change since booking can't skew the surcharge.
+    const resolved = await resolveMenu(connection, request.package_id, newSelectionsRaw);
+    const newSelections = resolved.map(item => item.item_name);
+    const summary = typeof request.booking_summary === 'string'
+      ? JSON.parse(request.booking_summary) : (request.booking_summary || {});
+    const repriced = repriceMenu(summary.pricing_snapshot, resolved);
     const [oldSelectionsRows] = await connection.query(
-      `SELECT mi.item_name, mi.additional_price FROM booking_menu_selections bms
-       JOIN menu_items mi ON bms.menu_item_id = mi.menu_item_id
-       JOIN menu_categories mc ON bms.category_id = mc.category_id
-       WHERE bms.booking_id = ?`,
-      [request.booking_id],
-    );
-    const oldSelections = oldSelectionsRows.map((r) => r.item_name);
-    const oldAdditionalSum = oldSelectionsRows.reduce(
-      (sum, row) => sum + parseFloat(row.additional_price || 0),
-      0,
-    );
-
-    // Delete existing menu selections for booking and re-insert approved new selections
-    await connection.query(
-      "DELETE FROM booking_menu_selections WHERE booking_id = ?",
-      [request.booking_id],
-    );
-
-    // Accumulate the additional price of the approved items while re-inserting.
-    // Only items from still-active menu categories are accepted, so a disabled
-    // category can never have its items silently re-added through an approval.
-    let additionalPriceSum = 0;
-    for (const itemName of newSelections) {
-      const [menuItems] = await connection.query(
-        `SELECT mi.menu_item_id, mi.category_id, mi.additional_price
-         FROM menu_items mi
-         JOIN menu_categories mc ON mi.category_id = mc.category_id
-         WHERE mi.item_name = ?
-           AND mi.availability_status = 'Active'
-           AND mc.status = 'Active'
-         LIMIT 1`,
-        [itemName],
-      );
-
-      if (menuItems.length === 0) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: `Menu item '${itemName}' is no longer available (missing or inactive). Ask the customer to choose a different item and resubmit the request.`,
-          },
-        });
-      }
-
-      await connection.query(
-        `INSERT INTO booking_menu_selections (booking_id, category_id, menu_item_id)
-         VALUES (?, ?, ?)`,
-        [
-          request.booking_id,
-          menuItems[0].category_id,
-          menuItems[0].menu_item_id,
-        ],
-      );
-      additionalPriceSum += parseFloat(menuItems[0].additional_price || 0);
+      `SELECT mi.item_name FROM booking_menu_selections bms JOIN menu_items mi
+       ON mi.menu_item_id = bms.menu_item_id WHERE bms.booking_id = ?`, [request.booking_id]);
+    const oldSelections = oldSelectionsRows.map(item => item.item_name);
+    const [payments] = await connection.query(
+      "SELECT * FROM payments WHERE booking_id = ? AND payment_type != 'CancellationCharge' ORDER BY FIELD(payment_type, 'Reservation', 'DownPayment', 'FinalPayment'), payment_id FOR UPDATE", [request.booking_id]);
+    const plan = reconcileInstallments(payments, repriced.total);
+    const oldTotal = Number(request.total_price);
+    const newTotal = repriced.total;
+    const newRemaining = plan.remaining;
+    await connection.query('DELETE FROM booking_menu_selections WHERE booking_id = ?', [request.booking_id]);
+    for (const item of resolved) {
+      await connection.query('INSERT INTO booking_menu_selections (booking_id, category_id, menu_item_id) VALUES (?, ?, ?)',
+        [request.booking_id, item.category_id, item.menu_item_id]);
     }
-
-    // Update dietary notes on booking if provided in request
-    if (request.dietary_notes) {
-      await connection.query(
-        "UPDATE bookings SET dietary_notes = ? WHERE booking_id = ?",
-        [request.dietary_notes, request.booking_id],
-      );
+    for (const change of plan.changes) {
+      await connection.query(`UPDATE payments SET amount = ?, payment_status = CASE WHEN ? = 0 THEN 'Cancelled' ELSE payment_status END,
+        updated_at = NOW() WHERE payment_id = ?`, [change.amount, change.amount, change.payment_id]);
     }
-
-    // Recompute the booking price from the approved selections. The base is the
-    // price the customer originally booked at (recovered from the old total),
-    // NOT the package's current tier — so a package price change after booking
-    // can never skew the surcharge. Menu items add an additional_price on top of
-    // that base (same formula as createBooking), so switching to pricier items
-    // must raise the total and charge the difference; downgrades lower the total
-    // (no refund is issued).
-    const round2 = (n) => Math.round(n * 100) / 100;
-    const oldTotal = parseFloat(request.total_price);
-    let basePrice;
-    if (oldSelectionsRows.length > 0) {
-      basePrice = round2(oldTotal - oldAdditionalSum);
-    } else {
-      // Fallback for a booking with no stored menu rows: use the current tier.
-      const [pricingRows] = await connection.query(
-        "SELECT price FROM package_pricing WHERE package_id = ? AND pax_count = ?",
-        [request.package_id, request.number_of_pax],
-      );
-      if (pricingRows.length === 0) {
-        await connection.rollback();
-        return res.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message:
-              "Selected guest count tier is not available for this package.",
-          },
-        });
-      }
-      basePrice = parseFloat(pricingRows[0].price);
+    if (plan.newFinal > 0) {
+      await connection.query(`INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
+        VALUES (?, 'FinalPayment', ?, ?, 'Pending')`, [request.booking_id, plan.newFinal, request.event_date]);
     }
-
-    const newTotal = round2(basePrice + additionalPriceSum);
-    const amountPaid = parseFloat(request.amount_paid || 0);
-    const newRemaining = Math.max(round2(newTotal - amountPaid), 0);
-    // Bill only the increase the customer has not already covered. If the
-    // customer overpaid relative to the old total, part (or all) of the rise is
-    // already settled and must not be charged again.
-    const priceDelta = round2(newTotal - Math.max(amountPaid, oldTotal));
-
-    // Update the booking's total and remaining balance. A menu change is only
-    // allowed on confirmed (fully-paid) bookings, so a price increase becomes
-    // the new remaining balance the customer still owes.
-    await connection.query(
-      `UPDATE bookings
-       SET total_price = ?, remaining_balance = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE booking_id = ?`,
-      [newTotal, newRemaining, request.booking_id],
-    );
-
-    // If the approved changes cost more, the difference becomes a FinalPayment
-    // row. It flows through the normal receipt → admin-verification path
-    // (verifyReceipt credits bookings.amount_paid on approval).
-    //
-    // One row per type rule (option A): if there is still an unsettled original
-    // FinalPayment (Pending / Overdue / Rejected — re-uploadable payments),
-    // increase its amount instead of inserting a second row. When the original
-    // is already Paid — or a settlement is in flight (For_Verification) or was
-    // Cancelled — a new row is inserted, since merging into it would either
-    // credit a receipt that never covered the delta or resurrect a dead row.
-    if (priceDelta > 0.01) {
-      const [finalPayments] = await connection.query(
-        `SELECT payment_id, payment_status FROM payments
-         WHERE booking_id = ? AND payment_type = 'FinalPayment'
-         ORDER BY payment_id ASC`,
-        [request.booking_id],
-      );
-      const original = finalPayments[0];
-      const MERGEABLE_STATUSES = ["Pending", "Overdue", "Rejected"];
-      if (
-        original &&
-        MERGEABLE_STATUSES.includes(original.payment_status)
-      ) {
-        await connection.query(
-          `UPDATE payments
-           SET amount = amount + ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
-           WHERE payment_id = ?`,
-          [priceDelta, request.event_date, original.payment_id],
-        );
-      } else {
-        await connection.query(
-          `INSERT INTO payments (booking_id, payment_type, amount, due_date, payment_status)
-           VALUES (?, 'FinalPayment', ?, ?, 'Pending')`,
-          [request.booking_id, priceDelta, request.event_date],
-        );
-      }
-    }
+    summary.pricing_snapshot = repriced.snapshot;
+    summary.menu_choices_names = newSelections;
+    summary.overpayment_credit = plan.credit;
+    await connection.query(`UPDATE bookings SET total_price = ?, amount_paid = ?, remaining_balance = ?,
+      original_total = ?, discount_amount = ?, booking_summary = ?, dietary_notes = ?, updated_at = NOW() WHERE booking_id = ?`,
+      [newTotal, plan.paid, newRemaining, repriced.original, repriced.reduction, JSON.stringify(summary),
+       request.dietary_notes ?? request.current_dietary_notes, request.booking_id]);
 
     // Update request status to Approved
     await connection.query(
@@ -619,10 +471,11 @@ export async function approveMenuChangeRequest(req, res, next) {
 
     res.json({ message: "Menu change request approved successfully." });
   } catch (error) {
-    await connection.rollback();
+    await connection?.rollback();
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     next(error);
   } finally {
-    connection.release();
+    connection?.release();
   }
 }
 
