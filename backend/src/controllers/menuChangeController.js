@@ -1,3 +1,4 @@
+import { queueNotificationEmail } from "../services/emailService.js";
 import { resolveMenu, repriceMenu, reconcileInstallments } from "../services/bookingRulesService.js";
 import { pool } from "../db/pool.js";
 import { getPhilippineDateString } from "../utils/timezone.js";
@@ -157,22 +158,17 @@ export async function requestMenuChange(req, res, next) {
       "SELECT user_id, email FROM users WHERE role = 'Admin'",
     );
 
-    await connection.commit();
-
     const requestId = result.insertId;
 
-    logActivity({
+    await logActivity({
       actorUserId: userId,
       actorRole: "Customer",
       activityType: "menu_change_requested",
       action: `requested a menu change for Booking #${(booking.booking_reference || `#${bookingId}`).replace(/^#/, "")}`,
       bookingId,
-    }).catch((err) =>
-      console.error("Activity logging failed (menu_change_requested):", err),
-    );
+    }, connection);
 
     // Notify admins via in-app notification & email
-
 
     const customerName = `${booking.first_name} ${booking.last_name}`.trim();
     for (const admin of admins) {
@@ -183,19 +179,18 @@ export async function requestMenuChange(req, res, next) {
         title: "New Menu Change Request",
         message: `Customer ${customerName} requested menu changes for booking ${booking.booking_reference || `#${bookingId}`}.`,
         link: `/admin`,
-      });
+      }, connection);
 
-      try {
-        await sendMenuChangeRequestedAdminEmail(admin.email, {
+      await queueNotificationEmail(connection, () => sendMenuChangeRequestedAdminEmail(admin.email, {
           booking_reference: booking.booking_reference || `#${bookingId}`,
           customer_name: customerName,
           event_date: booking.event_date,
           requested_items: menu_selections,
-        });
-      } catch (e) {
-        console.error("Failed to send admin menu change email:", e.message);
-      }
+        }));
+
     }
+
+    await connection.commit();
 
     res.status(201).json({
       message: "Menu change request submitted successfully.",
@@ -432,17 +427,13 @@ export async function approveMenuChangeRequest(req, res, next) {
       ],
     );
 
-    await connection.commit();
-
-    logActivity({
+    await logActivity({
       actorUserId: adminId,
       actorRole: "Admin",
       activityType: "menu_change_approved",
       action: `approved the menu change for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
       bookingId: request.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (menu_change_approved):", err),
-    );
+    }, connection);
 
     // In-app notification to customer
     await createNotification({
@@ -452,22 +443,17 @@ export async function approveMenuChangeRequest(req, res, next) {
       title: "Menu Change Approved",
       message: `Your requested menu changes for booking ${request.booking_reference || `#${request.booking_id}`} have been approved!`,
       link: `/dashboard`,
-    });
+    }, connection);
 
     // Email notification to customer
-    try {
-      await sendMenuChangeApprovedCustomerEmail(
-        request.email,
-        request.first_name,
-        {
+
+    await queueNotificationEmail(connection, () => sendMenuChangeApprovedCustomerEmail(request.email, request.first_name, {
           booking_reference: request.booking_reference || `#${request.booking_id}`,
           event_date: request.event_date,
           updated_items: newSelections,
-        },
-      );
-    } catch (e) {
-      console.error("Failed to send customer menu change approval email:", e.message);
-    }
+        }));
+
+    await connection.commit();
 
     res.json({ message: "Menu change request approved successfully." });
   } catch (error) {
@@ -484,6 +470,7 @@ export async function approveMenuChangeRequest(req, res, next) {
  * Admin rejects a menu change request with required reason.
  */
 export async function rejectMenuChangeRequest(req, res, next) {
+  let connection;
   try {
     const requestId = Number(req.params.requestId);
     const adminId = Number(req.auth.sub);
@@ -498,17 +485,21 @@ export async function rejectMenuChangeRequest(req, res, next) {
       });
     }
 
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     // Fetch request details
-    const [requests] = await pool.query(
+    const [requests] = await connection.query(
       `SELECT mcr.*, b.booking_reference, b.event_date, u.user_id, u.first_name, u.email
        FROM menu_change_requests mcr
        JOIN bookings b ON mcr.booking_id = b.booking_id
        JOIN users u ON mcr.user_id = u.user_id
-       WHERE mcr.request_id = ? LIMIT 1`,
+       WHERE mcr.request_id = ? LIMIT 1 FOR UPDATE`,
       [requestId],
     );
 
     if (requests.length === 0) {
+      await connection.rollback();
       return res
         .status(404)
         .json({ error: { message: "Menu change request not found." } });
@@ -516,28 +507,27 @@ export async function rejectMenuChangeRequest(req, res, next) {
 
     const request = requests[0];
     if (request.status !== "Pending") {
+      await connection.rollback();
       return res.status(400).json({
         error: { message: `Request is already ${request.status.toLowerCase()}.` },
       });
     }
 
     // Update request status to Rejected
-    await pool.query(
+    await connection.query(
       `UPDATE menu_change_requests
        SET status = 'Rejected', rejection_reason = ?, reviewed_by = ?, reviewed_at = NOW()
        WHERE request_id = ?`,
       [rejection_reason.trim(), adminId, requestId],
     );
 
-    logActivity({
+    await logActivity({
       actorUserId: adminId,
       actorRole: "Admin",
       activityType: "menu_change_rejected",
       action: `rejected the menu change for Booking #${(request.booking_reference || `#${request.booking_id}`).replace(/^#/, "")}`,
       bookingId: request.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (menu_change_rejected):", err),
-    );
+    }, connection);
 
     // In-app notification to customer
     await createNotification({
@@ -547,25 +537,21 @@ export async function rejectMenuChangeRequest(req, res, next) {
       title: "Menu Change Request Update",
       message: `Your menu change request for booking ${request.booking_reference || `#${request.booking_id}`} was declined. Reason: ${rejection_reason.trim()}`,
       link: `/dashboard`,
-    });
+    }, connection);
 
     // Email notification to customer
-    try {
-      await sendMenuChangeRejectedCustomerEmail(
-        request.email,
-        request.first_name,
-        {
+
+    await queueNotificationEmail(connection, () => sendMenuChangeRejectedCustomerEmail(request.email, request.first_name, {
           booking_reference: request.booking_reference || `#${request.booking_id}`,
           event_date: request.event_date,
-        },
-        rejection_reason.trim(),
-      );
-    } catch (e) {
-      console.error("Failed to send customer menu change rejection email:", e.message);
-    }
+        }, rejection_reason.trim()));
 
+    await connection.commit();
     res.json({ message: "Menu change request rejected successfully." });
   } catch (error) {
+    await connection?.rollback();
     next(error);
+  } finally {
+    connection?.release();
   }
 }

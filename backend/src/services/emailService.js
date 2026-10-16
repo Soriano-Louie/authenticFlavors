@@ -1,8 +1,16 @@
 import { queueEmail, finishEmail, retryEmails } from "./emailOutboxService.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../config/env.js";
 import { formatPhilippineDate } from "../utils/timezone.js";
 
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+
+// Reuse the email templates while persisting their rendered payload on the
+// caller's transaction. The scheduler only sees jobs after that transaction commits.
+const emailTransaction = new AsyncLocalStorage();
+export function queueNotificationEmail(connection, buildEmail) {
+  return emailTransaction.run(connection, buildEmail);
+}
 
 function buildSender() {
   return {
@@ -59,6 +67,11 @@ async function deliverBrevoEmail(to, subject, htmlContent) {
 
 async function sendBrevoEmail(to, subject, htmlContent) {
   const lifetime = /verification|reset|password/i.test(subject) ? 10 : 2880;
+  const connection = emailTransaction.getStore();
+  if (connection) {
+    const id = await queueEmail({ to, subject, htmlContent }, lifetime, connection, 0);
+    return { queued: true, outboxId: id };
+  }
   const id = await queueEmail({ to, subject, htmlContent }, lifetime);
   const result = await deliverBrevoEmail(to, subject, htmlContent);
   await finishEmail(id);
@@ -437,6 +450,11 @@ export async function sendBookingSubmittedEmail(email, firstName, bookingDetails
 
 export async function sendBookingConfirmedEmail(email, firstName, bookingDetails) {
   const { booking_reference, event_date, package_name } = bookingDetails;
+  const status = bookingDetails.booking_status;
+  if (!['Reserved', 'Confirmed'].includes(status)) {
+    throw new Error('Booking status email requires Reserved or Confirmed status');
+  }
+  const statusText = status.toLowerCase();
   const formattedDate = formatPhilippineDate(event_date);
 
   const html = `
@@ -447,14 +465,14 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
       </div>
       <div style="background-color: #ffffff; border-radius: 12px; padding: 24px;">
         <div style="text-align: center; margin-bottom: 16px;">
-          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Booking Confirmed</span>
+          <span style="display: inline-block; background-color: #C8922A; color: #F5F0E8; padding: 4px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase;">Booking ${status}</span>
         </div>
-        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Great news! Your booking is confirmed.</h2>
+        <h2 style="color: #2C1810; font-size: 18px; margin: 0 0 12px;">Great news! Your booking is ${statusText}.</h2>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
           Hello${firstName ? ` ${escapeHtml(firstName)}` : ""},
         </p>
         <p style="color: #2C1810; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-          We are pleased to inform you that your booking <strong>${booking_reference || ""}</strong> has been officially confirmed by our admin team!
+          We are pleased to inform you that your booking <strong>${booking_reference || ""}</strong> has been officially ${statusText} by our admin team!
         </p>
         <div style="background-color: #F5F0E8; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <table style="width: 100%; font-size: 14px; color: #2C1810;">
@@ -478,7 +496,7 @@ export async function sendBookingConfirmedEmail(email, firstName, bookingDetails
     </div>
   `;
 
-  return sendBrevoEmail(email, `Booking Confirmed (${booking_reference || "Authentic Flavors"})`, html);
+  return sendBrevoEmail(email, `Booking ${status} (${booking_reference || "Authentic Flavors"})`, html);
 }
 
 export async function sendBookingRejectedEmail(email, firstName, bookingDetails, reason) {
@@ -1363,5 +1381,4 @@ export async function sendNewFeedbackAdminEmail(adminEmail, details) {
 
   return sendBrevoEmail(adminEmail, `New Feedback Received: ${Number(rating)} Stars (${booking_reference || "Authentic Flavors"})`, html);
 }
-
 

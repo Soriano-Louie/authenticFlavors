@@ -17,9 +17,9 @@ function unseal(value) {
   return JSON.parse(Buffer.concat([cipher.update(Buffer.from(envelope.data, 'base64')), cipher.final()]).toString('utf8'));
 }
 
-export async function queueEmail(payload, lifetimeMinutes = 2880) {
-  const [result] = await pool.query(`INSERT INTO email_outbox (payload, expires_at, next_attempt_at)
-    VALUES (?, DATE_ADD(NOW(), INTERVAL ? MINUTE), DATE_ADD(NOW(), INTERVAL 5 MINUTE))`, [seal(payload), lifetimeMinutes]);
+export async function queueEmail(payload, lifetimeMinutes = 2880, db = pool, delayMinutes = 5) {
+  const [result] = await db.query(`INSERT INTO email_outbox (payload, expires_at, next_attempt_at)
+    VALUES (?, DATE_ADD(NOW(), INTERVAL ? MINUTE), DATE_ADD(NOW(), INTERVAL ? MINUTE))`, [seal(payload), lifetimeMinutes, delayMinutes]);
   return result.insertId;
 }
 

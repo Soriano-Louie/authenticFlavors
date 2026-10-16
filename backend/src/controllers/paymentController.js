@@ -219,19 +219,6 @@ export async function uploadReceiptFile(req, res) {
       });
     }
 
-    await connection.commit();
-
-    // The new receipt is now live in the DB — delete the replaced asset
-    // best-effort (never fail the request if Cloudinary cleanup errors).
-    if (oldReceiptPublicId) {
-      deleteOwnedReceipt(oldReceiptPublicId).catch((delErr) =>
-        console.error(
-          "Failed to delete replaced receipt on Cloudinary:",
-          delErr,
-        ),
-      );
-    }
-
     const paymentTypeLabel =
       payment.payment_type === "Reservation"
         ? "Reservation Fee"
@@ -248,24 +235,34 @@ export async function uploadReceiptFile(req, res) {
         : payment.payment_type === "DownPayment"
           ? "down payment"
           : "final payment";
-    logActivity({
+    await logActivity({
       actorUserId: userId,
       actorRole: "Customer",
       activityType: "receipt_uploaded",
       action: `uploaded the ${receiptActionLabel} receipt for Booking #${refStr.replace(/^#/, "")}`,
       bookingId: payment.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (receipt_uploaded):", err),
-    );
+    }, connection);
 
-    createNotification({
+    await createNotification({
       userId,
       bookingId: payment.booking_id,
       type: `payment_verification_${payment.payment_type.toLowerCase()}`,
       title: `${paymentTypeLabel} Received`,
       message: `Your ${paymentTypeLabel} receipt has been received and is currently under verification by the admin.`,
       link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
+
+    await connection.commit();
+    // The new receipt is now live in the DB — delete the replaced asset
+    // best-effort (never fail the request if Cloudinary cleanup errors).
+    if (oldReceiptPublicId) {
+      deleteOwnedReceipt(oldReceiptPublicId).catch((delErr) =>
+        console.error(
+          "Failed to delete replaced receipt on Cloudinary:",
+          delErr,
+        ),
+      );
+    }
 
     res.status(200).json({
       message: "Receipt uploaded successfully. Awaiting admin verification.",
@@ -393,7 +390,7 @@ export async function verifyReceipt(req, res) {
     // Exception: FinalPayment can be approved without receipt when approve_without_receipt is true
     const VERIFIABLE_STATUSES = ["For_Verification", "Overdue"];
     const APPROVE_WITHOUT_RECEIPT_STATUSES = ["Pending", "Overdue"];
-    
+
     if (approve_without_receipt && action === "approve" && payment.payment_type === "FinalPayment") {
       if (!APPROVE_WITHOUT_RECEIPT_STATUSES.includes(payment.payment_status)) {
         await connection?.rollback();
@@ -545,35 +542,29 @@ export async function verifyReceipt(req, res) {
         });
       }
 
-      await connection.commit();
-
       const paidActionLabel =
         payment.payment_type === "Reservation"
           ? "reservation"
           : payment.payment_type === "DownPayment"
             ? "down payment"
             : "final payment";
-      logActivity({
+      await logActivity({
         actorUserId: adminId,
         actorRole: "Admin",
         activityType: "payment_approved",
         action: `approved the ${paymentTypeLabel} for Booking #${refStr.replace(/^#/, "")}`,
         bookingId: payment.booking_id,
-      }).catch((err) =>
-        console.error("Activity logging failed (payment_approved):", err),
-      );
-      logActivity({
+      }, connection);
+      await logActivity({
         actorUserId: payment.booking_user_id,
         actorRole: "Customer",
         activityType: "payment_paid",
         action: `paid the ${paidActionLabel} for Booking #${refStr.replace(/^#/, "")}`,
         bookingId: payment.booking_id,
-      }).catch((err) =>
-        console.error("Activity logging failed (payment_paid):", err),
-      );
+      }, connection);
 
       // 1. Trigger payment approval notification & Brevo email
-      createNotification({
+      await createNotification({
         userId: payment.booking_user_id,
         bookingId: payment.booking_id,
         type: `payment_approved_${payment.payment_type.toLowerCase()}`,
@@ -586,28 +577,30 @@ export async function verifyReceipt(req, res) {
             amount: payment.amount,
             booking_reference: refStr,
           }),
-      }).catch((err) => console.error("Notification creation failed:", err));
+      }, connection);
 
       // 2. Trigger next payment due notification if applicable
       if (payment.payment_type === "Reservation") {
-        createNotification({
+        await createNotification({
           userId: payment.booking_user_id,
           bookingId: payment.booking_id,
           type: "down_payment_due",
           title: "Down Payment Is Now Due",
           message: `Your reservation fee is approved! The down payment for booking ${refStr} is now due. Please view your payment schedule.`,
           link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
-        }).catch((err) => console.error("Notification creation failed:", err));
+        }, connection);
       } else if (payment.payment_type === "DownPayment") {
-        createNotification({
+        await createNotification({
           userId: payment.booking_user_id,
           bookingId: payment.booking_id,
           type: "final_payment_due",
           title: "Final Payment Is Now Due",
           message: `Your down payment is approved! The final payment for booking ${refStr} is now due. Please view your payment schedule.`,
           link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
-        }).catch((err) => console.error("Notification creation failed:", err));
+        }, connection);
       }
+
+      await connection.commit();
 
       res.status(200).json({
         message: "Payment approved successfully.",
@@ -643,19 +636,15 @@ export async function verifyReceipt(req, res) {
         });
       }
 
-      await connection.commit();
-
-      logActivity({
+      await logActivity({
         actorUserId: adminId,
         actorRole: "Admin",
         activityType: "payment_rejected",
         action: `rejected the ${paymentTypeLabel} for Booking #${refStr.replace(/^#/, "")}`,
         bookingId: payment.booking_id,
-      }).catch((err) =>
-        console.error("Activity logging failed (payment_rejected):", err),
-      );
+      }, connection);
 
-      createNotification({
+      await createNotification({
         userId: payment.booking_user_id,
         bookingId: payment.booking_id,
         type: `payment_rejected_${payment.payment_type.toLowerCase()}`,
@@ -668,7 +657,9 @@ export async function verifyReceipt(req, res) {
             amount: payment.amount,
             booking_reference: refStr,
           }, admin_remarks),
-      }).catch((err) => console.error("Notification creation failed:", err));
+      }, connection);
+
+      await connection.commit();
 
       res.status(200).json({
         message: "Payment rejected. Customer can upload a new receipt.",
@@ -951,24 +942,20 @@ export async function cancelBookingForOverdue(req, res) {
       });
     }
 
-    await connection.commit();
-
     const refStr =
       payment.booking_reference ||
       `#BK${String(payment.booking_id).padStart(4, "0")}`;
-    logActivity({
+    await logActivity({
       actorUserId: Number(req.auth?.sub) || null,
       actorRole: "Admin",
       activityType: "booking_cancelled_admin",
       action: `cancelled Booking #${refStr.replace(/^#/, "")} due to overdue payment`,
       bookingId: payment.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (booking_cancelled_admin):", err),
-    );
+    }, connection);
 
     // Notify the customer so they are never silently cancelled. Mirrors the
     // rejectBooking / auto-cancel flows.
-    createNotification({
+    await createNotification({
       userId: payment.user_id,
       bookingId: payment.booking_id,
       type: "booking_cancelled_overdue",
@@ -985,12 +972,9 @@ export async function cancelBookingForOverdue(req, res) {
           },
           "Your booking was cancelled by an administrator because a required payment was not settled before the due date. If you have already made a payment, please contact us.",
         ),
-    }).catch((err) =>
-      console.error(
-        "Notification creation failed (booking_cancelled_overdue):",
-        err,
-      ),
-    );
+    }, connection);
+
+    await connection.commit();
 
     res.status(200).json({
       message: "Booking cancelled due to overdue payment.",
@@ -1203,8 +1187,6 @@ export async function settleCancellationCharge(req, res) {
       });
     }
 
-    await connection.commit();
-
     const refStr =
       payment.booking_reference ||
       (payment.ai_booking_reference
@@ -1212,24 +1194,24 @@ export async function settleCancellationCharge(req, res) {
         : `#BK${String(payment.booking_id).padStart(4, "0")}`);
     const formattedAmount = `₱${Number(payment.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 
-    logActivity({
+    await logActivity({
       actorUserId: adminId,
       actorRole: "Admin",
       activityType: "payment_approved",
       action: `recorded the cancellation charge (${formattedAmount}) as settled in cash for Booking #${refStr.replace(/^#/, "")}`,
       bookingId: payment.booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (settle cancellation):", err),
-    );
+    }, connection);
 
-    createNotification({
+    await createNotification({
       userId: payment.booking_user_id,
       bookingId: payment.booking_id,
       type: "payment_approved_cancellationcharge",
       title: "Cancellation Charge Settled",
       message: `Your cancellation charge of ${formattedAmount} (${refStr}) has been settled in person.`,
       link: `/dashboard?tab=events&bookingId=${payment.booking_id}`,
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
+
+    await connection.commit();
 
     res.status(200).json({
       message: "Cancellation charge marked as settled (cash).",

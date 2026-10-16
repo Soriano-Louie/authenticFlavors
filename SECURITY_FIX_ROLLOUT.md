@@ -25,4 +25,10 @@ The changes are local source changes. No hosted database, Cloudinary asset, Rend
 
 ## Staging verification
 
+### Transactional booking notifications
+
+Booking submission, verification, rejection, cancellation, rescheduling, receipt upload/review, cancellation-charge settlement, and menu-change actions now save their in-app alerts and email jobs on the same database connection before committing. A notification or email-queue write failure rolls back the related change. No email provider request occurs inside these transactions. The existing email scheduler checks committed jobs every minute and retries provider failures; delivery remains at least once and queued mail retains its existing expiry policy.
+
+Booking verification emails and alerts use the actual `Reserved` or `Confirmed` status. Event-day cancellation now reports `email_status: "queued"` instead of claiming that the provider has already accepted the email. No additional schema migration is needed beyond the existing `email_outbox` table. Deploy the backend changes to enable this behavior; test credentials and provider delivery separately in staging.
+
 Use an isolated database and test accounts to verify simultaneous bookings/rescheduling/date-blocking, real Cloudinary uploads and receipt access, Aiven certificate validation, the startup migrations, receipt migration, and Brevo retry delivery. Local tests mock external services and cannot verify provider credentials, live indexes, certificate chains, or historical financial facts.

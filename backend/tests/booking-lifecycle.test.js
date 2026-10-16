@@ -18,17 +18,30 @@ for (const key of ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'J
   process.env[key] = key === 'DB_PORT' ? '3306' : 'test';
 }
 const { pool } = await import('../src/db/pool.js');
+const { retryEmails } = await import('../src/services/emailOutboxService.js');
 const { adminCancelEventDayBooking, calculateCancellationRefund } = await import('../src/controllers/bookingController.js');
 
 for (const fails of [false, true]) {
   test(`event-day cancellation recommendation email ${fails ? 'failure' : 'success'}`, async (t) => {
     let committed = false;
     let request;
-    t.mock.method(pool, 'query', async () => [{ insertId: 1 }]);
+    let queued;
+    let deleted = false;
+    t.mock.method(pool, 'query', async sql => {
+      if (sql.startsWith('SELECT outbox_id')) return [queued ? [{ outbox_id: 1, payload: queued }] : []];
+      if (sql.startsWith('UPDATE email_outbox')) return [{ affectedRows: 1 }];
+      if (sql.includes('WHERE outbox_id = ?') && sql.startsWith('DELETE')) deleted = true;
+      return [{ insertId: 1 }];
+    });
     t.mock.method(pool, 'getConnection', async () => ({
       beginTransaction: async () => {}, rollback: async () => {}, release() {},
       commit: async () => { committed = true; },
       query: async (sql, params) => {
+        if (sql.startsWith('INSERT INTO email_outbox')) {
+          assert.equal(committed, false, 'email is persisted before cancellation commits');
+          queued = params[0];
+          return [{ insertId: 1 }];
+        }
         if (sql.includes('AS paid_total')) {
           assert.match(sql, /payment_status = 'Paid'/);
           assert.match(sql, /payment_type != 'CancellationCharge'/);
@@ -57,8 +70,14 @@ for (const fails of [false, true]) {
     await adminCancelEventDayBooking({ params: { id: '1' }, body: { cancellation_reason: 'Kitchen <closed>' } }, res);
     assert.equal(payload.booking_status, 'Cancelled');
     assert.equal(payload.refundable_amount, 28500);
+    assert.equal(payload.email_status, 'queued');
+    assert.equal(request, undefined, 'request queues mail without contacting the provider');
+    await retryEmails(async (to, subject, htmlContent) => {
+      const result = await fetch('test-provider', { body: JSON.stringify({ to: [{ email: to }], subject, htmlContent }) });
+      if (!result.ok) throw new Error('provider unavailable');
+    });
     assert.ok(request.htmlContent.includes("28,500.00"));
-    assert.equal(payload.email_status, fails ? 'failed' : 'sent');
+    assert.equal(deleted, !fails, 'failed delivery remains queued');
     assert.equal(request.to[0].email, 'customer@example.com');
     for (const venue of ['LOLA', 'TA’GIG', 'LA LUNA', 'ORO PLATO']) {
       // Venue headings are rendered in uppercase in the existing template.

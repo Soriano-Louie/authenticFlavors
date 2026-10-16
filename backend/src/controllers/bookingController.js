@@ -1,3 +1,4 @@
+import { queueNotificationEmail } from "../services/emailService.js";
 import { assertBookingInput, isCalendarDate } from "../utils/inputValidation.js";
 import { resolveMenu } from "../services/bookingRulesService.js";
 import { lockBookingCalendar, expireUnpaidHolds } from "../services/reservationHoldService.js";
@@ -485,24 +486,20 @@ export async function createBooking(req, res) {
       "SELECT user_id, email FROM users WHERE role = 'Admin'",
     );
 
-    await connection.commit();
-
     // Trigger notification and Brevo email
     const refStr =
       booking_reference ||
       (ai_booking_reference
         ? `#AF-${ai_booking_reference}`
         : `#BK${String(booking_id).padStart(4, "0")}`);
-    logActivity({
+    await logActivity({
       actorUserId: userId,
       actorRole: "Customer",
       activityType: "booking_submitted",
       action: `submitted Booking #${refStr.replace("#", "")}`,
       bookingId: booking_id,
-    }).catch((err) =>
-      console.error("Activity logging failed (booking_submitted):", err),
-    );
-    createNotification({
+    }, connection);
+    await createNotification({
       userId,
       bookingId: booking_id,
       type: "booking_submitted",
@@ -515,14 +512,13 @@ export async function createBooking(req, res) {
           event_date,
           guest_count: number_of_pax,
         }),
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
 
     // Notify all admins via in-app notification & email
 
-
     if (admins.length > 0) {
       for (const admin of admins) {
-        createNotification({
+        await createNotification({
           userId: admin.user_id,
           bookingId: booking_id,
           type: "booking_submitted",
@@ -537,11 +533,11 @@ export async function createBooking(req, res) {
               guest_count: number_of_pax,
               total_price: discountedTotal,
             }),
-        }).catch((err) =>
-          console.error("Admin notification failed (booking_submitted):", err),
-        );
+        }, connection);
       }
     }
+
+    await connection.commit();
 
     res.status(201).json({
       message: "Booking submitted successfully.",
@@ -676,8 +672,6 @@ export async function autoCancelUnpaidPastBookings() {
       return;
     }
 
-    await connection.commit();
-
     for (const b of rows) {
       const refStr =
         b.booking_reference ||
@@ -685,17 +679,15 @@ export async function autoCancelUnpaidPastBookings() {
       const reason =
         "Your booking was automatically cancelled because the reservation / down payment was not received before the event date.";
 
-      logActivity({
+      await logActivity({
         actorUserId: null,
         actorRole: "System",
         activityType: "booking_cancelled_system",
         action: `automatically cancelled Booking #${refStr.replace(/^#/, "")} - reservation / down payment not received before the event date`,
         bookingId: b.booking_id,
-      }).catch((err) =>
-        console.error("Activity logging failed (booking_cancelled_system):", err),
-      );
+      }, connection);
 
-      createNotification({
+      await createNotification({
         userId: b.user_id,
         bookingId: b.booking_id,
         type: "booking_cancelled_unpaid",
@@ -709,10 +701,9 @@ export async function autoCancelUnpaidPastBookings() {
             { booking_reference: refStr },
             reason,
           ),
-      }).catch((err) =>
-        console.error("Notification creation failed (booking_cancelled_unpaid):", err),
-      );
+      }, connection);
     }
+    await connection.commit();
   } catch (error) {
     await connection?.rollback();
     if (error.status && error.status < 500) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
@@ -1169,7 +1160,7 @@ export async function verifyBooking(req, res) {
     }
 
     // A booking must not be promoted to Reserved/Confirmed before the
-    // reservation fee is accounted for (paid or at least uploaded for review).
+    // reservation fee has been verified as paid.
     // Receiving ₱0 and marking the booking reserved would be a false
     // confirmation and could hand the date to a non-paying customer.
     const [reservationRows] = await connection.query(
@@ -1215,36 +1206,35 @@ export async function verifyBooking(req, res) {
       });
     }
 
-    await connection.commit();
-
     const refStr =
       booking.booking_reference ||
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
-    logActivity({
+    await logActivity({
       actorUserId: Number(req.auth?.sub) || null,
       actorRole: "Admin",
-      activityType: "booking_confirmed",
-      action: `confirmed Booking #${refStr.replace(/^#/, "")}`,
+      activityType: `booking_${newBookingStatus.toLowerCase()}`,
+      action: `${newBookingStatus.toLowerCase()} Booking #${refStr.replace(/^#/, "")}`,
       bookingId,
-    }).catch((err) =>
-      console.error("Activity logging failed (booking_confirmed):", err),
-    );
-    createNotification({
+    }, connection);
+    await createNotification({
       userId: booking.user_id,
       bookingId,
-      type: "booking_confirmed",
-      title: "Booking Reserved! 🎉",
-      message: `Your booking (${refStr}) has been reserved after payment verification.`,
+      type: `booking_${newBookingStatus.toLowerCase()}`,
+      title: `Booking ${newBookingStatus}`,
+      message: `Your booking (${refStr}) has been ${newBookingStatus.toLowerCase()} after payment verification.`,
       link: `/dashboard?tab=events&bookingId=${bookingId}`,
       sendEmailFn: () =>
         sendBookingConfirmedEmail(booking.email, booking.first_name, {
           booking_reference: refStr,
           event_date: booking.event_date,
           package_name: booking.package_name,
+          booking_status: newBookingStatus,
         }),
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
+
+    await connection.commit();
 
     res.status(200).json({
       message: "Booking verified successfully.",
@@ -1603,23 +1593,19 @@ export async function rejectBooking(req, res) {
       [bookingId],
     );
 
-    await connection.commit();
-
     const refStr =
       booking.booking_reference ||
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
-    logActivity({
+    await logActivity({
       actorUserId: Number(req.auth?.sub) || null,
       actorRole: "Admin",
       activityType: "booking_cancelled_admin",
       action: `rejected Booking #${refStr.replace(/^#/, "")}`,
       bookingId,
-    }).catch((err) =>
-      console.error("Activity logging failed (booking_cancelled_admin):", err),
-    );
-    createNotification({
+    }, connection);
+    await createNotification({
       userId: booking.user_id,
       bookingId,
       type: "booking_rejected",
@@ -1636,7 +1622,9 @@ export async function rejectBooking(req, res) {
           },
           admin_remarks,
         ),
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
+
+    await connection.commit();
 
     res.status(200).json({
       message: "Booking rejected successfully.",
@@ -1888,26 +1876,19 @@ export async function requestCancellation(req, res) {
       }
     }
 
-    await connection.commit();
-
     const refStr =
       booking.booking_reference ||
       (booking.ai_booking_reference
         ? `#AF-${booking.ai_booking_reference}`
         : `#BK${String(bookingId).padStart(4, "0")}`);
-    logActivity({
+    await logActivity({
       actorUserId: userId,
       actorRole: "Customer",
       activityType: "booking_cancelled_customer",
       action: `cancelled Booking #${refStr.replace(/^#/, "")}`,
       bookingId,
-    }).catch((err) =>
-      console.error(
-        "Activity logging failed (booking_cancelled_customer):",
-        err,
-      ),
-    );
-    const [userRows] = await pool.query(
+    }, connection);
+    const [userRows] = await connection.query(
       "SELECT email, first_name FROM users WHERE user_id = ?",
       [userId],
     );
@@ -1918,7 +1899,7 @@ export async function requestCancellation(req, res) {
         ? `Your booking (${refStr}) has been cancelled. You have an eligible refund balance of ₱${refundableAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}. Since automated online refunds are not processed within the system, please contact or visit the restaurant directly to claim your refund.`
         : `Your booking (${refStr}) has been cancelled.`;
 
-    createNotification({
+    await createNotification({
       userId,
       bookingId,
       type: "booking_cancelled",
@@ -1935,7 +1916,7 @@ export async function requestCancellation(req, res) {
           },
           cancellation_reason,
         ),
-    }).catch((err) => console.error("Notification creation failed:", err));
+    }, connection);
 
     // Prepare response
     const responseData = {
@@ -1955,6 +1936,8 @@ export async function requestCancellation(req, res) {
       non_refundable_retention: refundInfo.non_refundable_retention,
       cancellation_charge_created: additionalAmountDue > 0,
     };
+
+    await connection.commit();
 
     res.status(200).json(responseData);
   } catch (error) {
@@ -2425,8 +2408,53 @@ export async function rescheduleBooking(req, res) {
       [newEventDate, bookingId],
     );
 
-    await connection.commit();
+    const bookingRef =
+      booking.booking_reference || `#BK${String(booking.booking_id).padStart(4, "0")}`;
 
+    // Log admin / customer activity
+    await logActivity({
+      actorUserId: userId,
+      actorRole: userRole,
+      activityType: "booking_rescheduled",
+      action: `rescheduled booking ${bookingRef} from ${currentEventDateStr} to ${newEventDate} (${startTime})`,
+    }, connection);
+
+    // Send in-app notification to customer
+    await createNotification({
+      userId: booking.user_id,
+      bookingId: booking.booking_id,
+      type: "booking_rescheduled",
+      title: userRole === "Admin" ? "Booking Rescheduled by Admin" : "Event Rescheduled Successfully",
+      message: `Your booking ${bookingRef} has been rescheduled from ${currentEventDateStr} to ${newEventDate} at ${startTime}. Payment due dates have been adjusted.`,
+      link: `/dashboard`,
+    }, connection);
+
+    // Send in-app notification to all active Admins
+
+    const [admins] = await connection.query(
+      "SELECT user_id FROM users WHERE role = 'Admin' AND account_status = 'Active'",
+    );
+    for (const admin of admins) {
+      // If an admin performed it, don't notify themselves if they prefer, or notify all admins
+      await createNotification({
+        userId: admin.user_id,
+        bookingId: booking.booking_id,
+        type: "booking_rescheduled",
+        title: userRole === "Admin" ? "Booking Rescheduled (Admin)" : "Booking Rescheduled by Customer",
+        message: `${booking.first_name} ${booking.last_name}'s booking ${bookingRef} was rescheduled from ${currentEventDateStr} to ${newEventDate} (${startTime}).`,
+        link: `/admin`,
+      }, connection);
+    }
+
+    // Send confirmation email to customer
+    await queueNotificationEmail(connection, () => sendBookingRescheduledEmail(booking.email, booking.first_name, {
+        booking_reference: bookingRef,
+        package_name: booking.package_name,
+        start_time: startTime,
+        downpayment_due_date: downPaymentDueDateStr,
+      }, currentEventDateStr, newEventDate, reschedule_reason || null));
+
+    await connection.commit();
     // Auto-complete or auto-cancel if the new event date has already passed
     await autoCompletePastBookings().catch((err) =>
       console.error("autoCompletePastBookings failed post-reschedule:", err),
@@ -2441,62 +2469,6 @@ export async function rescheduleBooking(req, res) {
     ).catch(() => [[{ booking_status: booking.booking_status }]]);
     const finalBookingStatus =
       updatedStatusRows[0]?.booking_status || booking.booking_status;
-
-    const bookingRef =
-      booking.booking_reference || `#BK${String(booking.booking_id).padStart(4, "0")}`;
-
-    // Log admin / customer activity
-    logActivity({
-      actorUserId: userId,
-      actorRole: userRole,
-      activityType: "booking_rescheduled",
-      action: `rescheduled booking ${bookingRef} from ${currentEventDateStr} to ${newEventDate} (${startTime})`,
-    }).catch((err) => console.error("Activity log failed (reschedule):", err));
-
-    // Send in-app notification to customer
-    createNotification({
-      userId: booking.user_id,
-      bookingId: booking.booking_id,
-      type: "booking_rescheduled",
-      title: userRole === "Admin" ? "Booking Rescheduled by Admin" : "Event Rescheduled Successfully",
-      message: `Your booking ${bookingRef} has been rescheduled from ${currentEventDateStr} to ${newEventDate} at ${startTime}. Payment due dates have been adjusted.`,
-      link: `/dashboard`,
-    }).catch((err) => console.error("Notification failed (customer reschedule):", err));
-
-    // Send in-app notification to all active Admins
-    try {
-      const [admins] = await pool.query(
-        "SELECT user_id FROM users WHERE role = 'Admin' AND account_status = 'Active'",
-      );
-      for (const admin of admins) {
-        // If an admin performed it, don't notify themselves if they prefer, or notify all admins
-        createNotification({
-          userId: admin.user_id,
-          bookingId: booking.booking_id,
-          type: "booking_rescheduled",
-          title: userRole === "Admin" ? "Booking Rescheduled (Admin)" : "Booking Rescheduled by Customer",
-          message: `${booking.first_name} ${booking.last_name}'s booking ${bookingRef} was rescheduled from ${currentEventDateStr} to ${newEventDate} (${startTime}).`,
-          link: `/admin`,
-        }).catch((err) => console.error("Admin notification failed (reschedule):", err));
-      }
-    } catch (err) {
-      console.error("Failed to query admins for reschedule notification:", err);
-    }
-
-    // Send confirmation email to customer
-    sendBookingRescheduledEmail(
-      booking.email,
-      booking.first_name,
-      {
-        booking_reference: bookingRef,
-        package_name: booking.package_name,
-        start_time: startTime,
-        downpayment_due_date: downPaymentDueDateStr,
-      },
-      currentEventDateStr,
-      newEventDate,
-      reschedule_reason || null,
-    ).catch((err) => console.error("Reschedule email failed:", err));
 
     res.status(200).json({
       message: "Event rescheduled successfully.",
@@ -2632,11 +2604,30 @@ export async function adminCancelEventDayBooking(req, res) {
       [bookingId],
     );
 
-    await connection.commit();
-
     const refStr =
       booking.booking_reference ||
       `#BK${String(booking.booking_id).padStart(4, "0")}`;
+
+    const formattedRefund = `₱${refundableAmount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+    })}`;
+
+    // Save the customer alert and email job atomically with the cancellation.
+    await createNotification({
+      userId: booking.user_id,
+      bookingId: booking.booking_id,
+      type: "booking_cancelled_admin_event_day",
+      title: "Event Cancelled by Admin",
+      message: `Your booking (${refStr}) has been cancelled by the administrator. You are entitled to a full 100% refund of ${formattedRefund} (settled directly with the owner). Alternative venue recommendations will be sent by email.`,
+      link: `/dashboard?tab=events&bookingId=${booking.booking_id}`,
+      sendEmailFn: () => sendAdminEventDayCancelledEmail(
+        booking.email, booking.first_name,
+        { booking_reference: refStr, event_date: eventDateStr,
+          package_name: booking.package_name, amount_paid: amountAlreadyPaid },
+        cancellation_reason.trim(),
+      ),
+    }, connection);
+    await connection.commit();
 
     logActivity({
       actorUserId: Number(req.auth?.sub) || null,
@@ -2648,43 +2639,9 @@ export async function adminCancelEventDayBooking(req, res) {
       console.error("Activity logging failed (booking_cancelled_admin_event_day):", err),
     );
 
-    const formattedRefund = `₱${refundableAmount.toLocaleString("en-PH", {
-      minimumFractionDigits: 2,
-    })}`;
-
-    // Persist the alert and send the email independently: a notification storage
-    // failure must not prevent the recommendation email from being attempted.
-    const [, emailResult] = await Promise.allSettled([
-      createNotification({
-        userId: booking.user_id,
-        bookingId: booking.booking_id,
-        type: "booking_cancelled_admin_event_day",
-        title: "Event Cancelled by Admin",
-        message: `Your booking (${refStr}) has been cancelled by the administrator. You are entitled to a full 100% refund of ${formattedRefund} (settled directly with the owner). Alternative venue recommendations will be sent by email.`,
-        link: `/dashboard?tab=events&bookingId=${booking.booking_id}`,
-      }),
-      sendAdminEventDayCancelledEmail(
-        booking.email,
-        booking.first_name,
-        {
-          booking_reference: refStr,
-          event_date: eventDateStr,
-          package_name: booking.package_name,
-          amount_paid: amountAlreadyPaid,
-        },
-        cancellation_reason.trim(),
-      ),
-    ]);
-    const emailSent = emailResult.status === "fulfilled";
-    if (!emailSent) {
-      console.error("Event-day recommendation email failed:", emailResult.reason);
-    }
-
     res.status(200).json({
-      message: emailSent
-        ? "Event-day booking cancelled successfully. Full refund marked for offline settlement and recommendation email accepted by the email provider."
-        : "Event-day booking cancelled successfully. Full refund marked for offline settlement, but the recommendation email failed to send. Please contact the customer with the alternative venues.",
-      email_status: emailSent ? "sent" : "failed",
+      message: "Event-day booking cancelled successfully. Full refund marked for offline settlement and recommendation email queued for delivery.",
+      email_status: "queued",
       booking_status: "Cancelled",
       refundable_amount: refundableAmount,
     });
@@ -2702,5 +2659,4 @@ export async function adminCancelEventDayBooking(req, res) {
     connection?.release();
   }
 }
-
 

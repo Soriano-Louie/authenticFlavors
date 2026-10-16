@@ -13,7 +13,7 @@ export function clearNameCache() {
   nameCache.clear();
 }
 
-export async function getUserName(userId) {
+export async function getUserName(userId, db = pool) {
   if (!userId) {
     return "Admin";
   }
@@ -25,7 +25,7 @@ export async function getUserName(userId) {
     // Expired entry — evict it so the next lookup re-queries the DB.
     nameCache.delete(userId);
   }
-  const [rows] = await pool.query(
+  const [rows] = await db.query(
     "SELECT first_name, last_name FROM users WHERE user_id = ?",
     [userId]
   );
@@ -61,12 +61,12 @@ export async function logActivity({
   activityType,
   action,
   bookingId = null,
-}) {
+}, db = pool) {
   if (!activityType || !action) {
     return;
   }
-  const actorName = await getUserName(actorUserId);
-  const [result] = await pool.query(
+  const actorName = await getUserName(actorUserId, db);
+  const [result] = await db.query(
     `INSERT INTO activity_logs
       (actor_user_id, actor_name, actor_role, activity_type, action, booking_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
