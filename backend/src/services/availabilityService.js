@@ -43,6 +43,7 @@ export async function getDateOccupancy() {
   const [bookingRows] = await pool.query(
     `SELECT DATE_FORMAT(b.event_date, '%Y-%m-%d') AS event_date,
             COUNT(*) AS booking_count,
+            SUM(b.booking_status IN ('Reserved', 'Confirmed')) AS accepted_count,
             NULL AS reason
      FROM bookings b
      WHERE b.booking_status IN (?, ?, ?)
@@ -78,7 +79,7 @@ export async function getDateOccupancy() {
       event_date: key,
       booking_count: row.booking_count,
       reason: null,
-      status: "booked",
+      status: Number(row.accepted_count) > 0 ? "booked" : "held",
     });
   }
 

@@ -78,7 +78,7 @@ const API_BASE_URL =
 export interface OccupiedDay {
   event_date: string;
   booking_count: number;
-  status?: "booked" | "blocked";
+  status?: "booked" | "held" | "blocked";
   reason?: string | null;
 }
 

@@ -226,6 +226,7 @@ export function ChatBot() {
   // Occupied dates (dates at capacity from the shared availability source).
   const [occupiedDays, setOccupiedDays] = useState<Record<string, number>>({});
   // Admin-blocked dates (date -> reason) from the shared availability source.
+  const [heldDays, setHeldDays] = useState<Record<string, boolean>>({});
   const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
     {},
   );
@@ -242,7 +243,7 @@ export function ChatBot() {
   // Success / Payment info state
   const [createdBookingInfo, setCreatedBookingInfo] = useState<{
     bookingId: number;
-    referenceId: number;
+    referenceId: string;
     totalPrice: number;
     checkoutUrl?: string;
   } | null>(null);
@@ -291,7 +292,9 @@ export function ChatBot() {
       const data = await getDateAvailability();
       const occupied: Record<string, number> = {};
       const blocked: Record<string, string | null> = {};
+      const held: Record<string, boolean> = {};
       data.occupiedDays.forEach((d) => {
+        if (d.status === "held") held[String(d.event_date).slice(0, 10)] = true;
         if (d.status === "blocked") {
           blocked[d.event_date] = d.reason ?? null;
         } else if (d.booking_count >= data.capacityPerDay) {
@@ -300,6 +303,7 @@ export function ChatBot() {
       });
       setOccupiedDays(occupied);
       setBlockedDays(blocked);
+      setHeldDays(held);
     } catch (err) {
       console.error("[ChatBot] Failed to load availability:", err);
     }
@@ -761,7 +765,7 @@ export function ChatBot() {
         is_ai_booking: true,
       });
 
-      const refId = (res as any).ai_booking_reference || res.booking_id;
+      const refId = res.booking_reference || `AF-${res.ai_booking_reference || res.booking_id}`;
       setCreatedBookingInfo({
         bookingId: res.booking_id,
         referenceId: refId,
@@ -794,7 +798,7 @@ export function ChatBot() {
       setWizard((prev) => ({ ...prev, step: "SUCCESS" }));
 
       addBotMessage(
-        `🎉 **Booking Created Successfully!**\n\nYour Booking Reference Number is **#AF-${refId}**.\n\nPlease proceed to payment via your Dashboard to upload your payment receipt for verification.`,
+        `🎉 **Booking Created Successfully!**\n\nYour Booking Reference Number is **${refId}**.\n\nPlease proceed to payment via your Dashboard to upload your payment receipt for verification.`,
       );
     } catch (err: any) {
       addBotMessage(
@@ -1318,7 +1322,9 @@ export function ChatBot() {
                     }
                     if (occupiedDays[val]) {
                       addBotMessage(
-                        `⛔ **Fully Booked**: ${val} is already fully booked. Please choose another date, or ask me what dates are still available!`,
+                        heldDays[val]
+                          ? `**Temporarily Held**: ${val} is awaiting payment/verification. Please choose another date or check again later.`
+                          : `⛔ **Fully Booked**: ${val} is already fully booked. Please choose another date, or ask me what dates are still available!`,
                       );
                       e.target.value = "";
                       return;
@@ -1743,7 +1749,7 @@ export function ChatBot() {
                 <p className="text-xs text-[#2C1810]/70">
                   Booking Reference:{" "}
                   <span className="font-bold text-[#C8922A]">
-                    #AF-{createdBookingInfo.referenceId}
+                    {createdBookingInfo.referenceId}
                   </span>
                 </p>
 

@@ -129,13 +129,14 @@ export function LandingPage() {
   const [upcomingEventsError, setUpcomingEventsError] = useState<string | null>(
     null,
   );
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateStr(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
   // Admin-set unavailable dates (date -> reason) reflected on the calendar.
+  const [heldDays, setHeldDays] = useState<Record<string, boolean>>({});
   const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
     {},
   );
@@ -183,20 +184,20 @@ export function LandingPage() {
 
   // Fetch the schedule, including retained completed bookings, on mount.
   useEffect(() => {
-    // Only auto-open the calendar month once on the very first successful
-    // fetch; subsequent focus re-syncs must not yank the user's month around.
-    let calendarInitialized = false;
     const fetchBlockedDates = async () => {
       try {
         const data = await getDateAvailability();
         const blocked: Record<string, string | null> = {};
+        const held: Record<string, boolean> = {};
         data.occupiedDays.forEach((d) => {
+          if (d.status === "held") held[String(d.event_date).slice(0, 10)] = true;
           const key = String(d.event_date).slice(0, 10);
           if (d.status === "blocked" || d.reason != null) {
             blocked[key] = d.reason ?? null;
           }
         });
         setBlockedDays(blocked);
+        setHeldDays(held);
       } catch (error) {
         // Availability is best-effort here; the event calendar still works.
         console.error("Failed to load blocked dates:", error);
@@ -213,28 +214,8 @@ export function LandingPage() {
           event_date: toLocalDateStr(ev.event_date),
         }));
         setUpcomingEvents(events);
-        if (!calendarInitialized && events.length > 0) {
-          calendarInitialized = true;
-          const today = new Date();
-          const todayKey = toLocalDateStr(today);
-          const nextEvent =
-            events.find((event) => event.event_date >= todayKey) ??
-            events[events.length - 1];
-          setSelectedDate(nextEvent.event_date);
-          setCalendarMonth(localDateFromStr(nextEvent.event_date));
-        } else {
-          // Keep the user's selection if it still maps to a real event.
-          const todayKey = toLocalDateStr(new Date());
-          setSelectedDate((prev) => {
-            if (prev && events.some((event) => event.event_date === prev)) {
-              return prev;
-            }
-            const nextEvent = events.find(
-              (event) => event.event_date >= todayKey,
-            );
-            return nextEvent?.event_date ?? (events[events.length - 1]?.event_date ?? prev);
-          });
-        }
+        // Loading or refreshing events must not move the displayed month or
+        // selected day. Start on today; navigation stays under the user's control.
       } catch (error) {
         setUpcomingEventsError(
           error instanceof Error
@@ -441,6 +422,7 @@ export function LandingPage() {
         isCompleted,
         isClosed,
         isBlocked,
+        isHeld: !!heldDays[dateKey] && !isBlocked && !hasEvent,
         blockedReason: blockedDays[dateKey] ?? null,
         isSelected: selectedDate === dateKey,
       };
@@ -797,7 +779,7 @@ export function LandingPage() {
               Calendar of Private Dining Schedules
             </h2>
             <p className="text-[#2C1810]/60 mt-3 max-w-xl mx-auto font-['Lato']">
-              Browse upcoming private dining dates and completed celebrations.
+              Browse upcoming private dining dates, temporary holds, and completed celebrations.
               Previously confirmed bookings stay on the calendar after completion.
             </p>
           </div>
@@ -889,7 +871,9 @@ export function LandingPage() {
                       setSelectedDate(day.dateKey);
                     }}
                     title={
-                      day?.hasEvent
+                      day?.isHeld
+                        ? "Temporarily Held — Awaiting Payment/Verification"
+                        : day?.hasEvent
                         ? day.isCompleted
                           ? "Completed Private Dining"
                           : "Private Event Scheduled"
@@ -905,7 +889,9 @@ export function LandingPage() {
                     }
                     className={`flex h-14 flex-col items-center justify-center rounded-2xl border text-sm transition-all ${
                       day
-                        ? day.isSelected
+                        ? day.isHeld
+                          ? `border-sky-400 bg-sky-400/20 text-sky-100 hover:bg-sky-400/30 ${day.isSelected ? "ring-2 ring-sky-300" : ""}`
+                          : day.isSelected
                           ? "border-2 border-[#C8922A] bg-[#C8922A]/30 text-[#F5F0E8] ring-2 ring-[#C8922A] font-bold shadow-lg scale-105 z-10"
                           : day.hasEvent
                             ? day.isCompleted
@@ -924,6 +910,7 @@ export function LandingPage() {
                         <span className={day.isBlocked ? "line-through" : ""}>
                           {day.day}
                         </span>
+                        {day.isHeld && <span className="mt-0.5 text-[9px] leading-none">Held</span>}
                         {day.hasEvent && (
                           <span
                             className={`mt-1 h-1.5 w-1.5 rounded-full ${
@@ -954,6 +941,10 @@ export function LandingPage() {
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-2 w-2 rounded-full bg-[#7A8C5C]" />
                   Completed
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-400" />
+                  Temporarily Held
                 </span>
                 {Object.keys(blockedDays).length > 0 && (
                   <span className="inline-flex items-center gap-1.5">
@@ -986,6 +977,12 @@ export function LandingPage() {
                   <p className="text-[#C4541A] text-sm font-['Lato'] mb-3">
                     {upcomingEventsError}
                   </p>
+                </div>
+              ) : heldDays[selectedDate] && blockedDays[selectedDate] === undefined && !selectedEvent ? (
+                <div className="rounded-2xl border border-sky-300 bg-sky-50 p-5 text-center">
+                  <p className="text-sm font-semibold text-sky-900">{selectedDate}</p>
+                  <h3 className="mt-2 font-semibold text-sky-900">Temporarily Held — Awaiting Payment/Verification</h3>
+                  <p className="mt-2 text-sm text-sky-900/80">This date is temporarily unavailable while a pending booking awaits payment or receipt verification. Please choose another date or check again later.</p>
                 </div>
               ) : upcomingEvents.length === 0 ? (
                 <div className="py-8 space-y-4">

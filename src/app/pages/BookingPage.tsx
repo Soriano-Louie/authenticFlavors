@@ -210,6 +210,7 @@ export function BookingPage() {
   const [eventTime, setEventTime] = useState("18:00");
   const [timeError, setTimeError] = useState<string | null>(null);
   const [occupiedDays, setOccupiedDays] = useState<Record<string, number>>({});
+  const [heldDays, setHeldDays] = useState<Record<string, boolean>>({});
   const [blockedDays, setBlockedDays] = useState<Record<string, string | null>>(
     {},
   );
@@ -295,7 +296,9 @@ export function BookingPage() {
       const data = await getDateAvailability();
       const occupied: Record<string, number> = {};
       const blocked: Record<string, string | null> = {};
+      const held: Record<string, boolean> = {};
       data.occupiedDays.forEach((d) => {
+        if (d.status === "held") held[String(d.event_date).slice(0, 10)] = true;
         const key = String(d.event_date).slice(0, 10);
         if (d.status === "blocked" || d.reason != null) {
           blocked[key] = d.reason ?? null;
@@ -305,6 +308,7 @@ export function BookingPage() {
       });
       setOccupiedDays(occupied);
       setBlockedDays(blocked);
+      setHeldDays(held);
       setAvailabilityError(null);
     } catch (err) {
       console.warn("Could not fetch date availability dynamically:", err);
@@ -525,10 +529,12 @@ export function BookingPage() {
         : "This day is unavailable for booking. Please choose another date.";
     }
     if (occupiedDays[eventDate]) {
-      return "This date is already fully booked. Please choose another date.";
+      return heldDays[eventDate]
+        ? "This date is temporarily held — awaiting payment/verification. Please choose another date or check again later."
+        : "This date is already fully booked. Please choose another date.";
     }
     return null;
-  }, [eventDate, blockedDays, occupiedDays]);
+  }, [eventDate, blockedDays, occupiedDays, heldDays]);
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -882,7 +888,9 @@ export function BookingPage() {
                         return;
                       }
                       if (occupiedDays[value]) {
-                        const msg = "This date is already fully booked. Please choose another date.";
+                        const msg = heldDays[value]
+                          ? "This date is temporarily held — awaiting payment/verification. Please choose another date or check again later."
+                          : "This date is already fully booked. Please choose another date.";
                         setSubmitError(msg);
                         toast.error(msg);
                         setEventDate("");
@@ -914,7 +922,7 @@ export function BookingPage() {
                   )}
                   {!availabilityError && upcomingOccupiedDates.length > 0 && (
                     <p className="text-xs text-[#2C1810]/60 font-['Lato'] mt-1">
-                      Already fully booked:{" "}
+                      Unavailable (booked or temporarily held):{" "}
                       <span className="font-semibold text-[#C4541A]">
                         {upcomingOccupiedDates.join(", ")}
                       </span>

@@ -437,6 +437,11 @@ export async function sendBookingSubmittedEmail(email, firstName, bookingDetails
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
           </a>
+          <p style="color: #2C1810; font-size: 12px; line-height: 1.5; margin: 12px 0 0;">
+            If the button does not work, copy and paste this address into your browser:
+            <br />
+            <span style="word-break: break-all;">${escapeHtml(env.frontendUrl.replace(/\/+$/, ""))}/dashboard</span>
+          </p>
         </div>
       </div>
       <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
@@ -1088,6 +1093,11 @@ export async function sendMenuChangeApprovedCustomerEmail(email, firstName, deta
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
           </a>
+          <p style="color: #2C1810; font-size: 12px; line-height: 1.5; margin: 12px 0 0;">
+            If the button does not work, copy and paste this address into your browser:
+            <br />
+            <span style="word-break: break-all;">${escapeHtml(env.frontendUrl.replace(/\/+$/, ""))}/dashboard</span>
+          </p>
         </div>
       </div>
       <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">
@@ -1209,6 +1219,11 @@ export async function sendVenueSetupApprovedCustomerEmail(email, firstName, deta
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
           </a>
+          <p style="color: #2C1810; font-size: 12px; line-height: 1.5; margin: 12px 0 0;">
+            If the button does not work, copy and paste this address into your browser:
+            <br />
+            <span style="word-break: break-all;">${escapeHtml(env.frontendUrl.replace(/\/+$/, ""))}/dashboard</span>
+          </p>
         </div>
       </div>
       <p style="text-align: center; color: #2C1810; font-size: 11px; margin-top: 16px;">

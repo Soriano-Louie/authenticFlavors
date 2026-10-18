@@ -7,6 +7,10 @@ import type { AdminUser, AdminActivity, BlockedDate, AdminMenuCategory, AdminMen
 import type { Package as PackageType } from "../api/packageApi";
 import type { Announcement } from "../api/announcementApi";
 
+export function getBookingSource(booking: Pick<Booking, "ai_booking_reference">): string {
+  return booking.ai_booking_reference ? "Chatbot" : "Booking Form";
+}
+
 /**
  * Escapes a single CSV field value according to RFC-4180 rules.
  */
@@ -173,6 +177,7 @@ export function transformBookingsForExport(bookings: Booking[]) {
     "Amount Paid (PHP)",
     "Remaining Balance (PHP)",
     "Booking Status",
+    "Booking Source",
     "Allergy Notes",
     "Dietary Notes",
     "Created At",
@@ -203,6 +208,7 @@ export function transformBookingsForExport(bookings: Booking[]) {
       Number(b.amount_paid || 0).toFixed(2),
       Number(b.remaining_balance || 0).toFixed(2),
       b.booking_status,
+      getBookingSource(b),
       b.allergy_notes || "None",
       b.dietary_notes || "None",
       b.created_at ? new Date(b.created_at).toLocaleString("en-PH") : "N/A",

@@ -1,3 +1,4 @@
+import { getBookingSource } from "../utils/exportUtils";
 import { ReceiptImage } from "../components/ReceiptImage";
 import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
@@ -2189,6 +2190,7 @@ export function CustomerDashboard() {
                               <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
                                 {getBookingReference(ev)}
                               </span>
+                              <span className="text-xs text-[#2C1810]/70">Source: {getBookingSource(ev)}</span>
                               <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
                                 {getDisplayEventType(ev)}
                               </span>
@@ -2422,6 +2424,7 @@ export function CustomerDashboard() {
                                 <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
                                   {getBookingReference(ev)}
                                 </span>
+                              <span className="text-xs text-[#2C1810]/70">Source: {getBookingSource(ev)}</span>
                                 <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
                                   {getDisplayEventType(ev)}
                                 </span>
@@ -2506,6 +2509,7 @@ export function CustomerDashboard() {
                               <span className="px-2.5 py-0.5 rounded-md bg-[#2C1810] text-[#F5F0E8] text-xs font-mono font-semibold tracking-wider">
                                 {getBookingReference(ev)}
                               </span>
+                              <span className="text-xs text-[#2C1810]/70">Source: {getBookingSource(ev)}</span>
                               <span className="px-2.5 py-0.5 rounded-full bg-[#C8922A]/10 text-[#C8922A] text-xs font-['Lato'] font-medium">
                                 {getDisplayEventType(ev)}
                               </span>
@@ -4240,8 +4244,8 @@ export function CustomerDashboard() {
                   Booking Details
                 </h3>
                 <p className="text-xs text-[#C8922A] font-['Lato'] mt-0.5">
-                  {selectedBooking.booking_reference ||
-                    `#BK${String(selectedBooking.booking_id).padStart(4, "0")}`}
+                  {getBookingReference(selectedBooking)}
+                  <span className="block mt-1">Source: {getBookingSource(selectedBooking)}</span>
                 </p>
               </div>
               <div className="flex items-center gap-3">

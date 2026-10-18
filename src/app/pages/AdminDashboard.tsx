@@ -1,3 +1,4 @@
+import { getBookingSource } from "../utils/exportUtils";
 import { PricingBaselineReview } from "../components/PricingBaselineReview";
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
@@ -4648,6 +4649,7 @@ function BookingsSection() {
                         <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
                           <span className="shrink-0 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-[#2C1810]/5 text-[#2C1810] rounded-md text-xs sm:text-sm font-bold font-['Lato'] tracking-wide">
                             {getBookingReference(booking)}
+                            <span className="block text-xs font-normal">Source: {getBookingSource(booking)}</span>
                           </span>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold font-['Lato'] text-[#2C1810] truncate">
@@ -5624,6 +5626,7 @@ function BookingsSection() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-['Playfair_Display'] text-xl font-bold text-[#F5F0E8]">
                       Booking Summary: {getBookingReference(b)}
+                      <span className="block text-xs font-normal mt-1">Source: {getBookingSource(b)}</span>
                     </span>
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-xs font-['Lato'] font-semibold ${getStatusStyle(b.booking_status)}`}

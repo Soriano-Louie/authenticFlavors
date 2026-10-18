@@ -2,7 +2,7 @@ import { queueNotificationEmail } from "../services/emailService.js";
 import { assertBookingInput, isCalendarDate } from "../utils/inputValidation.js";
 import { resolveMenu } from "../services/bookingRulesService.js";
 import { lockBookingCalendar, expireUnpaidHolds } from "../services/reservationHoldService.js";
-import crypto from "crypto";
+import { generateUniqueBookingReference } from "../utils/bookingReference.js";
 import { applyBookingPaymentTotals } from "../services/bookingPaymentTotalsService.js";
 import { pool } from "../db/pool.js";
 import {
@@ -349,12 +349,9 @@ export async function createBooking(req, res) {
     // References are UNIQUE at the DB level; if a concurrent booking wins the
     // race for the same reference the INSERT throws ER_DUP_ENTRY, so we
     // regenerate both candidate references and retry (max 3 attempts).
-    let ai_booking_reference = is_ai_booking
-      ? await generateUniqueBookingReference(connection, "ai")
-      : null;
-    let booking_reference = !is_ai_booking
-      ? await generateUniqueBookingReference(connection, "bk")
-      : null;
+    let booking_reference = await generateUniqueBookingReference(connection);
+    // Retain the AI marker for source reporting and older API consumers.
+    let ai_booking_reference = is_ai_booking ? booking_reference.slice(3) : null;
 
     // Setup booking summary JSON
     const summaryData = JSON.stringify({
@@ -408,12 +405,8 @@ export async function createBooking(req, res) {
         break;
       } catch (err) {
         if (err?.code !== "ER_DUP_ENTRY" || attempt === 2) throw err;
-        ai_booking_reference = is_ai_booking
-          ? await generateUniqueBookingReference(connection, "ai")
-          : null;
-        booking_reference = !is_ai_booking
-          ? await generateUniqueBookingReference(connection, "bk")
-          : null;
+        booking_reference = await generateUniqueBookingReference(connection);
+        ai_booking_reference = is_ai_booking ? booking_reference.slice(3) : null;
       }
     }
 
@@ -562,22 +555,6 @@ export async function createBooking(req, res) {
   } finally {
     connection?.release();
   }
-}
-
-// Generate a crypto-random booking reference and retry until it is unique.
-async function generateUniqueBookingReference(connection, kind) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const digits = crypto.randomInt(100000, 1000000);
-    const ref = kind === "ai" ? String(digits) : `BK-${digits}`;
-    const column =
-      kind === "ai" ? "ai_booking_reference" : "booking_reference";
-    const [rows] = await connection.query(
-      `SELECT booking_id FROM bookings WHERE ${column} = ? LIMIT 1`,
-      [ref],
-    );
-    if (rows.length === 0) return ref;
-  }
-  throw new Error("Unable to generate a unique booking reference.");
 }
 
 // Auto-complete past confirmed/reserved/pending-with-receipt bookings
