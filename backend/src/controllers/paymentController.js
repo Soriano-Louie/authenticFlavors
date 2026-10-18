@@ -1,3 +1,4 @@
+import { lockBookingCalendar } from "../services/reservationHoldService.js";
 import { privateReceiptUrl, deleteOwnedReceipt } from "../services/cloudinaryService.js";
 import { checkPaymentOrder } from "../services/bookingRulesService.js";
 import { pool } from "../db/pool.js";
@@ -171,6 +172,8 @@ export async function uploadReceiptFile(req, res) {
     // Re-check the payment status under lock before persisting, so a slow
     // Cloudinary upload can never overwrite a payment the admin just verified.
     await connection.beginTransaction();
+    // Serialize receipt persistence with unpaid-hold expiration.
+    await lockBookingCalendar(connection);
     const [lockedBookings] = await connection.query('SELECT booking_status FROM bookings WHERE booking_id = ? FOR UPDATE', [payment.booking_id]);
     await checkPaymentOrder(connection, payment, lockedBookings[0]?.booking_status);
     const [lockedPayments] = await connection.query(

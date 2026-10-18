@@ -11,6 +11,8 @@ export async function expireUnpaidHolds() {
   try {
     await db.beginTransaction();
     await lockBookingCalendar(db);
+    // Submitted receipts remain protected for the entire admin review, even
+    // after reservation_expires_at. Only unprotected unpaid holds expire.
     const [bookings] = await db.query(`SELECT b.booking_id FROM bookings b
       WHERE b.booking_status = 'Pending' AND b.reservation_expires_at <= NOW()
         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.booking_id

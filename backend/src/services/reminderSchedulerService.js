@@ -74,7 +74,7 @@ async function checkEventReminders() {
 /**
  * Checks and dispatches reminders for payment due dates (3 days prior, due today, overdue).
  */
-async function checkPaymentReminders() {
+export async function checkPaymentReminders() {
   try {
     const [payments] = await pool.query(
       `SELECT p.payment_id, p.booking_id, p.payment_type, p.amount, p.due_date, p.payment_status,
@@ -148,10 +148,12 @@ async function checkPaymentReminders() {
       } else if (daysUntil < 0) {
         // Mark payment as Overdue if not already
         if (p.payment_status !== "Overdue") {
-          await pool.query(
-            "UPDATE payments SET payment_status = 'Overdue' WHERE payment_id = ?",
+          const [overdueUpdate] = await pool.query(
+            "UPDATE payments SET payment_status = 'Overdue' WHERE payment_id = ? AND payment_status = 'Pending'",
             [p.payment_id],
           );
+          // A receipt may have been uploaded or approved since the initial read.
+          if (overdueUpdate.affectedRows === 0) continue;
         }
 
         reminderType = `payment_overdue_${p.payment_id}_${Math.abs(daysUntil)}d`;

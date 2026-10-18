@@ -413,6 +413,11 @@ export async function createBooking(req, res) {
     const booking_id = bookingResult.insertId;
     await connection.query("UPDATE bookings SET reservation_expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE booking_id = ?", [booking_id]);
 
+    const [holdRows] = await connection.query(
+      "SELECT DATE_FORMAT(reservation_expires_at, '%M %e, %Y at %h:%i %p') AS reservation_deadline FROM bookings WHERE booking_id = ?",
+      [booking_id],
+    );
+
     // 9. Insert menu selections
     for (const item of resolvedMenuSelections) {
       await connection.query(
@@ -503,6 +508,8 @@ export async function createBooking(req, res) {
         sendBookingSubmittedEmail(contact_email, contact_name, {
           booking_reference: refStr,
           event_date,
+          reservation_amount: reservationVal,
+          reservation_deadline: holdRows[0]?.reservation_deadline,
           guest_count: number_of_pax,
         }),
     }, connection);

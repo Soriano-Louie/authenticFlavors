@@ -407,6 +407,25 @@ export async function sendPaymentOverdueNotice(
 export async function sendBookingSubmittedEmail(email, firstName, bookingDetails) {
   const { booking_reference, event_date, package_name, guest_count } = bookingDetails;
   const formattedDate = formatPhilippineDate(event_date);
+  const reservationAmount = Number(bookingDetails.reservation_amount ?? 5000);
+  const receiptInstructions = reservationAmount > 0 ? `
+        <div style="background-color: #FFF8EF; border: 1px solid #C8922A; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <h3 style="color: #2C1810; font-size: 15px; margin: 0 0 8px;">Next step: upload your reservation payment receipt</h3>
+          <p style="color: #2C1810; font-size: 13px; line-height: 1.6; margin: 0 0 8px;">
+            Open your dashboard, select this booking, follow the payment instructions, and upload your receipt for the
+            <strong>₱${reservationAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} reservation fee</strong>.
+            Payment must be verified by our admin before your reservation can be approved. Uploading a receipt alone does not confirm the booking.
+          </p>
+          <p style="color: #2C1810; font-size: 13px; line-height: 1.6; margin: 0 0 8px;">
+            <strong>Your selected date is temporarily held for 24 hours from booking creation.</strong>
+            ${bookingDetails.reservation_deadline ? `Upload deadline: <strong>${escapeHtml(bookingDetails.reservation_deadline)} (Philippine Time, UTC+8)</strong>.` : "Please upload within that 24-hour period."}
+            If no reservation receipt is submitted and no payment has been verified by expiration, your pending booking will be automatically cancelled and the date released.
+          </p>
+          <p style="color: #2C1810; font-size: 13px; line-height: 1.6; margin: 0;">
+            Once your receipt is successfully uploaded and marked <strong>For Verification</strong>, your date stays held while our admin reviews it, even if verification takes longer than 24 hours.
+            We will notify you of the result. If your receipt is rejected, check your dashboard promptly for the next steps.
+          </p>
+        </div>` : "";
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background-color: #F5F0E8; border-radius: 12px;">
@@ -431,8 +450,9 @@ export async function sendBookingSubmittedEmail(email, firstName, bookingDetails
           </table>
         </div>
         <p style="color: #2C1810; font-size: 13px; line-height: 1.5; margin: 0 0 8px;">
-          We will review your request shortly and notify you once it's confirmed.
+          We will notify you when your booking status changes.
         </p>
+        ${receiptInstructions}
         <div style="text-align: center; margin: 24px 0;">
           <a href="${env.frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #C8922A, #C4541A); color: #F5F0E8; text-decoration: none; padding: 12px 32px; border-radius: 24px; font-size: 14px; font-weight: bold;">
             View Dashboard
