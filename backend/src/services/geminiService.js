@@ -505,7 +505,7 @@ async function buildRestaurantContext() {
       // Occupancy
       getDateOccupancy().catch((err) => {
         console.error("[GeminiService] Failed to fetch occupancy:", err);
-        return { occupiedDays: [] };
+        return { occupiedDays: [], unavailable: true };
       }),
 
       // 9. Announcements
@@ -596,7 +596,7 @@ async function buildRestaurantContext() {
     const occupiedDays = occupancyData?.occupiedDays || [];
     if (occupiedDays.length > 0) {
       const lines = [
-        `CURRENT CALENDAR AVAILABILITY (only ${CAPACITY_PER_DAY} booking per day is allowed; dates below are already assigned / FULL and are NOT available for new bookings):`,
+        `CURRENT CALENDAR AVAILABILITY (only ${CAPACITY_PER_DAY} booking per day is allowed; dates below are already unavailable for new bookings; distinguish temporary holds from accepted bookings):`,
       ];
       for (const day of occupiedDays) {
         lines.push(

@@ -1,3 +1,4 @@
+import type { Promotion } from "../api/bookingApi";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -91,7 +92,7 @@ function validateTimeAgainstOperatingHours(time12: string): string | null {
   const closeMinutes = OPERATING_HOURS.closeHour * 60;
   if (totalMinutes < openMinutes || totalMinutes > closeMinutes) {
     const openLabel = `${OPERATING_HOURS.openHour}:00 ${OPERATING_HOURS.openHour >= 12 ? "PM" : "AM"}`;
-    const closeLabel = `${OPERATING_HOURS.closeHour}:00 ${OPERATING_HOURS.closeHour >= 12 ? "PM" : "AM"}`;
+    const closeLabel = "10:00 PM";
     return `Start time must be between ${openLabel} and ${closeLabel} (Tuesday to Sunday).`;
   }
   return null;
@@ -221,6 +222,7 @@ export function ChatBot() {
   const [dbCategories, setDbCategories] = useState<MenuCategory[]>([]);
   const [dbMenuItems, setDbMenuItems] = useState<MenuItem[]>([]);
   const [dbVenueSetups, setDbVenueSetups] = useState<VenueSetup[]>([]);
+  const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // Occupied dates (dates at capacity from the shared availability source).
@@ -249,6 +251,8 @@ export function ChatBot() {
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const requestGeneration = useRef(0);
+  const busyRef = useRef(false);
   const historyLoadedForRef = useRef<number | null>(null);
 
   // Prevent background scrolling when floating mode is active
@@ -263,8 +267,9 @@ export function ChatBot() {
     };
   }, [isFloating, open]);
 
-  // Load backend database options on mount
+  // Load options when opened; reopening retries a failed request.
   useEffect(() => {
+    if (!open || dataLoaded) return;
     async function loadDbOptions() {
       try {
         const [pkgRes, catRes, itemRes, setupRes] = await Promise.all([
@@ -273,7 +278,7 @@ export function ChatBot() {
           getMenuItems(),
           getVenueSetups(),
         ]);
-        setDbPackages(pkgRes.packages || []);
+        setDbPackages((pkgRes.packages || []).filter(pkg => pkg.status === "Active"));
         setDbCategories(catRes.categories || []);
         setDbMenuItems(itemRes.items || []);
         setDbVenueSetups(setupRes.venueSetups || []);
@@ -283,7 +288,7 @@ export function ChatBot() {
       }
     }
     loadDbOptions();
-  }, []);
+  }, [open, dataLoaded]);
 
   // Refresh the occupied-date set whenever the user is choosing a date, so a
   // date freed by a cancellation is recognized immediately.
@@ -317,6 +322,9 @@ export function ChatBot() {
   // conversations never leak across accounts sharing the same browser.
   const activeUserId = user?.user_id ?? null;
   useEffect(() => {
+    requestGeneration.current++;
+    busyRef.current = false;
+    setIsLoading(false);
     setMessages(initialMessages);
     setInput("");
     setConversationId(null);
@@ -339,6 +347,7 @@ export function ChatBot() {
     if (historyLoadedForRef.current === activeUserId) return;
     historyLoadedForRef.current = activeUserId;
     let cancelled = false;
+    const generation = requestGeneration.current;
     (async () => {
       try {
         const res = await getConversations(accessToken);
@@ -350,7 +359,7 @@ export function ChatBot() {
           accessToken,
           latest.conversation_id,
         );
-        if (cancelled) return;
+        if (cancelled || generation !== requestGeneration.current) return;
         const restored = (msgRes.messages || [])
           .filter(
             (m) =>
@@ -377,6 +386,9 @@ export function ChatBot() {
   }, [activeUserId, accessToken]);
 
   const handleStartNewChat = () => {
+    requestGeneration.current++;
+    busyRef.current = false;
+    setIsLoading(false);
     cancelActiveBookingSession();
     setMessages(initialMessages);
     setConversationId(null);
@@ -422,16 +434,26 @@ export function ChatBot() {
       return;
     }
 
+    if (busyRef.current) return;
+    if (!dataLoaded || dbPackages.length === 0) {
+      addBotMessage("Booking options are not available yet. Please reopen the chat shortly or use the Packages page.");
+      return;
+    }
+    busyRef.current = true;
+    setIsLoading(true);
+    const generation = ++requestGeneration.current;
     // Try starting session on the backend
     let activeConvId = conversationId;
     let activeSessId: number | null = null;
     try {
       const res = await startBookingSession(accessToken);
+      if (generation !== requestGeneration.current) return;
       activeConvId = res.conversation_id;
       activeSessId = res.session_id;
       setConversationId(res.conversation_id);
       setBookingSessionId(res.session_id);
     } catch (e) {
+      if (generation !== requestGeneration.current) return;
       console.error("Failed to start booking session:", e);
       const errMsg =
         e instanceof Error && e.message
@@ -451,6 +473,9 @@ export function ChatBot() {
       ]);
     }
 
+    if (generation !== requestGeneration.current) return;
+    busyRef.current = false;
+    setIsLoading(false);
     setWizard((prev) => ({
       ...initialWizardState,
       contactName:
@@ -571,6 +596,11 @@ export function ChatBot() {
 
   // 3. Select Catering Package
   const handleSelectPackage = (pkg: Package) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setIsLoading(true);
+    setPromotion(null);
+    const generation = requestGeneration.current;
     let estimatedPrice = 0;
     if (pkg.pricing && pkg.pricing.length > 0) {
       const match = pkg.pricing.find((p) => p.pax_count === wizard.pax);
@@ -582,6 +612,8 @@ export function ChatBot() {
     // is known at this step, so a tier-scoped discount resolves correctly.
     getPromotion(pkg.package_id, wizard.pax)
       .then((promo) => {
+        if (generation !== requestGeneration.current) return;
+        setPromotion(promo);
         if (promo?.has_discount) {
           estimatedPrice = applyPromotion(estimatedPrice, promo);
         }
@@ -590,8 +622,12 @@ export function ChatBot() {
         // Promo lookup must never block the flow; backend re-checks anyway.
       })
       .finally(() => {
+        if (generation !== requestGeneration.current) return;
+        busyRef.current = false;
+        setIsLoading(false);
         setWizard((prev) => ({
           ...prev,
+          selectedMenuItems: {},
           packageId: pkg.package_id,
           packageName: pkg.package_name,
           totalPrice: estimatedPrice,
@@ -666,6 +702,19 @@ export function ChatBot() {
     }
   };
 
+  const selectedPackage = dbPackages.find(pkg => pkg.package_id === wizard.packageId);
+  const includedIds = new Set(selectedPackage?.menu_inclusions?.map(item => Number(item.menu_item_id)) ?? []);
+  const packageItems = dbMenuItems.filter(item => includedIds.size === 0 || includedIds.has(Number(item.menu_item_id)));
+  const requiredCategories = dbCategories.filter(category => category.status === "Active" && packageItems.some(item => item.category_id === category.category_id));
+  const availableMenuItems = packageItems.filter(item => item.availability_status === "Active");
+  const menuSurcharge = availableMenuItems.filter(item => wizard.selectedMenuItems[item.category_id] === item.item_name)
+    .reduce((total, item) => total + Number(item.additional_price || 0), 0);
+  const basePrice = Number(selectedPackage?.pricing?.find(price => price.pax_count === wizard.pax)?.price ?? 0);
+  const quotedTotal = Math.round(applyPromotion(basePrice + menuSurcharge, promotion) * 100) / 100;
+  const availablePax = [...new Set(dbPackages.flatMap(pkg => (pkg.pricing ?? [])
+    .filter(price => price.pax_count <= Math.min(70, pkg.max_pax ?? 70))
+    .map(price => price.pax_count)))].sort((a, b) => a - b);
+
   // 7. Select Menu Item for a Category (Allows toggling items per category without auto-advancing premature step change)
   const handleSelectMenuItem = (categoryId: number, itemName: string) => {
     setWizard((prev) => ({
@@ -680,16 +729,10 @@ export function ChatBot() {
   // Finish Menu Selection step manually
   const handleFinishMenu = () => {
     const selectedCount = Object.keys(wizard.selectedMenuItems).length;
-    const totalCategories = dbCategories.filter((cat) => {
-      const categoryItems = dbMenuItems.filter(
-        (item) => item.category_id === cat.category_id,
-      );
-      return categoryItems.length > 0;
-    }).length;
-    if (selectedCount < totalCategories) {
-      alert(
-        `Please select 1 item for ALL menu categories. (${selectedCount} of ${totalCategories} selected)`,
-      );
+    const complete = requiredCategories.length > 0 && requiredCategories.every(category =>
+      availableMenuItems.some(item => item.category_id === category.category_id && item.item_name === wizard.selectedMenuItems[category.category_id]));
+    if (!complete || selectedCount !== requiredCategories.length) {
+      toast.error("Select one available item from every package category. If a category has no available items, please choose another package.");
       return;
     }
     setWizard((prev) => ({ ...prev, step: "USER_INFO" }));
@@ -716,7 +759,11 @@ export function ChatBot() {
   // 8. User Info Submit
   const handleUserInfoConfirm = () => {
     if (!wizard.contactName.trim() || !wizard.contactEmail.trim()) {
-      alert("Name and Email are required.");
+      toast.error("Name and email are required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizard.contactEmail.trim())) {
+      toast.error("Enter a valid email address.");
       return;
     }
     setWizard((prev) => ({ ...prev, step: "SUMMARY" }));
@@ -741,6 +788,9 @@ export function ChatBot() {
       return;
     }
 
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const generation = requestGeneration.current;
     setIsLoading(true);
     try {
       const menuChoices = Object.values(wizard.selectedMenuItems);
@@ -752,24 +802,25 @@ export function ChatBot() {
         custom_event_type: wizard.otherEventType || undefined,
         venue_setup_name: wizard.venueSetup || "Standard Setup",
         number_of_pax: wizard.pax,
-        contact_name: wizard.contactName,
-        contact_email: wizard.contactEmail,
-        contact_phone: wizard.contactPhone || "09170000000",
+        contact_name: wizard.contactName.trim(),
+        contact_email: wizard.contactEmail.trim(),
+        contact_phone: wizard.contactPhone.trim() || undefined,
         event_date: wizard.eventDate,
         start_time: to24Hour(wizard.eventTime),
         allergy_notes: finalDietaryNotes,
         dietary_notes: finalDietaryNotes,
         menu_selections:
-          menuChoices.length > 0 ? menuChoices : ["Filipino Feast Buffet"],
-        total_price: wizard.totalPrice || undefined,
+          menuChoices,
+        total_price: quotedTotal,
         is_ai_booking: true,
       });
 
+      if (generation !== requestGeneration.current) return;
       const refId = res.booking_reference || `AF-${res.ai_booking_reference || res.booking_id}`;
       setCreatedBookingInfo({
         bookingId: res.booking_id,
         referenceId: refId,
-        totalPrice: res.total_price || wizard.totalPrice,
+        totalPrice: res.total_price ?? quotedTotal,
         checkoutUrl: undefined,
       });
 
@@ -777,7 +828,7 @@ export function ChatBot() {
       // ids so the page-unload cancel beacon never fires on a completed
       // booking (e.g. after "Proceed to Payment" triggers a page reload).
       if (bookingSessionId && conversationId && accessToken) {
-        const summaryText = `Event type: ${wizard.eventType}. Pax: ${wizard.pax}. Package: ${wizard.packageName}. Date: ${wizard.eventDate}. Time: ${wizard.eventTime}. Price: ₱${res.total_price || wizard.totalPrice}.`;
+        const summaryText = `Event type: ${wizard.eventType}. Pax: ${wizard.pax}. Package: ${wizard.packageName}. Date: ${wizard.eventDate}. Time: ${wizard.eventTime}. Price: ₱${res.total_price ?? quotedTotal}.`;
         try {
           await completeBookingSession(accessToken, {
             session_id: bookingSessionId,
@@ -791,28 +842,33 @@ export function ChatBot() {
             err,
           );
         }
+        if (generation !== requestGeneration.current) return;
         setBookingSessionId(null);
         setConversationId(null);
       }
 
+      if (generation !== requestGeneration.current) return;
       setWizard((prev) => ({ ...prev, step: "SUCCESS" }));
 
       addBotMessage(
         `🎉 **Booking Created Successfully!**\n\nYour Booking Reference Number is **${refId}**.\n\nPlease proceed to payment via your Dashboard to upload your payment receipt for verification.`,
       );
     } catch (err: any) {
+      if (generation !== requestGeneration.current) return;
       addBotMessage(
         `⚠️ **Booking Failed**: ${err.message || "Something went wrong."} Please check your inputs or try again.`,
       );
     } finally {
-      setIsLoading(false);
+      if (generation === requestGeneration.current) { busyRef.current = false; setIsLoading(false); }
     }
   };
 
   // General FAQ Send Message
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || busyRef.current) return;
 
+    if (text.trim().length > 2000) { toast.error("Please keep messages under 2,000 characters."); return; }
+    const generation = ++requestGeneration.current;
     const now = new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -863,6 +919,7 @@ export function ChatBot() {
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    busyRef.current = true;
     setIsLoading(true);
 
     try {
@@ -871,6 +928,7 @@ export function ChatBot() {
         conversationId,
         accessToken,
       );
+      if (generation !== requestGeneration.current) return;
       if (response.conversation_id) {
         setConversationId(response.conversation_id);
       }
@@ -888,6 +946,7 @@ export function ChatBot() {
         },
       ]);
     } catch (error) {
+      if (generation !== requestGeneration.current) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -901,7 +960,7 @@ export function ChatBot() {
         },
       ]);
     } finally {
-      setIsLoading(false);
+      if (generation === requestGeneration.current) { busyRef.current = false; setIsLoading(false); }
     }
   };
 
@@ -931,6 +990,8 @@ export function ChatBot() {
   }, [bookingSessionId, conversationId, accessToken]);
 
   const handleClose = () => {
+    if (busyRef.current) { setOpen(false); setIsFloating(false); return; }
+    requestGeneration.current++;
     cancelActiveBookingSession();
     setWizard(initialWizardState);
     setOpen(false);
@@ -1202,7 +1263,7 @@ export function ChatBot() {
                   Select Number of Guests:
                 </p>
                 <div className="grid grid-cols-4 gap-2">
-                  {[30, 40, 50, 60, 70, 80, 90, 100].map((paxNum) => (
+                  {availablePax.map((paxNum) => (
                     <button
                       key={paxNum}
                       onClick={() => handleSelectPax(paxNum)}
@@ -1226,7 +1287,7 @@ export function ChatBot() {
                   Select Catering Package ({wizard.pax} Guests):
                 </p>
                 <div className="space-y-2">
-                  {dbPackages.map((pkg) => {
+                  {dbPackages.filter(pkg => wizard.pax <= Math.min(70, pkg.max_pax ?? 70) && pkg.pricing?.some(price => price.pax_count === wizard.pax)).map((pkg) => {
                     const matchedPricing = pkg.pricing?.find(
                       (p) => p.pax_count === wizard.pax,
                     );
@@ -1425,17 +1486,17 @@ export function ChatBot() {
                     </p>
                     <p className="text-[10px] text-[#C8922A] font-semibold">
                       ({Object.keys(wizard.selectedMenuItems).length} of{" "}
-                      {dbCategories.length} categories chosen)
+                      {requiredCategories.length} categories chosen)
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                  {dbCategories.map((category) => {
-                    const categoryItems = dbMenuItems.filter(
+                  {requiredCategories.map((category) => {
+                    const categoryItems = availableMenuItems.filter(
                       (item) => item.category_id === category.category_id,
                     );
-                    if (categoryItems.length === 0) return null;
+                    if (categoryItems.length === 0) return <p key={category.category_id} className="text-xs text-red-700">{category.category_name}: no items available. Please choose another package.</p>;
 
                     const selectedItem =
                       wizard.selectedMenuItems[category.category_id];
@@ -1703,7 +1764,7 @@ export function ChatBot() {
                         Estimated Total Price:
                       </span>
                       <span className="font-bold text-base text-[#2C1810]">
-                        ₱{Number(wizard.totalPrice).toLocaleString("en-PH")}
+                        ₱{Number(quotedTotal).toLocaleString("en-PH")}
                       </span>
                     </div>
                     <div className="text-right">

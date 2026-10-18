@@ -353,6 +353,9 @@ const INTENT_RULES = [
  * @returns {Promise<{answer: string, category: string, confidence: number}|null>}
  */
 export async function findKnowledgeBaseAnswer(userMessage, minScore = 50) {
+  // Date-specific availability must use live calendar context, never a static FAQ.
+  if (/\b(availability|schedule|calendar|temporarily held|fully booked)\b/i.test(userMessage) ||
+      (/\b(available|booked|held)\b/i.test(userMessage) && /\b(date|dates|day|month|november|december|january|february|march|april|may|june|july|august|september|october)\b|\d/.test(userMessage.toLowerCase()))) return null;
   try {
     const now = Date.now();
     let faqs = cachedKnowledgeBase;
@@ -442,9 +445,9 @@ export async function sendMessage(req, res) {
     const { message, conversation_id } = req.body;
 
     // Validate message
-    if (!message || !String(message).trim()) {
+    if (typeof message !== "string" || !message.trim() || message.trim().length > 2000) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Message is required." },
+        error: { code: "VALIDATION_ERROR", message: "Enter a message between 1 and 2,000 characters." },
       });
     }
 
